@@ -1,11 +1,154 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Finance\ChargeConceptController;
+use App\Http\Controllers\Finance\ChargeConceptOfficialLinkController;
+use App\Http\Controllers\Finance\ExpenseClassificationImportController;
+use App\Http\Controllers\Finance\OfficialFeeConceptController;
+use App\Http\Controllers\Finance\PaymentProcedureController;
+use App\Http\Controllers\Finance\PaymentRegistrationController;
+use App\Http\Controllers\Finance\ReceiptCancellationController;
+use App\Http\Controllers\Finance\ReceiptController;
+use App\Http\Controllers\Finance\ReceiptValidationController;
+use App\Http\Controllers\Finance\SeqDepositController;
+use App\Http\Controllers\Finance\SeqReportController;
+use App\Http\Controllers\Finance\SeqReportExportController;
+use App\Http\Controllers\Finance\StudentLookupController;
+use App\Http\Controllers\Finance\U300BudgetAdjustmentController;
+use App\Http\Controllers\Finance\U300BudgetExecutionController;
+use App\Http\Controllers\Finance\U300CogConversionController;
+use App\Http\Controllers\Finance\U300FederalVerdictController;
+use App\Http\Controllers\Finance\U300FinancialReportController;
+use App\Http\Controllers\Finance\U300ImportController;
+use App\Http\Controllers\Finance\U300ProgramController;
+use App\Http\Controllers\Finance\U300TechnicalSheetController;
+use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'welcome')->name('home');
+Route::get('/', WelcomeController::class)->name('home');
+
+Route::prefix('finance')->name('finance.')->group(function () {
+    Route::get('receipts/validate/{token}', ReceiptValidationController::class)
+        ->name('receipts.validate');
+});
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)
+        ->middleware('can:operate-finance')
+        ->name('dashboard');
+
+    Route::prefix('finance')->name('finance.')->middleware('can:operate-finance')->group(function () {
+        Route::get('students/search', StudentLookupController::class)
+            ->name('students.search');
+
+        Route::resource('payment-procedures', PaymentProcedureController::class)
+            ->only(['index', 'create', 'store', 'show', 'update']);
+
+        Route::post('payment-procedures/{payment_procedure}/payments', [PaymentRegistrationController::class, 'store'])
+            ->name('payment-procedures.payments.store');
+
+        Route::get('receipts', [ReceiptController::class, 'index'])
+            ->name('receipts.index');
+
+        Route::get('receipts/{receipt}', [ReceiptController::class, 'show'])
+            ->name('receipts.show');
+
+        Route::get('receipts/{receipt}/print', [ReceiptController::class, 'print'])
+            ->name('receipts.print');
+
+        Route::post('receipts/{receipt}/cancel', ReceiptCancellationController::class)
+            ->name('receipts.cancel');
+
+        Route::post('receipts/{receipt}/seq-deposit', [SeqDepositController::class, 'store'])
+            ->name('receipts.seq-deposits.store');
+
+        Route::get('seq-report', [SeqReportController::class, 'index'])
+            ->name('seq-report.index');
+
+        Route::get('seq-report/export', SeqReportExportController::class)
+            ->name('seq-report.export');
+
+        Route::resource('charge-concepts', ChargeConceptController::class)
+            ->only(['index', 'store', 'update']);
+
+        Route::put('charge-concepts/{charge_concept}/official-link', [ChargeConceptOfficialLinkController::class, 'update'])
+            ->name('charge-concepts.official-link.update');
+
+        Route::post('official-fee-concepts', [OfficialFeeConceptController::class, 'store'])
+            ->name('official-fee-concepts.store');
+
+        Route::get('expense-classifications/imports/create', [ExpenseClassificationImportController::class, 'create'])
+            ->name('expense-classifications.imports.create');
+
+        Route::post('expense-classifications/imports', [ExpenseClassificationImportController::class, 'store'])
+            ->name('expense-classifications.imports.store');
+
+        Route::get('u300/imports/create', [U300ImportController::class, 'create'])
+            ->name('u300.imports.create');
+
+        Route::post('u300/imports/preview', [U300ImportController::class, 'preview'])
+            ->name('u300.imports.preview');
+
+        Route::get('u300/imports/preview', [U300ImportController::class, 'showPreview'])
+            ->name('u300.imports.preview.show');
+
+        Route::post('u300/imports', [U300ImportController::class, 'store'])
+            ->name('u300.imports.store');
+
+        Route::get('u300/programs', [U300ProgramController::class, 'index'])
+            ->name('u300.programs.index');
+
+        Route::get('u300/programs/{program}/verdict', [U300FederalVerdictController::class, 'edit'])
+            ->name('u300.programs.verdict.edit');
+
+        Route::put('u300/programs/{program}/verdict', [U300FederalVerdictController::class, 'update'])
+            ->name('u300.programs.verdict.update');
+
+        Route::get('u300/programs/{program}/adjustment', [U300BudgetAdjustmentController::class, 'edit'])
+            ->name('u300.programs.adjustment.edit');
+
+        Route::put('u300/programs/{program}/adjustment', [U300BudgetAdjustmentController::class, 'update'])
+            ->name('u300.programs.adjustment.update');
+
+        Route::get('u300/programs/{program}/cog', [U300CogConversionController::class, 'edit'])
+            ->name('u300.programs.cog.edit');
+
+        Route::put('u300/programs/{program}/cog', [U300CogConversionController::class, 'update'])
+            ->name('u300.programs.cog.update');
+
+        Route::get('u300/programs/{program}/technical-sheets', [U300TechnicalSheetController::class, 'edit'])
+            ->name('u300.programs.technical-sheets.edit');
+
+        Route::get('u300/programs/{program}/technical-sheets/export', [U300TechnicalSheetController::class, 'export'])
+            ->name('u300.programs.technical-sheets.export');
+
+        Route::put('u300/programs/{program}/technical-sheets', [U300TechnicalSheetController::class, 'update'])
+            ->name('u300.programs.technical-sheets.update');
+
+        Route::get('u300/programs/{program}/execution', [U300BudgetExecutionController::class, 'index'])
+            ->name('u300.programs.execution.index');
+
+        Route::get('u300/programs/{program}/financial-reports', [U300FinancialReportController::class, 'show'])
+            ->name('u300.programs.financial-reports.show');
+
+        Route::get('u300/programs/{program}/financial-reports/export', [U300FinancialReportController::class, 'export'])
+            ->name('u300.programs.financial-reports.export');
+
+        Route::post('u300/programs/{program}/execution', [U300BudgetExecutionController::class, 'store'])
+            ->name('u300.programs.execution.store');
+
+        Route::patch('u300/programs/{program}/execution/{movement}/cancel', [U300BudgetExecutionController::class, 'cancel'])
+            ->name('u300.programs.execution.cancel');
+
+        Route::get('u300/programs/{program}/summary/export', [U300ProgramController::class, 'exportSummary'])
+            ->name('u300.programs.summary.export');
+
+        Route::get('u300/programs/{program}/summary/export-xlsx', [U300ProgramController::class, 'exportSummaryWorkbook'])
+            ->name('u300.programs.summary.export-xlsx');
+
+        Route::get('u300/programs/{program}', [U300ProgramController::class, 'show'])
+            ->name('u300.programs.show');
+    });
 });
 
 require __DIR__.'/settings.php';

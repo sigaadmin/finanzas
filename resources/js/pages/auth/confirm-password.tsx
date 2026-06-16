@@ -14,27 +14,31 @@ import { store } from '@/routes/password/confirm';
 export default function ConfirmPassword() {
     return (
         <>
-            <Head title="Confirm password" />
+            <Head title="Confirmar contraseña" />
 
             <PasskeyVerify
                 routes={{
                     options: confirmOptions(),
                     submit: confirmStore(),
                 }}
-                label="Confirm with passkey"
-                loadingLabel="Confirming..."
-                separator="Or confirm with password"
+                label="Confirmar con llave de acceso"
+                loadingLabel="Confirmando..."
+                separator="O confirma con contraseña"
             />
 
-            <Form {...store.form()} resetOnSuccess={['password']}>
+            <Form
+                action={store().url}
+                method="post"
+                resetOnSuccess={['password']}
+            >
                 {({ processing, errors }) => (
                     <div className="space-y-6">
                         <div className="grid gap-2">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password">Contraseña</Label>
                             <PasswordInput
                                 id="password"
                                 name="password"
-                                placeholder="Password"
+                                placeholder="Contraseña"
                                 autoComplete="current-password"
                                 autoFocus
                             />
@@ -49,7 +53,7 @@ export default function ConfirmPassword() {
                                 data-test="confirm-password-button"
                             >
                                 {processing && <Spinner />}
-                                Confirm password
+                                Confirmar contraseña
                             </Button>
                         </div>
                     </div>
@@ -60,7 +64,7 @@ export default function ConfirmPassword() {
 }
 
 ConfirmPassword.layout = {
-    title: 'Confirm password',
+    title: 'Confirmar contraseña',
     description:
-        'This is a secure area of the application. Please confirm your password before continuing.',
+        'Confirma tu contraseña antes de continuar.',
 };
