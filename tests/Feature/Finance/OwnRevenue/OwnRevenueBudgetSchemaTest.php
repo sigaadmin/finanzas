@@ -70,6 +70,36 @@ test('annual budget casts statuses and decimal values while preserving fixed def
         ->and($budget->fuel_price_per_liter)->toBeNull();
 });
 
+test('annual budget applies fixed region and fuel month defaults without factory values', function () {
+    $budget = OwnRevenueBudget::query()->create([
+        'created_by' => User::factory()->create()->getKey(),
+        'fiscal_year' => 2030,
+        'institution_name' => 'Centro Regional de Educación Normal',
+        'responsible_unit_code' => '2112102003',
+        'responsible_unit_name' => 'Dirección del Plantel',
+        'budget_program_code' => 'E062',
+        'budget_program_name' => 'Formación Inicial Docente',
+        'component_code' => 'C01',
+        'component_name' => 'Servicios de formación docente proporcionados',
+        'official_activity_code' => 'A01',
+        'official_activity_name' => 'Operación de los programas de formación docente',
+    ])->refresh();
+
+    expect($budget->region_code)->toBe('02-001')
+        ->and($budget->region_name)->toBe('Felipe Carrillo Puerto')
+        ->and($budget->fuel_budget_month)->toBe(4);
+});
+
+test('annual decimal values normalize to four decimal places', function () {
+    $budget = OwnRevenueBudget::factory()->create([
+        'uma_value' => '123.45',
+        'fuel_price_per_liter' => '123.45',
+    ]);
+
+    expect($budget->uma_value)->toBeString()->toBe('123.4500')
+        ->and($budget->fuel_price_per_liter)->toBeString()->toBe('123.4500');
+});
+
 test('fiscal year is unique across annual own revenue budgets', function () {
     OwnRevenueBudget::factory()->create(['fiscal_year' => 2027]);
 
