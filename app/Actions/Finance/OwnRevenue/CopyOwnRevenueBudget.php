@@ -28,6 +28,13 @@ class CopyOwnRevenueBudget
         'sort_order',
     ];
 
+    private const CANONICAL_ACTIVITY_CODES = [
+        'A01',
+        'A02',
+        'A03',
+        'A04',
+    ];
+
     private const SIGNATORY_FIELDS = [
         'role_key',
         'name',
@@ -143,26 +150,18 @@ class CopyOwnRevenueBudget
             ->orderBy('sort_order')
             ->get(self::ACTIVITY_FIELDS);
 
-        if ($activities->isEmpty()) {
-            $destination->activities()->delete();
+        $activityCodes = $activities->pluck('code')->sort()->values();
 
-            return;
+        if ($activityCodes->unique()->count() !== count(self::CANONICAL_ACTIVITY_CODES)
+            || $activityCodes->all() !== self::CANONICAL_ACTIVITY_CODES) {
+            throw ValidationException::withMessages([
+                'source_budget.activities' => 'Las actividades del presupuesto de origen deben contener exactamente los códigos A01, A02, A03 y A04.',
+            ]);
         }
 
-        $rows = $activities->map(fn (OwnRevenueActivity $activity): array => [
-            'own_revenue_budget_id' => $destination->getKey(),
-            ...$activity->only(self::ACTIVITY_FIELDS),
-        ])->all();
-
-        $destination->activities()->upsert(
-            $rows,
-            ['own_revenue_budget_id', 'code'],
-            ['name', 'sort_order'],
-        );
-
-        $destination->activities()
-            ->whereNotIn('code', $activities->pluck('code'))
-            ->delete();
+        $activities->each(fn (OwnRevenueActivity $activity): int => $destination->activities()
+            ->where('code', $activity->code)
+            ->update($activity->only(['name', 'sort_order'])));
     }
 
     private function copySignatories(OwnRevenueBudget $source, OwnRevenueBudget $destination): void

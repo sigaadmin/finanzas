@@ -239,6 +239,61 @@ test('missing source COG rolls back the destination and all newly created childr
         ->and(OwnRevenueBudget::query()->where('fiscal_year', 2027)->exists())->toBeFalse();
 });
 
+test('a malformed source activity set rolls back the complete copy without mutating the source', function (string $activitySet) {
+    $creator = User::factory()->create();
+    $source = copyBudgetSource($creator);
+    copyBudgetCogRow(2026, '37501');
+
+    if ($activitySet === 'missing') {
+        $source->activities()->where('code', 'A04')->delete();
+    } else {
+        $source->activities()->create([
+            'code' => 'A05',
+            'name' => 'Actividad no canónica',
+            'sort_order' => 50,
+        ]);
+    }
+
+    $sourceSnapshot = [
+        'budget' => $source->fresh()->toArray(),
+        'activities' => $source->activities()->orderBy('code')->get()->toArray(),
+        'signatories' => $source->signatories()->orderBy('role_key')->get()->toArray(),
+        'cog' => ExpenseClassification::query()->where('fiscal_year', 2026)->orderBy('specific_item_code')->get()->toArray(),
+    ];
+    $countsBefore = [
+        OwnRevenueBudget::query()->count(),
+        OwnRevenueActivity::query()->count(),
+        OwnRevenueSignatory::query()->count(),
+        ExpenseClassification::query()->count(),
+    ];
+
+    $exception = null;
+
+    try {
+        app(CopyOwnRevenueBudget::class)->handle($source, 2027, $creator);
+    } catch (ValidationException $caughtException) {
+        $exception = $caughtException;
+    }
+
+    expect($exception)->toBeInstanceOf(ValidationException::class);
+
+    expect($exception->errors())->toHaveKey('source_budget.activities')
+        ->and([
+            OwnRevenueBudget::query()->count(),
+            OwnRevenueActivity::query()->count(),
+            OwnRevenueSignatory::query()->count(),
+            ExpenseClassification::query()->count(),
+        ])->toBe($countsBefore)
+        ->and(OwnRevenueBudget::query()->where('fiscal_year', 2027)->exists())->toBeFalse()
+        ->and(ExpenseClassification::query()->where('fiscal_year', 2027)->exists())->toBeFalse()
+        ->and([
+            'budget' => $source->fresh()->toArray(),
+            'activities' => $source->activities()->orderBy('code')->get()->toArray(),
+            'signatories' => $source->signatories()->orderBy('role_key')->get()->toArray(),
+            'cog' => ExpenseClassification::query()->where('fiscal_year', 2026)->orderBy('specific_item_code')->get()->toArray(),
+        ])->toBe($sourceSnapshot);
+})->with(['missing canonical code' => 'missing', 'extra code' => 'extra']);
+
 test('an unsaved or deleted source is rejected with a readable source error', function (string $sourceState) {
     $creator = User::factory()->create();
     $source = $sourceState === 'unsaved'
