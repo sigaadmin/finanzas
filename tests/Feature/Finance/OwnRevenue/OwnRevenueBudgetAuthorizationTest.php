@@ -111,16 +111,15 @@ test('users without active authorized finance access cannot view or administrate
     'missing authorized access' => 'missing',
 ]);
 
-test('annual budgets cannot be deleted restored or force deleted', function (UserRole $role) {
-    $user = ownRevenueBudgetUser($role);
+test('inactive owner access does not activate the global owner override', function () {
+    $owner = ownRevenueBudgetUser(UserRole::Owner, false);
     $budget = OwnRevenueBudget::factory()->create();
-    $policy = app(OwnRevenueBudgetPolicy::class);
+    $gate = Gate::forUser($owner);
 
-    expect($policy->delete($user, $budget))->toBeFalse()
-        ->and($policy->restore($user, $budget))->toBeFalse()
-        ->and($policy->forceDelete($user, $budget))->toBeFalse();
-})->with([
-    'owner' => UserRole::Owner,
-    'admin' => UserRole::Admin,
-    'finance manager' => UserRole::FinanceManager,
-]);
+    expect($gate->allows('viewAny', OwnRevenueBudget::class))->toBeFalse()
+        ->and($gate->allows('view', $budget))->toBeFalse()
+        ->and($gate->allows('create', OwnRevenueBudget::class))->toBeFalse()
+        ->and($gate->allows('updateSettings', $budget))->toBeFalse()
+        ->and($gate->allows('copy', $budget))->toBeFalse()
+        ->and($gate->allows('confirmCog', $budget))->toBeFalse();
+});

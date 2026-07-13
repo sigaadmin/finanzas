@@ -55,30 +55,6 @@ class OwnRevenueBudgetPolicy
         return $this->canAdministrate($user);
     }
 
-    /**
-     * Determine whether the user can delete the model.
-     */
-    public function delete(User $user, OwnRevenueBudget $ownRevenueBudget): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, OwnRevenueBudget $ownRevenueBudget): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, OwnRevenueBudget $ownRevenueBudget): bool
-    {
-        return false;
-    }
-
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()
