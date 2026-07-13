@@ -103,11 +103,21 @@ function displayCents(cents: number | null): string {
     return `$${grouped}.${fraction}`;
 }
 
-function displayDate(value: string): string {
+function displayDate(value: string | null): string {
+    if (value === null) {
+        return 'Sin registro';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Fecha no disponible';
+    }
+
     return new Intl.DateTimeFormat('es-MX', {
         dateStyle: 'medium',
         timeStyle: 'short',
-    }).format(new Date(value));
+    }).format(date);
 }
 
 export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
@@ -158,7 +168,11 @@ export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
                         </div>
                         {permissions.copy && (
                             <Button asChild variant="outline">
-                                <Link href={create()}>
+                                <Link
+                                    href={create({
+                                        query: { source_budget_id: budget.id },
+                                    })}
+                                >
                                     <Copy className="size-4" />
                                     Crear una copia
                                 </Link>
@@ -263,6 +277,87 @@ export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
                         </CardContent>
                     </Card>
                 </section>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            Fotografía institucional del ejercicio
+                        </CardTitle>
+                        <CardDescription>
+                            Configuración general registrada para este
+                            presupuesto. Se muestra completa también en modo de
+                            consulta.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+                            <ConfigurationItem
+                                label="Institución"
+                                value={settings.institution_name}
+                                className="sm:col-span-2 xl:col-span-3"
+                            />
+                            <ConfigurationItem
+                                label="Unidad responsable"
+                                value={`${settings.responsible_unit_code} · ${settings.responsible_unit_name}`}
+                            />
+                            <ConfigurationItem
+                                label="Programa presupuestario"
+                                value={`${settings.budget_program_code} · ${settings.budget_program_name}`}
+                            />
+                            <ConfigurationItem
+                                label="Componente presupuestario"
+                                value={`${settings.component_code} · ${settings.component_name}`}
+                            />
+                            <ConfigurationItem
+                                label="Actividad oficial"
+                                value={`${settings.official_activity_code} · ${settings.official_activity_name}`}
+                            />
+                            <ConfigurationItem
+                                label="Región fija"
+                                value={`${settings.region_code} · ${settings.region_name}`}
+                            />
+                            <ConfigurationItem
+                                label="Mes presupuestal de combustible"
+                                value="Abril"
+                            />
+                            <ConfigurationItem
+                                label="Ingreso estimado"
+                                value={displayCents(
+                                    settings.estimated_income_cents,
+                                )}
+                            />
+                            <ConfigurationItem
+                                label="Porcentaje de recorte"
+                                value={displayDecimal(
+                                    settings.cut_percentage,
+                                    '%',
+                                )}
+                            />
+                        </dl>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Auditoría del presupuesto</CardTitle>
+                        <CardDescription>
+                            Fechas generales de alta y última modificación del
+                            ejercicio.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <dl className="grid gap-4 sm:grid-cols-2">
+                            <ConfigurationItem
+                                label="Creado"
+                                value={displayDate(budget.created_at)}
+                            />
+                            <ConfigurationItem
+                                label="Última actualización"
+                                value={displayDate(budget.updated_at)}
+                            />
+                        </dl>
+                    </CardContent>
+                </Card>
 
                 <div className="grid gap-4 xl:grid-cols-2">
                     <Card>
@@ -451,5 +546,22 @@ function SummaryCard({ icon: Icon, title, value, detail }: SummaryCardProps) {
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+function ConfigurationItem({
+    label,
+    value,
+    className,
+}: {
+    label: string;
+    value: string;
+    className?: string;
+}) {
+    return (
+        <div className={className}>
+            <dt className="text-sm text-muted-foreground">{label}</dt>
+            <dd className="mt-1 font-medium">{value}</dd>
+        </div>
     );
 }

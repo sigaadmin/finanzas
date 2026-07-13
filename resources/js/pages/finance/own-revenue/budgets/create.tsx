@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, Copy, FilePlus2 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -28,7 +28,7 @@ type Props = {
 };
 
 type CreateBudgetFormData = {
-    source_budget_id: number | null;
+    source_budget_id: string;
     fiscal_year: string;
     institution_name: string;
     responsible_unit_code: string;
@@ -61,11 +61,25 @@ function coherentStatus(
 }
 
 export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
-    const [mode, setMode] = useState<Mode>('blank');
+    const page = usePage();
+    const requestedSourceBudgetId = new URLSearchParams(
+        page.url.split('?')[1] ?? '',
+    ).get('source_budget_id');
+    const preselectedSourceBudget =
+        requestedSourceBudgetId !== null &&
+        sourceBudgets.some(
+            (sourceBudget) =>
+                String(sourceBudget.id) === requestedSourceBudgetId,
+        )
+            ? requestedSourceBudgetId
+            : '';
+    const [mode, setMode] = useState<Mode>(
+        preselectedSourceBudget === '' ? 'blank' : 'copy',
+    );
     const [estimatedIncomePesos, setEstimatedIncomePesos] = useState('');
     const [estimatedIncomeError, setEstimatedIncomeError] = useState<string>();
     const form = useForm<CreateBudgetFormData>({
-        source_budget_id: null,
+        source_budget_id: preselectedSourceBudget,
         fiscal_year: '',
         institution_name: '',
         responsible_unit_code: '',
@@ -124,7 +138,7 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
         form.clearErrors();
 
         if (nextMode === 'blank') {
-            form.setData('source_budget_id', null);
+            form.setData('source_budget_id', '');
         }
     };
 
@@ -255,15 +269,11 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                     </Label>
                                     <select
                                         id="source_budget_id"
-                                        value={form.data.source_budget_id ?? ''}
+                                        value={form.data.source_budget_id}
                                         onChange={(event) =>
                                             form.setData(
                                                 'source_budget_id',
-                                                event.target.value === ''
-                                                    ? null
-                                                    : Number(
-                                                          event.target.value,
-                                                      ),
+                                                event.target.value,
                                             )
                                         }
                                         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"

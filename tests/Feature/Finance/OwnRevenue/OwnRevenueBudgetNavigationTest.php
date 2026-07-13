@@ -91,3 +91,28 @@ test('sidebar exposes the annual own revenue budget destination through wayfinde
         ->toContain('@/routes/finance/own-revenue/budgets')
         ->toContain('ownRevenueBudgets.index()');
 });
+
+test('show dashboard source includes complete readonly configuration audit and copy preselection', function () {
+    $showPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/show.tsx'));
+
+    expect($showPage)
+        ->toContain('Fotografía institucional del ejercicio')
+        ->toContain('Unidad responsable')
+        ->toContain('Componente presupuestario')
+        ->toContain('Actividad oficial')
+        ->toContain('Creado')
+        ->toContain('Última actualización')
+        ->toContain('href={create({')
+        ->toContain('source_budget_id: budget.id');
+});
+
+test('create page source consumes a valid inertia url source budget without window', function () {
+    $createPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/create.tsx'));
+
+    expect($createPage)
+        ->toContain('usePage')
+        ->toContain('requestedSourceBudgetId')
+        ->toContain('preselectedSourceBudget')
+        ->toContain('sourceBudgets.some')
+        ->not->toContain('window.location');
+});
