@@ -1,5 +1,13 @@
 import { Link } from '@inertiajs/react';
-import { ClipboardList, FileText, Landmark, LayoutGrid, ReceiptText, TableProperties } from 'lucide-react';
+import {
+    ClipboardList,
+    FileText,
+    HandCoins,
+    Landmark,
+    LayoutGrid,
+    ReceiptText,
+    TableProperties,
+} from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
@@ -14,6 +22,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import finance from '@/routes/finance';
+import * as ownRevenueBudgets from '@/routes/finance/own-revenue/budgets';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -41,6 +50,11 @@ const mainNavItems: NavItem[] = [
         title: 'Presupuesto U300',
         href: finance.u300.programs.index(),
         icon: Landmark,
+    },
+    {
+        title: 'Presupuesto de Ingresos Propios',
+        href: ownRevenueBudgets.index(),
+        icon: HandCoins,
     },
     {
         title: 'Recibos',
