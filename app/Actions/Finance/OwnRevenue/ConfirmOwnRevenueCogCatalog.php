@@ -18,6 +18,7 @@ class ConfirmOwnRevenueCogCatalog
                 ->whereKey($budget->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            $confirmedBy = $this->persistedConfirmer($confirmedBy);
 
             if (! ExpenseClassification::query()->where('fiscal_year', $budget->fiscal_year)->exists()) {
                 throw ValidationException::withMessages([
@@ -47,6 +48,31 @@ class ConfirmOwnRevenueCogCatalog
 
             return $budget->refresh();
         });
+    }
+
+    private function persistedConfirmer(User $confirmedBy): User
+    {
+        if (! $confirmedBy->exists || $confirmedBy->getKey() === null) {
+            $this->throwInvalidConfirmer();
+        }
+
+        $persistedConfirmer = User::query()
+            ->whereKey($confirmedBy->getKey())
+            ->lockForUpdate()
+            ->first();
+
+        if ($persistedConfirmer === null) {
+            $this->throwInvalidConfirmer();
+        }
+
+        return $persistedConfirmer;
+    }
+
+    private function throwInvalidConfirmer(): never
+    {
+        throw ValidationException::withMessages([
+            'confirmed_by' => 'El usuario que confirma el catálogo COG debe existir.',
+        ]);
     }
 
     private function throwIncoherentState(): never

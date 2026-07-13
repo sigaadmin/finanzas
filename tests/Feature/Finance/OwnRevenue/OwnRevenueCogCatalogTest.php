@@ -322,6 +322,25 @@ test('confirmation requires destination catalog rows and leaves audit fields emp
         ->and($budget->cog_confirmed_at)->toBeNull();
 });
 
+test('confirmation rejects a user that is not persisted without changing audit state', function (string $userState) {
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2027, 'cog_source_year' => 2025]);
+    ExpenseClassification::query()->create(cogClassificationData(2027, '37501'));
+    $user = User::factory()->create();
+
+    if ($userState === 'unsaved') {
+        $user = User::factory()->make();
+    } else {
+        User::query()->whereKey($user->getKey())->delete();
+    }
+
+    expect(fn () => app(ConfirmOwnRevenueCogCatalog::class)->handle($budget, $user))
+        ->toThrow(ValidationException::class, 'El usuario que confirma el catálogo COG debe existir.');
+
+    expect($budget->refresh()->cog_status)->toBe(CogCatalogStatus::PendingConfirmation)
+        ->and($budget->cog_confirmed_by)->toBeNull()
+        ->and($budget->cog_confirmed_at)->toBeNull();
+})->with(['unsaved', 'deleted after loading']);
+
 test('confirmation records the first audit event and repeated confirmation preserves it', function () {
     Carbon::setTestNow('2026-07-13 10:00:00');
     $firstUser = User::factory()->create();

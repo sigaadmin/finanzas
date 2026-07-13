@@ -1,12 +1,19 @@
 <?php
 
+use App\Actions\Finance\ImportExpenseClassifications;
+use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\CogCatalogSpreadsheetParser;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
+
+use function Pest\Laravel\mock;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -48,6 +55,22 @@ function minimalCogUploadFile(): UploadedFile
     return new UploadedFile($path, 'Clasificacion_Objeto_de_Gasto_2026_generado.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
 }
 
+function parsedExpenseClassificationRow(array $overrides = []): array
+{
+    return array_replace([
+        'chapter_code' => '3000',
+        'chapter_name' => 'Servicios Generales',
+        'concept_code' => '3700',
+        'concept_name' => 'Servicios de traslado y viáticos',
+        'generic_item_code' => '3750',
+        'generic_item_name' => 'Viáticos en el país',
+        'specific_item_code' => '37501',
+        'specific_item_name' => 'Viáticos actualizados',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ], $overrides);
+}
+
 test('finance operator can import expense classifications from an XLSX file', function () {
     Storage::fake('local');
     $user = expenseClassificationImportUser();
@@ -73,3 +96,63 @@ test('finance operator can import expense classifications from an XLSX file', fu
         'specific_item_name' => 'Viáticos en el país',
     ]);
 });
+
+test('a confirmed own revenue catalog blocks imports without changing rows or audit', function () {
+    $confirmedBy = User::factory()->create();
+    $confirmedAt = now()->subDay()->startOfSecond();
+    $budget = OwnRevenueBudget::factory()->create([
+        'fiscal_year' => 2027,
+        'cog_source_year' => 2026,
+        'cog_status' => CogCatalogStatus::Confirmed,
+        'cog_confirmed_by' => $confirmedBy,
+        'cog_confirmed_at' => $confirmedAt,
+    ]);
+    $classification = ExpenseClassification::query()->create([
+        'fiscal_year' => 2027,
+        ...parsedExpenseClassificationRow(['specific_item_name' => 'Nombre auditado']),
+    ]);
+    mock(CogCatalogSpreadsheetParser::class)
+        ->shouldReceive('parse')
+        ->once()
+        ->with('/tmp/confirmed-cog.xlsx')
+        ->andReturn([
+            parsedExpenseClassificationRow(),
+            parsedExpenseClassificationRow([
+                'specific_item_code' => '37502',
+                'specific_item_name' => 'Partida nueva',
+            ]),
+        ]);
+
+    expect(fn () => app(ImportExpenseClassifications::class)->handle(2027, '/tmp/confirmed-cog.xlsx'))
+        ->toThrow(ValidationException::class, 'No se puede importar sobre un catálogo COG confirmado.');
+
+    expect(ExpenseClassification::query()->where('fiscal_year', 2027)->count())->toBe(1)
+        ->and($classification->refresh()->specific_item_name)->toBe('Nombre auditado')
+        ->and($budget->refresh()->cog_status)->toBe(CogCatalogStatus::Confirmed)
+        ->and($budget->cog_confirmed_by)->toBe($confirmedBy->getKey())
+        ->and($budget->cog_confirmed_at?->equalTo($confirmedAt))->toBeTrue();
+});
+
+test('imports remain allowed for a pending own revenue catalog or a year without a budget', function (bool $createPendingBudget) {
+    if ($createPendingBudget) {
+        OwnRevenueBudget::factory()->create([
+            'fiscal_year' => 2027,
+            'cog_source_year' => 2026,
+            'cog_status' => CogCatalogStatus::PendingConfirmation,
+        ]);
+    }
+    mock(CogCatalogSpreadsheetParser::class)
+        ->shouldReceive('parse')
+        ->once()
+        ->andReturn([parsedExpenseClassificationRow()]);
+
+    $imported = app(ImportExpenseClassifications::class)->handle(2027, '/tmp/allowed-cog.xlsx');
+
+    expect($imported)->toBe(1)
+        ->and(ExpenseClassification::query()->where('fiscal_year', 2027)->count())->toBe(1)
+        ->and(ExpenseClassification::query()->where('fiscal_year', 2027)->value('specific_item_name'))
+        ->toBe('Viáticos actualizados');
+})->with([
+    'pending budget' => true,
+    'without budget' => false,
+]);

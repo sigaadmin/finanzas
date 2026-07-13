@@ -2,9 +2,12 @@
 
 namespace App\Actions\Finance;
 
+use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Services\Finance\CogCatalogSpreadsheetParser;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ImportExpenseClassifications
 {
@@ -15,6 +18,17 @@ class ImportExpenseClassifications
         $rows = $this->parser->parse($path);
 
         return DB::transaction(function () use ($fiscalYear, $rows): int {
+            $budget = OwnRevenueBudget::query()
+                ->where('fiscal_year', $fiscalYear)
+                ->lockForUpdate()
+                ->first();
+
+            if ($budget?->cog_status === CogCatalogStatus::Confirmed) {
+                throw ValidationException::withMessages([
+                    'catalog' => 'No se puede importar sobre un catálogo COG confirmado.',
+                ]);
+            }
+
             foreach ($rows as $row) {
                 ExpenseClassification::updateOrCreate(
                     [
