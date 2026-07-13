@@ -73,13 +73,13 @@ No incluye todavía necesidades, comisiones, recorridos, propuestas, recortes, E
 
 - [ ] Generar los modelos con `php artisan make:model Finance/OwnRevenue/OwnRevenueBudget -mf --no-interaction`, `php artisan make:model Finance/OwnRevenue/OwnRevenueActivity -mf --no-interaction` y `php artisan make:model Finance/OwnRevenue/OwnRevenueSignatory -mf --no-interaction`.
 - [ ] Generar los enums con `php artisan make:enum Finance/OwnRevenue/OwnRevenueBudgetStatus --no-interaction`, `php artisan make:enum Finance/OwnRevenue/AnnualValueStatus --no-interaction` y `php artisan make:enum Finance/OwnRevenue/CogCatalogStatus --no-interaction`; consultar `php artisan list make` si el generador cambia en Laravel 13.
-- [ ] Escribir primero pruebas que exijan año fiscal único, casts de enums/decimales, relaciones, región fija y fábricas válidas.
+- [ ] Escribir primero pruebas que exijan año fiscal único, casts de enums/decimales, relaciones, región fija y fábricas válidas. Afirmar explícitamente que los casts Eloquent `decimal:4` de UMA y precio de combustible devuelven cadenas exactas —incluido el relleno de escala, por ejemplo entrada `'123.45'` → lectura `'123.4500'` y `'24.9876'` → `'24.9876'`—, nunca `float`, para conservar precisión y no depender de la coerción de SQLite.
 - [ ] Ejecutar `php artisan test --compact tests/Feature/Finance/OwnRevenue/OwnRevenueBudgetSchemaTest.php` y comprobar que falla por las tablas o clases ausentes.
 - [ ] Crear `own_revenue_budgets` con: creador, ejercicio único, estado, datos de UR/programa/componente/actividad oficial, región, ingresos estimados opcionales, porcentaje de recorte opcional, UMA, estado de UMA, precio de combustible, estado del precio, mes presupuestal de combustible, año fuente del COG, estado del COG, usuario/fecha de confirmación del COG y timestamps.
 - [ ] Usar `decimal(12, 4)` para UMA/precio y `unsignedBigInteger` en centavos para importes; no usar `float`.
 - [ ] Añadir restricciones que permitan únicamente región `02-001` y mes `4` desde la aplicación y valores predeterminados equivalentes en la migración.
 - [ ] Crear hijos `own_revenue_activities` con código único por ejercicio, nombre y orden; y `own_revenue_signatories` con clave de función, nombre, cargo, grado académico y orden.
-- [ ] Aplicar `#[Fillable]`, relaciones tipadas, casts, PHPDoc genérico de `HasFactory` y nombres descriptivos siguiendo los modelos U300.
+- [ ] Aplicar `#[Fillable]`, relaciones tipadas, casts, PHPDoc genérico de `HasFactory` y nombres descriptivos siguiendo los modelos U300; declarar UMA y precio de combustible con casts `decimal:4`, cuyo contrato de lectura es `string|null`, y hacer que las factories proporcionen estos valores como cadenas decimales.
 - [ ] Volver a ejecutar la prueba hasta verla pasar.
 - [ ] Ejecutar `vendor/bin/pint --dirty --format agent`.
 - [ ] Commit: `git commit -m "Add own revenue annual budget foundation"`.
@@ -139,11 +139,12 @@ No incluye todavía necesidades, comisiones, recorridos, propuestas, recortes, E
 ## Task 6: Definir autorización por rol
 
 **Files:**
-- Create: `app/Policies/OwnRevenueBudgetPolicy.php`
+- Create: `app/Policies/Finance/OwnRevenue/OwnRevenueBudgetPolicy.php`
 - Test: `tests/Feature/Finance/OwnRevenue/OwnRevenueBudgetAuthorizationTest.php`
 
-- [ ] Generar la política con `php artisan make:policy OwnRevenueBudgetPolicy --model=Finance/OwnRevenue/OwnRevenueBudget --no-interaction` o el argumento compatible mostrado por `--help`.
+- [ ] Generar la política con `php artisan make:policy Finance/OwnRevenue/OwnRevenueBudgetPolicy --model=Finance/OwnRevenue/OwnRevenueBudget --no-interaction` o el argumento compatible mostrado por `--help`; conservar el namespace `App\Policies\Finance\OwnRevenue` para que Laravel 13 descubra la política del modelo anidado por convención.
 - [ ] Escribir una matriz Pest para `Owner`, `Admin`, `FinanceManager`, `FinanceAssistant`, `FinanceAuditor`, `Public` y usuario sin acceso.
+- [ ] Probar explícitamente el descubrimiento automático con `Gate::getPolicyFor(OwnRevenueBudget::class)` y comprobar que devuelve una instancia de `App\Policies\Finance\OwnRevenue\OwnRevenueBudgetPolicy`; ejercer además al menos una habilidad mediante usuarios `Admin` y `FinanceManager`, no mediante `Owner`, para que el `Gate::before` global de Owner no pueda ocultar una policy ausente o ubicada en un namespace incorrecto.
 - [ ] Exigir que manager/admin/owner puedan crear, copiar, configurar y confirmar COG; assistant y auditor puedan ver; public y usuario sin acceso no puedan entrar.
 - [ ] Probar que `FinanceAssistant` no administra parámetros aunque `operate-finance` le permita entrar al área general.
 - [ ] Ejecutar la prueba y comprobar el fallo esperado.
@@ -165,12 +166,12 @@ No incluye todavía necesidades, comisiones, recorridos, propuestas, recortes, E
 
 - [ ] Generar controladores y Form Requests con Artisan y `--no-interaction`.
 - [ ] Escribir pruebas HTTP para índice, alta vacía, alta desde ejercicio previo, detalle, actualización y confirmación del COG.
-- [ ] Probar validación de ejercicio de cuatro dígitos, unicidad, UMA/precio positivos, firmantes anidados y año fuente existente/anterior.
+- [ ] Probar validación de ejercicio de cuatro dígitos, unicidad, UMA/precio positivos, firmantes anidados y año fuente existente/anterior. Enviar UMA y precio como cadenas, limitar su escala a cuatro decimales con reglas explícitas (`decimal:0,4` además de positividad y magnitud compatibles con `decimal(12, 4)`), rechazar cinco decimales y afirmar que las props Inertia normalizan valores como `'123.45'` a `'123.4500'` como `string`, no como números JSON, para evitar pérdida de precisión y diferencias entre SQLite y MySQL.
 - [ ] Probar respuestas `403`, errores de validación, redirecciones y mensajes flash.
 - [ ] Ejecutar la prueba y verificar que falla porque no existen rutas/controladores.
 - [ ] Añadir rutas explícitas bajo `finance/own-revenue/budgets` con nombres `finance.own-revenue.budgets.*`, preservando cuidadosamente los cambios no relacionados que ya existan en `routes/web.php`.
 - [ ] Mantener los controladores delgados: autorizar, validar, llamar acciones y responder con Inertia/redirección.
-- [ ] Proveer al frontend estados, permisos, posibles años fuente y conteo/estado del COG; no exponer modelos completos sin transformar.
+- [ ] Proveer al frontend estados, permisos, posibles años fuente y conteo/estado del COG; no exponer modelos completos sin transformar. Mapear UMA y precio de combustible como las cadenas producidas por sus casts `decimal:4`, sin convertirlos a `float` antes de construir las props.
 - [ ] Ejecutar `php artisan test --compact tests/Feature/Finance/OwnRevenue/OwnRevenueBudgetManagementTest.php`.
 - [ ] Regenerar Wayfinder mediante el comando ya configurado por el proyecto.
 - [ ] Ejecutar `vendor/bin/pint --dirty --format agent`.
@@ -190,13 +191,13 @@ No incluye todavía necesidades, comisiones, recorridos, propuestas, recortes, E
 - [ ] Escribir pruebas de navegación que comprueben componente Inertia, props esenciales, permisos y enlace lateral para usuarios autorizados.
 - [ ] Ejecutar la prueba y comprobar que falla por páginas/enlace ausentes.
 - [ ] Crear un listado por año y estado con acción de “Nuevo ejercicio”.
-- [ ] Crear un formulario que permita iniciar vacío o copiar otro año y explique que UMA, combustible y COG copiados requieren revisión.
+- [ ] Crear un formulario que permita iniciar vacío o copiar otro año y explique que UMA, combustible y COG copiados requieren revisión. Tipar UMA y precio de combustible como `string|null` en las props y como `string` (`''` para ausencia) en los datos de `useForm`; usar `inputMode="decimal"` y `step="0.0001"`, mantener `event.target.value` y enviarlo sin `Number()`, `parseFloat()` ni otra coerción binaria.
 - [ ] Crear el tablero del ejercicio con tarjetas de estado para configuración general, UMA, combustible, COG, firmantes y actividades; mostrar la región fija como dato no editable.
 - [ ] Permitir edición de parámetros y firmantes sólo cuando `permissions.updateSettings` sea verdadero; ocultar además de proteger en servidor.
 - [ ] Añadir “Presupuesto de Ingresos Propios” al menú lateral usando la ruta Wayfinder generada.
 - [ ] Reutilizar componentes UI existentes, mantener controles accesibles y ofrecer estados vacíos claros.
 - [ ] Ejecutar `php artisan test --compact tests/Feature/Finance/OwnRevenue/OwnRevenueBudgetNavigationTest.php`.
-- [ ] Ejecutar `npm run types:check`.
+- [ ] Afirmar en la prueba Inertia que UMA y precio llegan como cadenas con escala fija —incluidos ceros finales como `'123.4500'`— y ejecutar `npm run types:check` para verificar el contrato `string|null` de props y `string` de formularios.
 - [ ] Ejecutar `npm run lint:check`.
 - [ ] Ejecutar `npm run format:check` y corregir sólo los archivos de esta tarea si es necesario.
 - [ ] Commit: `git commit -m "Add own revenue annual budget screens"`.
