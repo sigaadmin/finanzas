@@ -8,10 +8,12 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use Closure;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class InitializeOwnRevenueBudget
 {
@@ -20,6 +22,8 @@ class InitializeOwnRevenueBudget
     private const REGION_NAME = 'Felipe Carrillo Puerto';
 
     private const FUEL_BUDGET_MONTH = 4;
+
+    private const FISCAL_YEAR_UNIQUE_INDEX = 'own_revenue_budgets_fiscal_year_unique';
 
     private const INSTITUTIONAL_FIELDS = [
         'institution_name',
@@ -54,23 +58,33 @@ class InitializeOwnRevenueBudget
      */
     public function handle(User $createdBy, array $data): OwnRevenueBudget
     {
-        return DB::transaction(function () use ($createdBy, $data): OwnRevenueBudget {
-            $settings = $this->validatedSettings($data);
+        try {
+            return DB::transaction(function () use ($createdBy, $data): OwnRevenueBudget {
+                $settings = $this->validatedSettings($data);
 
-            $budget = OwnRevenueBudget::query()->create([
-                ...$settings,
-                'created_by' => $createdBy->getKey(),
-                'status' => OwnRevenueBudgetStatus::Draft,
-                'region_code' => self::REGION_CODE,
-                'region_name' => self::REGION_NAME,
-                'fuel_budget_month' => self::FUEL_BUDGET_MONTH,
-                'cog_status' => CogCatalogStatus::PendingConfirmation,
+                $budget = OwnRevenueBudget::query()->create([
+                    ...$settings,
+                    'created_by' => $createdBy->getKey(),
+                    'status' => OwnRevenueBudgetStatus::Draft,
+                    'region_code' => self::REGION_CODE,
+                    'region_name' => self::REGION_NAME,
+                    'fuel_budget_month' => self::FUEL_BUDGET_MONTH,
+                    'cog_status' => CogCatalogStatus::PendingConfirmation,
+                ]);
+
+                $budget->activities()->createMany(self::ACTIVITIES);
+
+                return $budget->load(['activities' => fn ($query) => $query->orderBy('sort_order')]);
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            if (! $this->isFiscalYearConflict($exception)) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                'fiscal_year' => 'Ya existe un presupuesto de ingresos propios para este ejercicio fiscal.',
             ]);
-
-            $budget->activities()->createMany(self::ACTIVITIES);
-
-            return $budget->load(['activities' => fn ($query) => $query->orderBy('sort_order')]);
-        });
+        }
     }
 
     /**
@@ -103,7 +117,6 @@ class InitializeOwnRevenueBudget
                 'required',
                 'integer',
                 'between:2000,9999',
-                Rule::unique((new OwnRevenueBudget)->getTable(), 'fiscal_year'),
             ],
             ...$institutionalRules,
             'estimated_income_cents' => [
@@ -136,6 +149,12 @@ class InitializeOwnRevenueBudget
         return $value === null
             ? AnnualValueStatus::PendingReview->value
             : AnnualValueStatus::Provisional->value;
+    }
+
+    private function isFiscalYearConflict(UniqueConstraintViolationException $exception): bool
+    {
+        return $exception->columns === ['fiscal_year']
+            || $exception->index === self::FISCAL_YEAR_UNIQUE_INDEX;
     }
 
     /**

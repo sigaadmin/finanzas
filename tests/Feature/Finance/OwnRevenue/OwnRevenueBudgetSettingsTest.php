@@ -8,6 +8,7 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Validation\ValidationException;
 
 function ownRevenueBudgetData(array $overrides = []): array
@@ -121,14 +122,45 @@ test('annual value status must agree with whether its value exists', function (a
     ]],
 ]);
 
-test('initialization rejects a duplicate fiscal year without creating another parent or children', function () {
+test('database uniqueness is authoritative and duplicate fiscal years become validation errors', function () {
     $action = app(InitializeOwnRevenueBudget::class);
     $action->handle(User::factory()->create(), ownRevenueBudgetData());
 
-    expect(fn () => $action->handle(User::factory()->create(), ownRevenueBudgetData()))
-        ->toThrow(ValidationException::class)
+    try {
+        $action->handle(User::factory()->create(), ownRevenueBudgetData());
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toBe([
+            'fiscal_year' => ['Ya existe un presupuesto de ingresos propios para este ejercicio fiscal.'],
+        ]);
+    }
+
+    expect($exception ?? null)->toBeInstanceOf(ValidationException::class)
         ->and(OwnRevenueBudget::query()->count())->toBe(1)
         ->and(OwnRevenueActivity::query()->count())->toBe(4);
+});
+
+test('initialization rethrows unrelated unique violations after rolling back the parent', function () {
+    $unrelatedViolation = (new UniqueConstraintViolationException(
+        'sqlite',
+        'insert into own_revenue_activities',
+        [],
+        new RuntimeException('Unrelated compound unique constraint.'),
+    ))->setColumns(['fiscal_year', 'code']);
+
+    OwnRevenueActivity::creating(function () use ($unrelatedViolation): never {
+        throw $unrelatedViolation;
+    });
+
+    try {
+        app(InitializeOwnRevenueBudget::class)->handle(User::factory()->create(), ownRevenueBudgetData());
+    } catch (Throwable $caughtException) {
+    } finally {
+        OwnRevenueActivity::flushEventListeners();
+    }
+
+    expect($caughtException ?? null)->toBe($unrelatedViolation)
+        ->and(OwnRevenueBudget::query()->count())->toBe(0)
+        ->and(OwnRevenueActivity::query()->count())->toBe(0);
 });
 
 test('draft settings update uses an allowlist and protects immutable and fixed fields', function () {
