@@ -50,7 +50,8 @@ class CopyExpenseClassificationsForYear
                 if ($destinationCatalog->isNotEmpty()) {
                     $this->ensureCatalogsMatch($sourceCatalog, $destinationCatalog);
 
-                    if ($budget->cog_source_year === $resolvedSourceYear) {
+                    if ($budget->cog_status === CogCatalogStatus::Confirmed
+                        || $budget->cog_source_year === $resolvedSourceYear) {
                         return $budget;
                     }
                 } else {
@@ -149,7 +150,20 @@ class CopyExpenseClassificationsForYear
 
     private function isDestinationCatalogConflict(UniqueConstraintViolationException $exception): bool
     {
-        return $exception->columns === ['fiscal_year', 'specific_item_code']
+        $isDestinationConstraint = $exception->columns === ['fiscal_year', 'specific_item_code']
             || $exception->index === self::DESTINATION_UNIQUE_INDEX;
+
+        if (! $isDestinationConstraint) {
+            return false;
+        }
+
+        $table = preg_quote((new ExpenseClassification)->getTable(), '/');
+        $quotedTable = '(?:"'.$table.'"|`'.$table.'`|\['.$table.'\]|'.$table.')';
+        $identifier = '(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$]*)';
+
+        return preg_match(
+            '/^\s*insert\s+into\s+(?:'.$identifier.'\s*\.\s*)?'.$quotedTable.'(?=\s|\()/i',
+            $exception->getSql(),
+        ) === 1;
     }
 }

@@ -6,7 +6,9 @@ use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 function cogClassificationData(int $fiscalYear, string $specificItemCode, array $overrides = []): array
@@ -117,6 +119,131 @@ test('an identical repeated copy preserves destination rows and confirmation aud
         ->and($result->cog_status)->toBe(CogCatalogStatus::Confirmed)
         ->and($result->cog_confirmed_by)->toBe($confirmed->cog_confirmed_by)
         ->and($result->cog_confirmed_at?->equalTo($confirmed->cog_confirmed_at))->toBeTrue();
+});
+
+test('a confirmed identical catalog ignores a different source year and preserves first audit', function () {
+    createCogSource(2024);
+    createCogSource(2025);
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2027, 'cog_source_year' => null]);
+    $copyAction = app(CopyExpenseClassificationsForYear::class);
+    $copyAction->handle($budget, 2024);
+    $confirmed = app(ConfirmOwnRevenueCogCatalog::class)->handle($budget, User::factory()->create());
+
+    $result = $copyAction->handle($budget, 2025);
+
+    expect($result->cog_source_year)->toBe(2024)
+        ->and($result->cog_status)->toBe(CogCatalogStatus::Confirmed)
+        ->and($result->cog_confirmed_by)->toBe($confirmed->cog_confirmed_by)
+        ->and($result->cog_confirmed_at?->equalTo($confirmed->cog_confirmed_at))->toBeTrue();
+});
+
+test('a pending identical catalog may update its source year provenance', function () {
+    createCogSource(2024);
+    createCogSource(2025);
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2027, 'cog_source_year' => null]);
+    $action = app(CopyExpenseClassificationsForYear::class);
+    $action->handle($budget, 2024);
+
+    $result = $action->handle($budget, 2025);
+
+    expect($result->cog_source_year)->toBe(2025)
+        ->and($result->cog_status)->toBe(CogCatalogStatus::PendingConfirmation)
+        ->and($result->cog_confirmed_by)->toBeNull()
+        ->and($result->cog_confirmed_at)->toBeNull();
+});
+
+test('catalog unique collision detection requires an insert into the expense classifications table', function () {
+    $action = app(CopyExpenseClassificationsForYear::class);
+    $method = new ReflectionMethod($action, 'isDestinationCatalogConflict');
+    $ownViolation = (new UniqueConstraintViolationException(
+        'sqlite',
+        'insert into "expense_classifications" ("fiscal_year", "specific_item_code") values (?, ?)',
+        [],
+        new RuntimeException('COG unique violation.'),
+    ))->setColumns(['fiscal_year', 'specific_item_code']);
+    $unrelatedViolation = (new UniqueConstraintViolationException(
+        'sqlite',
+        'insert into "unrelated_table" ("fiscal_year", "specific_item_code") values (?, ?)',
+        [],
+        new RuntimeException('Unrelated unique violation.'),
+    ))->setColumns(['fiscal_year', 'specific_item_code']);
+
+    expect($method->invoke($action, $ownViolation))->toBeTrue()
+        ->and($method->invoke($action, $unrelatedViolation))->toBeFalse();
+});
+
+test('catalog unique collision detection recognizes portable table quoting', function (string $sql) {
+    $action = app(CopyExpenseClassificationsForYear::class);
+    $method = new ReflectionMethod($action, 'isDestinationCatalogConflict');
+    $violation = (new UniqueConstraintViolationException(
+        'testing',
+        $sql,
+        [],
+        new RuntimeException('COG unique violation.'),
+    ))->setIndex('expense_classifications_fiscal_year_specific_item_code_unique');
+
+    expect($method->invoke($action, $violation))->toBeTrue();
+})->with([
+    'SQLite and PostgreSQL quotes' => 'insert into "expense_classifications" ("fiscal_year") values (?)',
+    'MySQL quotes' => 'INSERT INTO `expense_classifications` (`fiscal_year`) VALUES (?)',
+    'SQL Server quotes' => 'insert into [expense_classifications] ([fiscal_year]) values (?)',
+    'schema qualified PostgreSQL' => 'insert into "finance"."expense_classifications" ("fiscal_year") values (?)',
+]);
+
+test('an unrelated unique violation with matching metadata is rethrown unchanged', function (string $metadata) {
+    createCogSource(2025);
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2027]);
+    $grammar = DB::connection()->getQueryGrammar();
+    $violation = new UniqueConstraintViolationException(
+        DB::getDefaultConnection(),
+        'insert into '.$grammar->wrapTable('unrelated_catalogs').' ("fiscal_year", "specific_item_code") values (?, ?)',
+        [],
+        new RuntimeException('Unrelated unique constraint.'),
+    );
+    $metadata === 'columns'
+        ? $violation->setColumns(['fiscal_year', 'specific_item_code'])
+        : $violation->setIndex('expense_classifications_fiscal_year_specific_item_code_unique');
+
+    OwnRevenueBudget::retrieved(function () use ($violation): never {
+        throw $violation;
+    });
+
+    try {
+        app(CopyExpenseClassificationsForYear::class)->handle($budget, 2025);
+    } catch (Throwable $caughtException) {
+    } finally {
+        OwnRevenueBudget::flushEventListeners();
+    }
+
+    expect($caughtException ?? null)->toBe($violation);
+})->with(['columns', 'index']);
+
+test('a destination catalog unique violation is translated to a readable conflict', function () {
+    createCogSource(2025);
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2027]);
+    $grammar = DB::connection()->getQueryGrammar();
+    $violation = (new UniqueConstraintViolationException(
+        DB::getDefaultConnection(),
+        'insert into '.$grammar->wrapTable((new ExpenseClassification)->getTable()).' ("fiscal_year", "specific_item_code") values (?, ?)',
+        [],
+        new RuntimeException('Destination unique constraint.'),
+    ))->setColumns(['fiscal_year', 'specific_item_code']);
+
+    OwnRevenueBudget::retrieved(function () use ($violation): never {
+        throw $violation;
+    });
+
+    try {
+        app(CopyExpenseClassificationsForYear::class)->handle($budget, 2025);
+    } catch (Throwable $caughtException) {
+    } finally {
+        OwnRevenueBudget::flushEventListeners();
+    }
+
+    expect($caughtException ?? null)->toBeInstanceOf(ValidationException::class)
+        ->and($caughtException->errors())->toBe([
+            'catalog' => ['El catálogo COG del ejercicio destino cambió durante la copia; inténtelo nuevamente.'],
+        ]);
 });
 
 test('a different incomplete or excessive destination catalog is rejected without partial changes', function (string $destinationCase) {
