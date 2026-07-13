@@ -60,6 +60,7 @@ class StoreOwnRevenueBudgetRequest extends FormRequest
         return [
             function (Validator $validator): void {
                 if ($validator->errors()->has('source_budget_id')
+                    || $validator->errors()->has('fiscal_year')
                     || ! $this->filled('source_budget_id')) {
                     return;
                 }

@@ -383,9 +383,24 @@ test('copy source must exist and be earlier than destination', function (array $
         ->assertSessionHasErrors($field);
 })->with([
     'missing source' => [['source_budget_id' => 999999], 'source_budget_id'],
-    'same source year' => [['fiscal_year' => 2027], 'source_budget_id'],
+    'same source year' => [['fiscal_year' => 2027], 'fiscal_year'],
     'destination before source' => [['fiscal_year' => 2026], 'source_budget_id'],
 ]);
+
+test('an invalid destination fiscal year does not add a misleading copy source error', function () {
+    $manager = ownRevenueHttpUser();
+    $source = ownRevenueHttpSource($manager, 2026);
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.store'), [
+            'source_budget_id' => $source->id,
+            'fiscal_year' => 'not-a-year',
+        ])
+        ->assertSessionHasErrors('fiscal_year')
+        ->assertSessionDoesntHaveErrors('source_budget_id');
+
+    expect(OwnRevenueBudget::query()->count())->toBe(1);
+});
 
 test('store rejects invalid decimal strings estimated cents and cut percentage', function (string $field, mixed $value) {
     $manager = ownRevenueHttpUser();
@@ -482,8 +497,14 @@ test('nested signatories validate count fields lengths ordering and distinct rol
     'invalid sort order' => [[
         ['role_key' => 'prepared_by', 'name' => 'Uno', 'position' => 'Cargo', 'sort_order' => 0],
     ], 'signatories.0.sort_order'],
+    'sort order above unsigned small integer limit' => [[
+        ['role_key' => 'prepared_by', 'name' => 'Uno', 'position' => 'Cargo', 'sort_order' => 65536],
+    ], 'signatories.0.sort_order'],
     'role too long' => [[
         ['role_key' => str_repeat('a', 101), 'name' => 'Uno', 'position' => 'Cargo', 'sort_order' => 1],
+    ], 'signatories.0.role_key'],
+    'non canonical role' => [[
+        ['role_key' => 'prepared/by', 'name' => 'Uno', 'position' => 'Cargo', 'sort_order' => 1],
     ], 'signatories.0.role_key'],
     'too many signatories' => [array_map(
         fn (int $index): array => [
@@ -495,3 +516,72 @@ test('nested signatories validate count fields lengths ordering and distinct rol
         range(0, 10),
     ), 'signatories'],
 ]);
+
+test('invalid signatory sort order does not mutate the budget or existing signatories', function () {
+    $manager = ownRevenueHttpUser();
+    $budget = ownRevenueHttpSource($manager);
+    $originalInstitutionName = $budget->institution_name;
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), [
+            'institution_name' => 'No debe persistir',
+            'signatories' => [[
+                'role_key' => 'prepared_by',
+                'name' => 'Responsable',
+                'position' => 'Cargo',
+                'sort_order' => 65536,
+            ]],
+        ])
+        ->assertSessionHasErrors('signatories.0.sort_order');
+
+    expect($budget->refresh()->institution_name)->toBe($originalInstitutionName)
+        ->and($budget->signatories()->sole()->role_key)->toBe('authorized_by');
+});
+
+test('role keys are normalized before duplicate validation without mutating the budget', function () {
+    $manager = ownRevenueHttpUser();
+    $budget = ownRevenueHttpSource($manager);
+    $originalInstitutionName = $budget->institution_name;
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), [
+            'institution_name' => 'No debe persistir',
+            'signatories' => [
+                ['role_key' => 'prepared_by', 'name' => 'Uno', 'position' => 'Cargo', 'sort_order' => 1],
+                ['role_key' => 'PREPARED_BY', 'name' => 'Dos', 'position' => 'Cargo', 'sort_order' => 2],
+            ],
+        ])
+        ->assertSessionHasErrors('signatories.1.role_key');
+
+    expect($budget->refresh()->institution_name)->toBe($originalInstitutionName)
+        ->and($budget->signatories()->sole()->role_key)->toBe('authorized_by');
+});
+
+test('a single role key is trimmed and lowercased before persistence', function () {
+    $manager = ownRevenueHttpUser();
+    $budget = ownRevenueHttpSource($manager);
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), [
+            'signatories' => [[
+                'role_key' => ' Prepared_By ',
+                'name' => 'Responsable',
+                'position' => 'Cargo',
+                'sort_order' => 1,
+            ]],
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.show', $budget));
+
+    expect($budget->signatories()->sole()->role_key)->toBe('prepared_by');
+});
+
+test('a non-array signatories value remains a validation error', function () {
+    $manager = ownRevenueHttpUser();
+    $budget = ownRevenueHttpSource($manager);
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), ['signatories' => 'invalid'])
+        ->assertSessionHasErrors('signatories');
+
+    expect($budget->signatories()->sole()->role_key)->toBe('authorized_by');
+});

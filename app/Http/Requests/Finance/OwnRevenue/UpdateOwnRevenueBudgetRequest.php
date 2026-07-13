@@ -6,6 +6,7 @@ use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UpdateOwnRevenueBudgetRequest extends FormRequest
@@ -40,11 +41,32 @@ class UpdateOwnRevenueBudgetRequest extends FormRequest
             'fuel_price_per_liter' => ['sometimes', 'nullable', 'string', 'decimal:0,4', 'regex:/^(?=.*[1-9])\d{1,8}(?:\.\d{1,4})?$/'],
             'fuel_price_status' => ['sometimes', 'nullable', Rule::enum(AnnualValueStatus::class)],
             'signatories' => ['sometimes', 'array', 'max:10'],
-            'signatories.*.role_key' => ['required', 'string', 'max:100', 'distinct:strict'],
+            'signatories.*.role_key' => ['required', 'string', 'max:100', 'regex:/^[a-z0-9_-]+$/', 'distinct:strict'],
             'signatories.*.name' => ['required', 'string', 'max:255'],
             'signatories.*.position' => ['required', 'string', 'max:255'],
             'signatories.*.academic_degree' => ['nullable', 'string', 'max:100'],
-            'signatories.*.sort_order' => ['required', 'integer', 'min:1'],
+            'signatories.*.sort_order' => ['required', 'integer', 'min:1', 'max:65535'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $signatories = $this->input('signatories');
+
+        if (! is_array($signatories)) {
+            return;
+        }
+
+        foreach ($signatories as &$signatory) {
+            if (! is_array($signatory) || ! is_string($signatory['role_key'] ?? null)) {
+                continue;
+            }
+
+            $signatory['role_key'] = Str::lower(trim($signatory['role_key']));
+        }
+
+        unset($signatory);
+
+        $this->merge(['signatories' => $signatories]);
     }
 }
