@@ -2,6 +2,7 @@
 
 namespace App\Actions\Finance\OwnRevenue;
 
+use App\Data\Finance\OwnRevenue\UnsignedBigInteger;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
@@ -109,6 +110,12 @@ class UpdateOwnRevenueBudgetSettings
             ...self::OPTIONAL_SETTING_FIELDS,
         ]);
 
+        if (array_key_exists('estimated_income_cents', $settings)) {
+            $settings['estimated_income_cents'] = UnsignedBigInteger::normalize(
+                $settings['estimated_income_cents'],
+            );
+        }
+
         $settings = $this->prepareAnnualValuePair(
             $settings,
             $budget,
@@ -132,8 +139,8 @@ class UpdateOwnRevenueBudgetSettings
                 'sometimes',
                 'nullable',
                 function (string $attribute, mixed $value, Closure $fail): void {
-                    if (! is_int($value) || $value < 0) {
-                        $fail("El campo {$attribute} debe ser un entero mayor o igual a cero.");
+                    if (! UnsignedBigInteger::isValid($value)) {
+                        $fail("El campo {$attribute} debe ser un entero no negativo válido.");
                     }
                 },
             ],

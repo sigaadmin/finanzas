@@ -2,6 +2,7 @@
 
 use App\Actions\Finance\OwnRevenue\InitializeOwnRevenueBudget;
 use App\Actions\Finance\OwnRevenue\UpdateOwnRevenueBudgetSettings;
+use App\Data\Finance\OwnRevenue\UnsignedBigInteger;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
@@ -26,6 +27,14 @@ function ownRevenueBudgetData(array $overrides = []): array
         'official_activity_name' => 'Operación de los programas de formación docente',
     ], $overrides);
 }
+
+test('unsigned bigint cents normalize leading zeros and enforce the exact maximum boundary', function () {
+    expect(UnsignedBigInteger::normalize('0009007199254740993'))->toBe('9007199254740993')
+        ->and(UnsignedBigInteger::isValid(UnsignedBigInteger::MAX))->toBeTrue()
+        ->and(UnsignedBigInteger::isValid('18446744073709551616'))->toBeFalse()
+        ->and(UnsignedBigInteger::normalize(1_250_000))->toBe(1_250_000)
+        ->and(UnsignedBigInteger::isValid(1_250_000))->toBeTrue();
+});
 
 test('initialization creates a draft annual budget with protected defaults and ordered activities', function () {
     $creator = User::factory()->create();
@@ -262,7 +271,7 @@ test('budget settings validate percentages and estimated income', function (arra
     'cut over one hundred' => [['cut_percentage' => '100.01']],
     'cut with excess precision' => [['cut_percentage' => '1.234']],
     'negative estimated income' => [['estimated_income_cents' => -1]],
-    'non integer estimated income' => [['estimated_income_cents' => '100']],
+    'non integer estimated income' => [['estimated_income_cents' => 100.5]],
 ]);
 
 test('draft settings reject invalid values without changing the budget', function (array $overrides) {

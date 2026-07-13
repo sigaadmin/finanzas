@@ -116,3 +116,46 @@ test('create page source consumes a valid inertia url source budget without wind
         ->toContain('sourceBudgets.some')
         ->not->toContain('window.location');
 });
+
+test('annual frontend source protects draft editing copy mode and deterministic dates', function () {
+    $createPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/create.tsx'));
+    $showPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/show.tsx'));
+    $settingsForm = file_get_contents(resource_path('js/components/finance/own-revenue/annual-settings-form.tsx'));
+
+    expect($showPage)
+        ->toContain("permissions.updateSettings && budget.status === 'draft'")
+        ->toContain("budget.status !== 'draft'")
+        ->toContain("timeZone: 'America/Cancun'")
+        ->toContain('cogForm.errors.catalog')
+        ->toContain('cogForm.errors.confirmed_by')
+        ->toContain('scope="col"')
+        ->and($createPage)
+        ->toContain('setEstimatedIncomeError(undefined)')
+        ->toContain("mode === 'blank' && estimatedIncomeError")
+        ->toContain("mode === 'blank' &&")
+        ->toContain('Boolean(estimatedIncomeError)')
+        ->and($settingsForm)
+        ->toContain('form.errors.budget')
+        ->toContain('clientKey')
+        ->toContain('clearErrors(')
+        ->toContain('aria-describedby')
+        ->not->toContain('key={index}')
+        ->not->toContain('Number(`${whole}')
+        ->not->toContain('parseInt(');
+});
+
+test('estimated income frontend contracts use decimal strings throughout', function () {
+    $types = file_get_contents(resource_path('js/types/finance-own-revenue.ts'));
+    $createPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/create.tsx'));
+    $settingsForm = file_get_contents(resource_path('js/components/finance/own-revenue/annual-settings-form.tsx'));
+
+    expect($types)
+        ->toContain('estimated_income_cents: string | null;')
+        ->not->toContain('estimated_income_cents: number | null;')
+        ->and($createPage)
+        ->toContain('estimated_income_cents: string | null;')
+        ->not->toContain('.estimated_income_cents.toLocaleString(')
+        ->and($settingsForm)
+        ->toContain('pesosToCents(pesos: string): string | null')
+        ->toContain('centsToPesos(cents: string | null): string');
+});

@@ -39,7 +39,7 @@ type CreateBudgetFormData = {
     component_name: string;
     official_activity_code: string;
     official_activity_name: string;
-    estimated_income_cents: number | null;
+    estimated_income_cents: string | null;
     cut_percentage: string;
     uma_value: string;
     uma_status: AnnualValueStatus;
@@ -139,13 +139,16 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
 
         if (nextMode === 'blank') {
             form.setData('source_budget_id', '');
+            updateEstimatedIncome(estimatedIncomePesos);
+        } else {
+            setEstimatedIncomeError(undefined);
         }
     };
 
     const submit = (event: React.FormEvent<HTMLFormElement>): void => {
         event.preventDefault();
 
-        if (estimatedIncomeError) {
+        if (mode === 'blank' && estimatedIncomeError) {
             return;
         }
 
@@ -280,6 +283,11 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                         aria-invalid={Boolean(
                                             form.errors.source_budget_id,
                                         )}
+                                        aria-describedby={
+                                            form.errors.source_budget_id
+                                                ? 'source_budget_id-error'
+                                                : undefined
+                                        }
                                     >
                                         <option value="">
                                             Selecciona un ejercicio
@@ -294,6 +302,7 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                         ))}
                                     </select>
                                     <InputError
+                                        id="source_budget_id-error"
                                         message={form.errors.source_budget_id}
                                     />
                                 </div>
@@ -483,8 +492,16 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                                 form.errors
                                                     .estimated_income_cents,
                                             )}
+                                            aria-describedby={
+                                                (estimatedIncomeError ??
+                                                form.errors
+                                                    .estimated_income_cents)
+                                                    ? 'estimated_income_pesos-error'
+                                                    : undefined
+                                            }
                                         />
                                         <InputError
+                                            id="estimated_income_pesos-error"
                                             message={
                                                 estimatedIncomeError ??
                                                 form.errors
@@ -495,8 +512,9 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                             null && (
                                             <p className="text-xs text-muted-foreground">
                                                 Se guardarán{' '}
-                                                {form.data.estimated_income_cents.toLocaleString(
-                                                    'es-MX',
+                                                {form.data.estimated_income_cents.replace(
+                                                    /\B(?=(\d{3})+(?!\d))/g,
+                                                    ',',
                                                 )}{' '}
                                                 centavos (
                                                 {centsToPesos(
@@ -585,7 +603,9 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                         <Button
                             type="submit"
                             disabled={
-                                form.processing || Boolean(estimatedIncomeError)
+                                form.processing ||
+                                (mode === 'blank' &&
+                                    Boolean(estimatedIncomeError))
                             }
                         >
                             {form.processing
@@ -630,8 +650,9 @@ function TextField({
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
                 aria-invalid={Boolean(error)}
+                aria-describedby={error ? `${id}-error` : undefined}
             />
-            <InputError message={error} />
+            <InputError id={`${id}-error`} message={error} />
         </div>
     );
 }
@@ -670,8 +691,9 @@ function AnnualField({
                     value={value}
                     onChange={(event) => onValueChange(event.target.value)}
                     aria-invalid={Boolean(valueError)}
+                    aria-describedby={valueError ? `${id}-error` : undefined}
                 />
-                <InputError message={valueError} />
+                <InputError id={`${id}-error`} message={valueError} />
             </div>
             <div className="grid gap-2">
                 <Label htmlFor={`${id}-status`}>Estatus</Label>
@@ -683,6 +705,9 @@ function AnnualField({
                     }
                     className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs"
                     aria-invalid={Boolean(statusError)}
+                    aria-describedby={
+                        statusError ? `${id}-status-error` : undefined
+                    }
                 >
                     <option
                         value="pending_review"
@@ -693,7 +718,7 @@ function AnnualField({
                     <option value="provisional">Provisional</option>
                     <option value="final">Final</option>
                 </select>
-                <InputError message={statusError} />
+                <InputError id={`${id}-status-error`} message={statusError} />
             </div>
         </fieldset>
     );

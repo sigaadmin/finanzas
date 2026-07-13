@@ -12,6 +12,7 @@ import {
 import AnnualSettingsForm, {
     centsToPesos,
 } from '@/components/finance/own-revenue/annual-settings-form';
+import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +35,12 @@ import type {
 type Props = {
     budget: OwnRevenueBudgetDetail;
     permissions: OwnRevenueDetailPermissions;
+};
+
+type CogConfirmationFormData = {
+    catalog?: string;
+    confirmed_by?: string;
+    cog?: string;
 };
 
 const budgetLabels: Record<OwnRevenueBudgetStatus, string> = {
@@ -92,7 +99,7 @@ function displayDecimal(value: string | null, suffix = ''): string {
     return value === null ? 'Pendiente' : `${value}${suffix}`;
 }
 
-function displayCents(cents: number | null): string {
+function displayCents(cents: string | null): string {
     if (cents === null) {
         return 'Pendiente';
     }
@@ -117,11 +124,12 @@ function displayDate(value: string | null): string {
     return new Intl.DateTimeFormat('es-MX', {
         dateStyle: 'medium',
         timeStyle: 'short',
+        timeZone: 'America/Cancun',
     }).format(date);
 }
 
 export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
-    const cogForm = useForm({});
+    const cogForm = useForm<CogConfirmationFormData>({});
     const settings = budget.settings;
     const canConfirmCog =
         permissions.confirmCog &&
@@ -371,8 +379,12 @@ export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
                             <table className="w-full min-w-md text-sm">
                                 <thead className="border-b text-left text-muted-foreground">
                                     <tr>
-                                        <th className="py-2 pr-4">Clave</th>
-                                        <th className="py-2">Actividad</th>
+                                        <th scope="col" className="py-2 pr-4">
+                                            Clave
+                                        </th>
+                                        <th scope="col" className="py-2">
+                                            Actividad
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -475,22 +487,39 @@ export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
                                 </p>
                             )}
                         </div>
-                        {canConfirmCog && (
-                            <Button
-                                type="button"
-                                onClick={submitCogConfirmation}
-                                disabled={cogForm.processing}
-                            >
-                                <CheckCircle2 className="size-4" />
-                                {cogForm.processing
-                                    ? 'Confirmando…'
-                                    : 'Confirmar catálogo COG'}
-                            </Button>
-                        )}
+                        <div className="grid gap-2">
+                            {canConfirmCog && (
+                                <Button
+                                    type="button"
+                                    onClick={submitCogConfirmation}
+                                    disabled={cogForm.processing}
+                                    aria-describedby={
+                                        cogForm.errors.catalog ||
+                                        cogForm.errors.confirmed_by
+                                            ? 'cog-confirm-error'
+                                            : undefined
+                                    }
+                                >
+                                    <CheckCircle2 className="size-4" />
+                                    {cogForm.processing
+                                        ? 'Confirmando…'
+                                        : 'Confirmar catálogo COG'}
+                                </Button>
+                            )}
+                            <InputError
+                                id="cog-confirm-error"
+                                role="alert"
+                                message={
+                                    cogForm.errors.catalog ??
+                                    cogForm.errors.confirmed_by ??
+                                    cogForm.errors.cog
+                                }
+                            />
+                        </div>
                     </CardContent>
                 </Card>
 
-                {permissions.updateSettings ? (
+                {permissions.updateSettings && budget.status === 'draft' ? (
                     <section className="grid gap-3">
                         <div>
                             <h2 className="text-xl font-semibold">
@@ -511,8 +540,9 @@ export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
                 ) : (
                     <Card>
                         <CardContent className="py-5 text-sm text-muted-foreground">
-                            Tienes acceso de consulta. La configuración de este
-                            ejercicio es de sólo lectura.
+                            {budget.status !== 'draft'
+                                ? 'La configuración está bloqueada porque este presupuesto ya no está en borrador.'
+                                : 'Tienes acceso de consulta. La configuración de este ejercicio es de sólo lectura.'}
                         </CardContent>
                     </Card>
                 )}

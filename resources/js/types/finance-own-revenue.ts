@@ -53,7 +53,7 @@ export type OwnRevenueBudgetSettings = {
     official_activity_name: string;
     region_code: string;
     region_name: string;
-    estimated_income_cents: number | null;
+    estimated_income_cents: string | null;
     cut_percentage: string | null;
     uma_value: string | null;
     uma_status: AnnualValueStatus;
@@ -99,6 +99,7 @@ export type OwnRevenueBudgetDetail = {
 };
 
 export type OwnRevenueSignatoryFormValue = {
+    clientKey: string;
     role_key: string;
     name: string;
     position: string;
@@ -116,7 +117,7 @@ export type OwnRevenueAnnualSettingsFormData = {
     component_name: string;
     official_activity_code: string;
     official_activity_name: string;
-    estimated_income_cents: number | null;
+    estimated_income_cents: string | null;
     cut_percentage: string;
     uma_value: string;
     uma_status: AnnualValueStatus;

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Finance\OwnRevenue;
 
+use App\Data\Finance\OwnRevenue\UnsignedBigInteger;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -34,7 +35,15 @@ class UpdateOwnRevenueBudgetRequest extends FormRequest
             'component_name' => ['sometimes', 'required', 'string', 'max:255'],
             'official_activity_code' => ['sometimes', 'required', 'string', 'max:50'],
             'official_activity_name' => ['sometimes', 'required', 'string', 'max:255'],
-            'estimated_income_cents' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'estimated_income_cents' => [
+                'sometimes',
+                'nullable',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! UnsignedBigInteger::isValid($value)) {
+                        $fail("El campo {$attribute} debe ser un entero no negativo válido.");
+                    }
+                },
+            ],
             'cut_percentage' => ['sometimes', 'nullable', 'string', 'regex:/^(?:100(?:\.0{1,2})?|\d{1,2}(?:\.\d{1,2})?)$/'],
             'uma_value' => ['sometimes', 'nullable', 'string', 'decimal:0,4', 'regex:/^(?=.*[1-9])\d{1,8}(?:\.\d{1,4})?$/'],
             'uma_status' => ['sometimes', 'nullable', Rule::enum(AnnualValueStatus::class)],
@@ -51,6 +60,14 @@ class UpdateOwnRevenueBudgetRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if ($this->exists('estimated_income_cents')) {
+            $this->merge([
+                'estimated_income_cents' => UnsignedBigInteger::normalize(
+                    $this->input('estimated_income_cents'),
+                ),
+            ]);
+        }
+
         $signatories = $this->input('signatories');
 
         if (! is_array($signatories)) {

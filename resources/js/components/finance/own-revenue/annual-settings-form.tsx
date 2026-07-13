@@ -33,13 +33,19 @@ type Props = {
     signatories: OwnRevenueSignatory[];
 };
 
+type AnnualSettingsFormData = OwnRevenueAnnualSettingsFormData & {
+    budget?: string;
+};
+
 const statusLabels: Record<AnnualValueStatus, string> = {
     pending_review: 'Pendiente de revisión',
     provisional: 'Provisional',
     final: 'Final',
 };
 
-export function pesosToCents(pesos: string): number | null {
+const unsignedBigIntegerMax = '18446744073709551615';
+
+export function pesosToCents(pesos: string): string | null {
     const normalized = pesos.trim();
 
     if (normalized === '') {
@@ -51,17 +57,24 @@ export function pesosToCents(pesos: string): number | null {
     }
 
     const [whole, fraction = ''] = normalized.split('.');
-    const cents = Number(`${whole}${fraction.padEnd(2, '0')}`);
+    const digits = `${whole}${fraction.padEnd(2, '0')}`.replace(
+        /^0+(?=\d)/,
+        '',
+    );
 
-    return Number.isSafeInteger(cents) ? cents : null;
+    return digits.length < unsignedBigIntegerMax.length ||
+        (digits.length === unsignedBigIntegerMax.length &&
+            digits <= unsignedBigIntegerMax)
+        ? digits
+        : null;
 }
 
-export function centsToPesos(cents: number | null): string {
+export function centsToPesos(cents: string | null): string {
     if (cents === null) {
         return '';
     }
 
-    const digits = String(cents).padStart(3, '0');
+    const digits = cents.padStart(3, '0');
 
     return `${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
@@ -82,7 +95,7 @@ export default function AnnualSettingsForm({
     settings,
     signatories,
 }: Props) {
-    const form = useForm<OwnRevenueAnnualSettingsFormData>({
+    const form = useForm<AnnualSettingsFormData>({
         institution_name: settings.institution_name,
         responsible_unit_code: settings.responsible_unit_code,
         responsible_unit_name: settings.responsible_unit_name,
@@ -99,6 +112,7 @@ export default function AnnualSettingsForm({
         fuel_price_per_liter: settings.fuel_price_per_liter ?? '',
         fuel_price_status: settings.fuel_price_status,
         signatories: signatories.map((signatory) => ({
+            clientKey: `persisted-${signatory.id}`,
             role_key: signatory.role_key,
             name: signatory.name,
             position: signatory.position,
@@ -113,6 +127,14 @@ export default function AnnualSettingsForm({
 
     const errorFor = (key: string): string | undefined =>
         (form.errors as Record<string, string | undefined>)[key];
+
+    const clearSignatoryErrors = (): void => {
+        const signatoryErrorKeys = Object.keys(form.errors).filter((key) =>
+            key.startsWith('signatories'),
+        ) as Array<keyof OwnRevenueAnnualSettingsFormData>;
+
+        form.clearErrors(...signatoryErrorKeys);
+    };
 
     const updateEstimatedIncome = (value: string): void => {
         setEstimatedIncomePesos(value);
@@ -150,9 +172,11 @@ export default function AnnualSettingsForm({
     };
 
     const addSignatory = (): void => {
+        clearSignatoryErrors();
         form.setData('signatories', [
             ...form.data.signatories,
             {
+                clientKey: `new-${crypto.randomUUID()}`,
                 role_key: '',
                 name: '',
                 position: '',
@@ -163,6 +187,7 @@ export default function AnnualSettingsForm({
     };
 
     const removeSignatory = (index: number): void => {
+        clearSignatoryErrors();
         form.setData(
             'signatories',
             form.data.signatories
@@ -198,6 +223,13 @@ export default function AnnualSettingsForm({
 
         form.transform((data) => ({
             ...data,
+            signatories: data.signatories.map((signatory) => ({
+                role_key: signatory.role_key,
+                name: signatory.name,
+                position: signatory.position,
+                academic_degree: signatory.academic_degree,
+                sort_order: signatory.sort_order,
+            })),
             uma_status: statusForValue(data.uma_value, data.uma_status),
             fuel_price_status: statusForValue(
                 data.fuel_price_per_liter,
@@ -209,6 +241,7 @@ export default function AnnualSettingsForm({
 
     return (
         <form className="grid gap-4" onSubmit={submit}>
+            <InputError message={form.errors.budget} role="alert" />
             <Card>
                 <CardHeader>
                     <CardTitle>Configuración institucional</CardTitle>
@@ -328,8 +361,15 @@ export default function AnnualSettingsForm({
                                 estimatedIncomeError ??
                                 form.errors.estimated_income_cents,
                             )}
+                            aria-describedby={
+                                (estimatedIncomeError ??
+                                form.errors.estimated_income_cents)
+                                    ? 'estimated_income_pesos-error'
+                                    : undefined
+                            }
                         />
                         <InputError
+                            id="estimated_income_pesos-error"
                             message={
                                 estimatedIncomeError ??
                                 form.errors.estimated_income_cents
@@ -413,7 +453,7 @@ export default function AnnualSettingsForm({
                 <CardContent className="grid gap-4">
                     {form.data.signatories.map((signatory, index) => (
                         <fieldset
-                            key={index}
+                            key={signatory.clientKey}
                             className="grid gap-3 rounded-lg border p-4 md:grid-cols-2"
                         >
                             <legend className="px-1 text-sm font-medium">
@@ -530,8 +570,9 @@ function TextField({
                 value={value}
                 onChange={(event) => onChange(event.target.value)}
                 aria-invalid={Boolean(error)}
+                aria-describedby={error ? `${id}-error` : undefined}
             />
-            <InputError message={error} />
+            <InputError id={`${id}-error`} message={error} />
         </div>
     );
 }
@@ -570,8 +611,9 @@ function AnnualValueField({
                     value={value}
                     onChange={(event) => onValueChange(event.target.value)}
                     aria-invalid={Boolean(valueError)}
+                    aria-describedby={valueError ? `${id}-error` : undefined}
                 />
-                <InputError message={valueError} />
+                <InputError id={`${id}-error`} message={valueError} />
             </div>
             <div className="grid gap-2">
                 <Label htmlFor={`${id}-status`}>Estatus</Label>
@@ -585,6 +627,9 @@ function AnnualValueField({
                         id={`${id}-status`}
                         className="w-full"
                         aria-invalid={Boolean(statusError)}
+                        aria-describedby={
+                            statusError ? `${id}-status-error` : undefined
+                        }
                     >
                         <SelectValue />
                     </SelectTrigger>
@@ -599,7 +644,7 @@ function AnnualValueField({
                         <SelectItem value="final">Final</SelectItem>
                     </SelectContent>
                 </Select>
-                <InputError message={statusError} />
+                <InputError id={`${id}-status-error`} message={statusError} />
                 <p className="text-xs text-muted-foreground">
                     {statusLabels[status]}
                 </p>

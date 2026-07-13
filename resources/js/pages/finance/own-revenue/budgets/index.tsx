@@ -134,17 +134,28 @@ export default function OwnRevenueBudgetsIndex({
                             <table className="w-full text-sm">
                                 <thead className="bg-muted/60 text-left">
                                     <tr>
-                                        <th className="px-4 py-3">Ejercicio</th>
-                                        <th className="px-4 py-3">Región</th>
-                                        <th className="px-4 py-3">
+                                        <th scope="col" className="px-4 py-3">
+                                            Ejercicio
+                                        </th>
+                                        <th scope="col" className="px-4 py-3">
+                                            Región
+                                        </th>
+                                        <th scope="col" className="px-4 py-3">
                                             Presupuesto
                                         </th>
-                                        <th className="px-4 py-3">UMA</th>
-                                        <th className="px-4 py-3">
+                                        <th scope="col" className="px-4 py-3">
+                                            UMA
+                                        </th>
+                                        <th scope="col" className="px-4 py-3">
                                             Combustible
                                         </th>
-                                        <th className="px-4 py-3">COG</th>
-                                        <th className="px-4 py-3 text-right">
+                                        <th scope="col" className="px-4 py-3">
+                                            COG
+                                        </th>
+                                        <th
+                                            scope="col"
+                                            className="px-4 py-3 text-right"
+                                        >
                                             Acción
                                         </th>
                                     </tr>

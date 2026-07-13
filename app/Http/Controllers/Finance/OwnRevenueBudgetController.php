@@ -142,9 +142,12 @@ class OwnRevenueBudgetController extends Controller
                 'institution_name', 'responsible_unit_code', 'responsible_unit_name',
                 'budget_program_code', 'budget_program_name', 'component_code', 'component_name',
                 'official_activity_code', 'official_activity_name', 'region_code', 'region_name',
-                'estimated_income_cents', 'cut_percentage', 'uma_value', 'fuel_price_per_liter',
+                'cut_percentage', 'uma_value', 'fuel_price_per_liter',
                 'fuel_budget_month',
             ]) + [
+                'estimated_income_cents' => $budget->estimated_income_cents === null
+                    ? null
+                    : (string) $budget->getRawOriginal('estimated_income_cents'),
                 'uma_status' => $budget->uma_status->value,
                 'fuel_price_status' => $budget->fuel_price_status->value,
             ],

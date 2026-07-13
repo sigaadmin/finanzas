@@ -222,6 +222,64 @@ test('show exposes ordered explicit settings activities signatories cog audit an
             ->missing('budget.created_by'));
 });
 
+test('show serializes estimated income cents as an exact decimal string above the javascript safe integer limit', function () {
+    $manager = ownRevenueHttpUser();
+    $budget = OwnRevenueBudget::factory()->create([
+        'fiscal_year' => 2035,
+        'estimated_income_cents' => '9007199254740993',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.show', $budget))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('budget.settings.estimated_income_cents', '9007199254740993'));
+});
+
+test('store and update preserve exact decimal string cents without floating point conversion', function () {
+    $manager = ownRevenueHttpUser();
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.store'), ownRevenueHttpBudgetData([
+            'fiscal_year' => 2036,
+            'estimated_income_cents' => '09007199254740993',
+        ]))
+        ->assertRedirect();
+
+    $budget = OwnRevenueBudget::query()->where('fiscal_year', 2036)->sole();
+
+    expect((string) $budget->estimated_income_cents)->toBe('9007199254740993');
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), [
+            'institution_name' => 'Institución actualizada sin tocar el ingreso',
+            'estimated_income_cents' => '9007199254740993',
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.show', $budget));
+
+    expect((string) $budget->refresh()->estimated_income_cents)->toBe('9007199254740993');
+});
+
+test('estimated income cents reject values above the unsigned bigint maximum', function (string $method) {
+    $manager = ownRevenueHttpUser();
+
+    if ($method === 'store') {
+        $response = $this->actingAs($manager)
+            ->post(route('finance.own-revenue.budgets.store'), ownRevenueHttpBudgetData([
+                'fiscal_year' => 2037,
+                'estimated_income_cents' => '18446744073709551616',
+            ]));
+    } else {
+        $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2038]);
+        $response = $this->actingAs($manager)
+            ->put(route('finance.own-revenue.budgets.update', $budget), [
+                'estimated_income_cents' => '18446744073709551616',
+            ]);
+    }
+
+    $response->assertSessionHasErrors('estimated_income_cents');
+})->with(['store', 'update']);
+
 test('settings and nested signatories are updated atomically', function () {
     $manager = ownRevenueHttpUser();
     $budget = ownRevenueHttpSource($manager);
