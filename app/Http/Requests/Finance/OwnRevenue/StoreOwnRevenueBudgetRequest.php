@@ -45,9 +45,9 @@ class StoreOwnRevenueBudgetRequest extends FormRequest
             'official_activity_name' => [$institutionalRule, 'string', 'max:255'],
             'estimated_income_cents' => [$annualRule, 'nullable', 'integer', 'min:0'],
             'cut_percentage' => [$annualRule, 'nullable', 'string', 'regex:/^(?:100(?:\.0{1,2})?|\d{1,2}(?:\.\d{1,2})?)$/'],
-            'uma_value' => [$annualRule, 'nullable', 'string', 'regex:/^(?=.*[1-9])\d{1,8}(?:\.\d{1,4})?$/'],
+            'uma_value' => [$annualRule, 'nullable', 'string', 'decimal:0,4', 'regex:/^(?=.*[1-9])\d{1,8}(?:\.\d{1,4})?$/'],
             'uma_status' => [$annualRule, 'nullable', Rule::enum(AnnualValueStatus::class)],
-            'fuel_price_per_liter' => [$annualRule, 'nullable', 'string', 'regex:/^(?=.*[1-9])\d{1,8}(?:\.\d{1,4})?$/'],
+            'fuel_price_per_liter' => [$annualRule, 'nullable', 'string', 'decimal:0,4', 'regex:/^(?=.*[1-9])\d{1,8}(?:\.\d{1,4})?$/'],
             'fuel_price_status' => [$annualRule, 'nullable', Rule::enum(AnnualValueStatus::class)],
         ];
     }

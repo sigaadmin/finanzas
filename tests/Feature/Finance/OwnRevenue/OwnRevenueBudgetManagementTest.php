@@ -5,6 +5,8 @@ use App\Actions\Finance\OwnRevenue\UpdateOwnRevenueBudgetSettings;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\UserRole;
+use App\Http\Requests\Finance\OwnRevenue\StoreOwnRevenueBudgetRequest;
+use App\Http\Requests\Finance\OwnRevenue\UpdateOwnRevenueBudgetRequest;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
@@ -398,11 +400,69 @@ test('store rejects invalid decimal strings estimated cents and cut percentage',
     'zero UMA' => ['uma_value', '0'],
     'negative fuel' => ['fuel_price_per_liter', '-1'],
     'too many decimals' => ['uma_value', '1.23456'],
+    'too many fuel decimals' => ['fuel_price_per_liter', '24.12345'],
     'numeric not string' => ['fuel_price_per_liter', 24.5],
     'negative cents' => ['estimated_income_cents', -1],
     'cut over one hundred' => ['cut_percentage', '100.01'],
     'cut numeric not string' => ['cut_percentage', 5],
 ]);
+
+test('annual value requests declare the explicit zero to four decimal scale rule', function () {
+    $storeRules = (new StoreOwnRevenueBudgetRequest)->rules();
+    $updateRules = (new UpdateOwnRevenueBudgetRequest)->rules();
+
+    expect($storeRules['uma_value'])->toContain('decimal:0,4')
+        ->and($storeRules['fuel_price_per_liter'])->toContain('decimal:0,4')
+        ->and($updateRules['uma_value'])->toContain('decimal:0,4')
+        ->and($updateRules['fuel_price_per_liter'])->toContain('decimal:0,4');
+});
+
+test('store accepts positive annual decimal strings with zero to four decimal places', function (string $value) {
+    $manager = ownRevenueHttpUser();
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.store'), ownRevenueHttpBudgetData([
+            'fiscal_year' => 2032,
+            'uma_value' => $value,
+            'fuel_price_per_liter' => $value,
+        ]))
+        ->assertRedirect();
+
+    expect(OwnRevenueBudget::query()->sole()->uma_value)->toBe(number_format((float) $value, 4, '.', ''))
+        ->and(OwnRevenueBudget::query()->sole()->fuel_price_per_liter)->toBe(number_format((float) $value, 4, '.', ''));
+})->with([
+    'zero decimals' => '1',
+    'one decimal' => '1.2',
+    'four decimals' => '1.2345',
+]);
+
+test('update accepts positive annual decimal strings with zero to four decimal places', function (string $value) {
+    $manager = ownRevenueHttpUser();
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2033]);
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), [
+            'uma_value' => $value,
+            'fuel_price_per_liter' => $value,
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.show', $budget));
+
+    expect($budget->refresh()->uma_value)->toBe(number_format((float) $value, 4, '.', ''))
+        ->and($budget->fuel_price_per_liter)->toBe(number_format((float) $value, 4, '.', ''));
+})->with([
+    'zero decimals' => '1',
+    'one decimal' => '1.2',
+    'four decimals' => '1.2345',
+]);
+
+test('update rejects annual decimal strings with five decimal places', function (string $field) {
+    $manager = ownRevenueHttpUser();
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2034]);
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.update', $budget), [$field => '1.23456'])
+        ->assertSessionHasErrors($field);
+})->with(['uma_value', 'fuel_price_per_liter']);
 
 test('nested signatories validate count fields lengths ordering and distinct roles', function (array $signatories, string $field) {
     $manager = ownRevenueHttpUser();
