@@ -1,0 +1,175 @@
+<?php
+
+namespace App\Http\Controllers\Finance;
+
+use App\Actions\Finance\OwnRevenue\CopyOwnRevenueBudget;
+use App\Actions\Finance\OwnRevenue\InitializeOwnRevenueBudget;
+use App\Actions\Finance\OwnRevenue\UpdateOwnRevenueBudgetSettings;
+use App\Http\Controllers\Controller;
+use App\Http\Requests\Finance\OwnRevenue\StoreOwnRevenueBudgetRequest;
+use App\Http\Requests\Finance\OwnRevenue\UpdateOwnRevenueBudgetRequest;
+use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
+use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\Finance\OwnRevenue\OwnRevenueSignatory;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class OwnRevenueBudgetController extends Controller
+{
+    public function index(): Response
+    {
+        Gate::authorize('viewAny', OwnRevenueBudget::class);
+
+        $budgets = OwnRevenueBudget::query()
+            ->select([
+                'id', 'fiscal_year', 'status', 'region_code', 'region_name',
+                'uma_status', 'fuel_price_status', 'cog_status', 'created_at', 'updated_at',
+            ])
+            ->orderByDesc('fiscal_year')
+            ->get()
+            ->map(fn (OwnRevenueBudget $budget): array => $this->indexBudgetData($budget));
+
+        return Inertia::render('finance/own-revenue/budgets/index', [
+            'budgets' => $budgets,
+            'permissions' => [
+                'create' => Gate::allows('create', OwnRevenueBudget::class),
+            ],
+        ]);
+    }
+
+    public function create(): Response
+    {
+        Gate::authorize('create', OwnRevenueBudget::class);
+
+        return Inertia::render('finance/own-revenue/budgets/create', [
+            'sourceBudgets' => OwnRevenueBudget::query()
+                ->select(['id', 'fiscal_year', 'status'])
+                ->orderByDesc('fiscal_year')
+                ->get()
+                ->map(fn (OwnRevenueBudget $budget): array => [
+                    'id' => $budget->id,
+                    'fiscal_year' => $budget->fiscal_year,
+                    'status' => $budget->status->value,
+                ]),
+            'permissions' => ['create' => true],
+        ]);
+    }
+
+    public function store(
+        StoreOwnRevenueBudgetRequest $request,
+        InitializeOwnRevenueBudget $initializeBudget,
+        CopyOwnRevenueBudget $copyBudget,
+    ): RedirectResponse {
+        $validated = $request->validated();
+
+        if (isset($validated['source_budget_id'])) {
+            $source = OwnRevenueBudget::query()->findOrFail($validated['source_budget_id']);
+            Gate::authorize('copy', $source);
+            $budget = $copyBudget->handle($source, $validated['fiscal_year'], $request->user());
+            $message = 'Presupuesto anual de ingresos propios copiado correctamente.';
+        } else {
+            $budget = $initializeBudget->handle($request->user(), $validated);
+            $message = 'Presupuesto anual de ingresos propios creado correctamente.';
+        }
+
+        Inertia::flash('success', $message);
+
+        return to_route('finance.own-revenue.budgets.show', $budget);
+    }
+
+    public function show(OwnRevenueBudget $budget): Response
+    {
+        Gate::authorize('view', $budget);
+
+        $budget->load([
+            'activities' => fn ($query) => $query->orderBy('sort_order'),
+            'signatories' => fn ($query) => $query->orderBy('sort_order'),
+            'cogConfirmedBy:id,name',
+        ]);
+
+        return Inertia::render('finance/own-revenue/budgets/show', [
+            'budget' => $this->showBudgetData($budget),
+            'permissions' => [
+                'updateSettings' => Gate::allows('updateSettings', $budget),
+                'copy' => Gate::allows('copy', $budget),
+                'confirmCog' => Gate::allows('confirmCog', $budget),
+            ],
+        ]);
+    }
+
+    public function update(
+        UpdateOwnRevenueBudgetRequest $request,
+        OwnRevenueBudget $budget,
+        UpdateOwnRevenueBudgetSettings $updateSettings,
+    ): RedirectResponse {
+        $updateSettings->handle($budget, $request->validated());
+        Inertia::flash('success', 'Configuración del presupuesto actualizada correctamente.');
+
+        return to_route('finance.own-revenue.budgets.show', $budget);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function indexBudgetData(OwnRevenueBudget $budget): array
+    {
+        return [
+            'id' => $budget->id,
+            'fiscal_year' => $budget->fiscal_year,
+            'status' => $budget->status->value,
+            'region' => ['code' => $budget->region_code, 'name' => $budget->region_name],
+            'uma' => ['status' => $budget->uma_status->value],
+            'fuel' => ['status' => $budget->fuel_price_status->value],
+            'cog' => ['status' => $budget->cog_status->value],
+            'created_at' => $budget->created_at?->toISOString(),
+            'updated_at' => $budget->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function showBudgetData(OwnRevenueBudget $budget): array
+    {
+        return [
+            'id' => $budget->id,
+            'fiscal_year' => $budget->fiscal_year,
+            'status' => $budget->status->value,
+            'settings' => $budget->only([
+                'institution_name', 'responsible_unit_code', 'responsible_unit_name',
+                'budget_program_code', 'budget_program_name', 'component_code', 'component_name',
+                'official_activity_code', 'official_activity_name', 'region_code', 'region_name',
+                'estimated_income_cents', 'cut_percentage', 'uma_value', 'fuel_price_per_liter',
+                'fuel_budget_month',
+            ]) + [
+                'uma_status' => $budget->uma_status->value,
+                'fuel_price_status' => $budget->fuel_price_status->value,
+            ],
+            'activities' => $budget->activities->map(
+                fn (OwnRevenueActivity $activity): array => $activity->only(['id', 'code', 'name', 'sort_order']),
+            ),
+            'signatories' => $budget->signatories->map(
+                fn (OwnRevenueSignatory $signatory): array => $signatory->only([
+                    'id', 'role_key', 'name', 'position', 'academic_degree', 'sort_order',
+                ]),
+            ),
+            'cog' => [
+                'row_count' => ExpenseClassification::query()
+                    ->where('fiscal_year', $budget->fiscal_year)
+                    ->count(),
+                'source_year' => $budget->cog_source_year,
+                'status' => $budget->cog_status->value,
+                'confirmed_by' => $budget->cogConfirmedBy === null ? null : [
+                    'id' => $budget->cogConfirmedBy->id,
+                    'name' => $budget->cogConfirmedBy->name,
+                ],
+                'confirmed_at' => $budget->cog_confirmed_at?->toISOString(),
+            ],
+            'created_at' => $budget->created_at?->toISOString(),
+            'updated_at' => $budget->updated_at?->toISOString(),
+        ];
+    }
+}

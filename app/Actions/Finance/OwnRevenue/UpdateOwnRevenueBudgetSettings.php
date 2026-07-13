@@ -41,6 +41,14 @@ class UpdateOwnRevenueBudgetSettings
         'fuel_price_status',
     ];
 
+    private const SIGNATORY_FIELDS = [
+        'role_key',
+        'name',
+        'position',
+        'academic_degree',
+        'sort_order',
+    ];
+
     /**
      * @param  array<string, mixed>  $data
      */
@@ -67,8 +75,27 @@ class UpdateOwnRevenueBudgetSettings
                 'fuel_budget_month' => self::FUEL_BUDGET_MONTH,
             ]);
 
-            return $budget->refresh();
+            if (array_key_exists('signatories', $data)) {
+                $this->replaceSignatories($budget, $data['signatories']);
+            }
+
+            return $budget->refresh()->load([
+                'signatories' => fn ($query) => $query->orderBy('sort_order'),
+            ]);
         });
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $signatories
+     */
+    private function replaceSignatories(OwnRevenueBudget $budget, array $signatories): void
+    {
+        $budget->signatories()->delete();
+        $budget->signatories()->createMany(
+            collect($signatories)
+                ->map(fn (array $signatory): array => Arr::only($signatory, self::SIGNATORY_FIELDS))
+                ->all(),
+        );
     }
 
     /**

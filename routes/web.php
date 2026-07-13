@@ -5,6 +5,8 @@ use App\Http\Controllers\Finance\ChargeConceptController;
 use App\Http\Controllers\Finance\ChargeConceptOfficialLinkController;
 use App\Http\Controllers\Finance\ExpenseClassificationImportController;
 use App\Http\Controllers\Finance\OfficialFeeConceptController;
+use App\Http\Controllers\Finance\OwnRevenueBudgetController;
+use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
 use App\Http\Controllers\Finance\PaymentRegistrationController;
 use App\Http\Controllers\Finance\ReceiptCancellationController;
@@ -82,6 +84,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::post('expense-classifications/imports', [ExpenseClassificationImportController::class, 'store'])
             ->name('expense-classifications.imports.store');
+
+        Route::get('own-revenue/budgets', [OwnRevenueBudgetController::class, 'index'])
+            ->name('own-revenue.budgets.index');
+
+        Route::get('own-revenue/budgets/create', [OwnRevenueBudgetController::class, 'create'])
+            ->name('own-revenue.budgets.create');
+
+        Route::post('own-revenue/budgets', [OwnRevenueBudgetController::class, 'store'])
+            ->name('own-revenue.budgets.store');
+
+        Route::get('own-revenue/budgets/{budget}', [OwnRevenueBudgetController::class, 'show'])
+            ->name('own-revenue.budgets.show');
+
+        Route::put('own-revenue/budgets/{budget}', [OwnRevenueBudgetController::class, 'update'])
+            ->name('own-revenue.budgets.update');
+
+        Route::post('own-revenue/budgets/{budget}/cog/confirm', OwnRevenueCogConfirmationController::class)
+            ->name('own-revenue.budgets.cog.confirm');
 
         Route::get('u300/imports/create', [U300ImportController::class, 'create'])
             ->name('u300.imports.create');
