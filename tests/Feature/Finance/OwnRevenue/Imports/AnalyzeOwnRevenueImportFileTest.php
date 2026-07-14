@@ -76,7 +76,10 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
 
     $this->withoutVite();
     $this->actingAs($manager)
-        ->get(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $file,
+        ]))
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('preview.data.0.sourceRegions', [

@@ -97,6 +97,23 @@ test('confirmation creates immutable ABPRE lines months justifications and origi
         ->and(OwnRevenueAbpreJustification::query()->count())->toBe(1);
 });
 
+test('confirmation redirects to the dedicated preview for the confirmed route file', function () {
+    Storage::fake('local');
+    $manager = confirmationUser();
+    $file = readyConfirmationFile($manager);
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.imports.files.abpre.confirm', [
+            'budget' => $file->budget,
+            'importFile' => $file,
+        ]), ['decisions' => []])
+        ->assertRedirect(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $file->budget,
+            'importFile' => $file,
+        ]))
+        ->assertInertiaFlash('success', 'Importación ABPRE confirmada correctamente.');
+});
+
 test('confirmation is idempotent and replaces the previously confirmed version', function () {
     Storage::fake('local');
     $manager = confirmationUser();

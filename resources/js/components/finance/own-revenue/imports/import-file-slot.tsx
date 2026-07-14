@@ -541,6 +541,8 @@ export default function ImportFileSlot({
                                                         budget: budgetId,
                                                         importFile: file.id,
                                                     })}
+                                                    target="_blank"
+                                                    rel="noreferrer"
                                                 >
                                                     Ver vista previa
                                                 </Link>

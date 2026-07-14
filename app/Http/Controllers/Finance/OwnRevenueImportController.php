@@ -35,9 +35,6 @@ class OwnRevenueImportController extends Controller
         $selectedFile = $request->integer('import_file_id') > 0
             ? $this->fileSummaryQuery($budget)->find($request->integer('import_file_id'))
             : $latestAbpreFile;
-        $previewFile = $selectedFile?->format === OwnRevenueImportFormat::Abpre
-            ? $selectedFile
-            : $latestAbpreFile;
 
         return Inertia::render('finance/own-revenue/imports/show', [
             'budget' => $this->viewData->budget($budget),
@@ -49,19 +46,6 @@ class OwnRevenueImportController extends Controller
                 ...$this->viewData->file($selectedFile),
                 'issues' => $this->viewData->issues($selectedFile),
             ],
-            'preview_file' => $previewFile === null ? null : [
-                'id' => $previewFile->id,
-                'name' => $previewFile->original_name,
-                'version' => $previewFile->version_number,
-                'status' => $previewFile->status->value,
-                'analyzed_at' => $previewFile->analyzed_at?->toISOString(),
-            ],
-            'preview' => $previewFile === null
-                ? $this->viewData->emptyPreview()
-                : $this->viewData->preview($previewFile),
-            'decision_warnings' => $previewFile === null
-                ? $this->viewData->emptyDecisionWarnings()
-                : $this->viewData->decisionWarnings($previewFile),
             'permissions' => [
                 'upload' => Gate::allows('manageImports', $budget),
                 'manage' => Gate::allows('manageImports', $budget),

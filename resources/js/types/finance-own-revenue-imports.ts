@@ -172,13 +172,12 @@ export type OwnRevenueImportWorkspaceProps = {
         has_more: boolean;
     };
     selected_file: OwnRevenueSelectedImportFile | null;
-    preview_file: {
-        id: number;
-        name: string;
-        version: number;
-        status: OwnRevenueImportFileStatus;
-        analyzed_at: string | null;
-    } | null;
+    permissions: OwnRevenueImportPermissions;
+};
+
+export type OwnRevenueAbprePreviewProps = {
+    budget: OwnRevenueImportBudget;
+    selected_file: OwnRevenueImportFile;
     preview: LengthAwarePaginator<OwnRevenueAbprePreviewRow>;
     decision_warnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
         has_more: boolean;

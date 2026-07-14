@@ -67,8 +67,9 @@ test('manager workspace exposes five bounded slots exact money strings and mutat
             ->where('slots.4.label', 'Viáticos')
             ->where('budget.estimated_income_cents', '9007199254740993')
             ->where('selected_file.issues.data.0.context.source_cents', '9007199254740993')
-            ->where('preview.data.0.months.january', '9007199254740993')
-            ->where('preview.data.0.annualAmountCents', '9007199254740993')
+            ->missing('preview_file')
+            ->missing('preview')
+            ->missing('decision_warnings')
             ->where('permissions.upload', true)
             ->where('permissions.manage', true)
             ->where('permissions.confirm', true)
@@ -88,10 +89,12 @@ test('assistant workspace is readonly while download remains available', functio
             ->where('permissions.manage', false)
             ->where('permissions.confirm', false)
             ->where('permissions.download', true)
-            ->where('decision_warnings.has_more', false));
+            ->missing('preview_file')
+            ->missing('preview')
+            ->missing('decision_warnings'));
 });
 
-test('selected ABPRE owns both preview rows and required decision warnings', function () {
+test('dedicated preview owns both rows and required decision warnings for its route file', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
     $budget = OwnRevenueBudget::factory()->create();
     $older = OwnRevenueImportFile::factory()->create([
@@ -126,17 +129,16 @@ test('selected ABPRE owns both preview rows and required decision warnings', fun
     ]);
 
     $this->actingAs($manager)
-        ->get(route('finance.own-revenue.budgets.imports.show', [
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
             'budget' => $budget,
-            'import_file_id' => $older->id,
+            'importFile' => $older,
         ]))
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('selected_file.id', $older->id)
-            ->where('preview_file.id', $older->id)
-            ->where('preview_file.name', 'ABPRE anterior.xlsx')
-            ->where('preview_file.version', 1)
-            ->where('preview_file.analyzed_at', '2026-07-13T12:34:56.000000Z')
+            ->where('selected_file.name', 'ABPRE anterior.xlsx')
+            ->where('selected_file.version', 1)
+            ->where('selected_file.analyzed_at', '2026-07-13T12:34:56.000000Z')
             ->where('preview.data.0.annualAmountCents', '100')
             ->where('decision_warnings.data.0.id', $warning->id)
             ->where('decision_warnings.total', 1));
@@ -210,15 +212,15 @@ test('dedicated ABPRE preview exposes safe paginated data with exact money strin
             ->where('permissions.download', true));
 });
 
-test('finance assistant may consult the dedicated ABPRE preview with readonly permissions', function () {
-    $assistant = importNavigationUser(UserRole::FinanceAssistant);
+test('consultation roles may use the dedicated ABPRE preview with readonly permissions', function (UserRole $role) {
+    $viewer = importNavigationUser($role);
     $budget = OwnRevenueBudget::factory()->create();
     $file = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
         'format' => OwnRevenueImportFormat::Abpre,
     ]);
 
-    $this->actingAs($assistant)
+    $this->actingAs($viewer)
         ->get(route('finance.own-revenue.budgets.imports.files.preview', [
             'budget' => $budget,
             'importFile' => $file,
@@ -229,7 +231,7 @@ test('finance assistant may consult the dedicated ABPRE preview with readonly pe
             ->where('permissions.manage', false)
             ->where('permissions.confirm', false)
             ->where('permissions.download', true));
-});
+})->with([UserRole::FinanceAssistant, UserRole::FinanceAuditor]);
 
 test('dedicated ABPRE preview clamps stale paginator pages', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
@@ -295,7 +297,7 @@ test('dedicated ABPRE preview enforces consultation authorization and aggregate 
         ->assertNotFound();
 });
 
-test('stale per-file pages clamp to the first page when selecting a shorter file', function () {
+test('stale issue pages clamp to the first page when selecting a shorter file', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
     $budget = OwnRevenueBudget::factory()->create();
     $longFile = OwnRevenueImportFile::factory()->create([
@@ -332,29 +334,17 @@ test('stale per-file pages clamp to the first page when selecting a shorter file
         'code' => 'region.normalized',
         'message' => 'Incidencia del archivo corto',
     ]);
-    $shortRow = OwnRevenueImportRow::factory()->create([
-        'own_revenue_import_file_id' => $shortFile->id,
-        'row_kind' => 'abpre_line',
-        'row_number' => 1,
-    ]);
-
     $this->actingAs($manager)
         ->get(route('finance.own-revenue.budgets.imports.show', [
             'budget' => $budget,
             'import_file_id' => $shortFile->id,
             'issues_page' => 2,
-            'preview_page' => 2,
-            'decisions_page' => 2,
         ]))
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('selected_file.id', $shortFile->id)
             ->where('selected_file.issues.current_page', 1)
-            ->where('selected_file.issues.data.0.id', $shortIssue->id)
-            ->where('preview.current_page', 1)
-            ->where('preview.data.0.id', $shortRow->id)
-            ->where('decision_warnings.current_page', 1)
-            ->where('decision_warnings.data.0.id', $shortIssue->id));
+            ->where('selected_file.issues.data.0.id', $shortIssue->id));
 });
 
 test('unassigned audit history exposes whether each file may be classified', function () {
@@ -410,8 +400,9 @@ test('required warning decisions have their own bounded paginator', function () 
     }
 
     $this->actingAs($manager)
-        ->get(route('finance.own-revenue.budgets.imports.show', [
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
             'budget' => $budget,
+            'importFile' => $file,
             'decisions_page' => 2,
         ]))
         ->assertOk()
@@ -522,6 +513,7 @@ test('frontend import workspace honors navigation route money and permission con
     $issues = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-issue-list.tsx'));
     $frontendState = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-workspace-state.js'));
     $preview = file_get_contents(resource_path('js/components/finance/own-revenue/imports/abpre-preview.tsx'));
+    $previewPagePath = resource_path('js/pages/finance/own-revenue/imports/preview.tsx');
     $types = file_get_contents(resource_path('js/types/finance-own-revenue-imports.ts'));
     $controller = file_get_contents(app_path('Http/Controllers/Finance/OwnRevenueImportController.php'));
     $viewData = file_get_contents(app_path('Services/Finance/OwnRevenue/Imports/OwnRevenueImportViewData.php'));
@@ -584,6 +576,23 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('months: Record<string, string>')
         ->toContain('permissions: OwnRevenueImportPermissions');
 
+    expect($previewPagePath)->toBeFile();
+
+    $previewPage = file_get_contents($previewPagePath);
+
+    expect($previewPage)
+        ->toContain('Vista previa ABPRE')
+        ->toContain('Volver a importaciones')
+        ->toContain('import_file_id')
+        ->toContain('<AbprePreview')
+        ->toContain('@/routes/finance/own-revenue/budgets/imports')
+        ->and($slot)
+        ->toContain('target="_blank"')
+        ->toContain('rel="noreferrer"')
+        ->and($preview)
+        ->toContain('@/routes/finance/own-revenue/budgets/imports/files')
+        ->not->toContain("import { show } from '@/routes/finance/own-revenue/budgets/imports'");
+
     expect($controller.$viewData)
         ->toContain('year.mismatch')
         ->toContain('region.normalized')
@@ -623,7 +632,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('aria-live="assertive"')
         ->not->toContain('previewFile?.analyzed_at')
         ->and($preview)
-        ->toContain('importDecisionRememberKey(previewFile)')
+        ->toContain('importDecisionRememberKey(file)')
         ->and($types)
         ->toContain('can_reclassify: boolean')
         ->toContain('has_active: boolean')

@@ -424,7 +424,7 @@ test('format assignment preserves every confirmed import artifact and provenance
     'historical replaced version' => OwnRevenueImportFileStatus::Replaced,
 ]);
 
-test('workspace returns five ordered slots safe file summaries issue counts and exact string preview amounts', function () {
+test('workspace returns bounded summaries while dedicated preview keeps exact string amounts', function () {
     $manager = importManagementUser();
     $budget = OwnRevenueBudget::factory()->create([
         'fiscal_year' => 2031,
@@ -510,10 +510,9 @@ test('workspace returns five ordered slots safe file summaries issue counts and 
             ->where('selected_file.issues.data.0.context.detected_year', 2030)
             ->missing('selected_file.issues.data.0.context.exception')
             ->missing('slots.0.versions.0.issues')
-            ->where('preview.data.0.annualAmountCents', '9007199254740993')
-            ->where('preview.data.0.months.1', '9007199254740993')
-            ->where('preview.data.0.months.2', '0000000000000001')
-            ->where('preview.data.0.months.3', '123')
+            ->missing('preview_file')
+            ->missing('preview')
+            ->missing('decision_warnings')
             ->where('permissions.upload', true)
             ->where('permissions.manage', true)
             ->where('permissions.confirm', true)
@@ -521,6 +520,18 @@ test('workspace returns five ordered slots safe file summaries issue counts and 
             ->missing('slots.0.versions.0.storage_disk')
             ->missing('slots.0.versions.0.storage_path')
             ->missing('slots.0.versions.0.sha256'));
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $current,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('preview.data.0.annualAmountCents', '9007199254740993')
+            ->where('preview.data.0.months.1', '9007199254740993')
+            ->where('preview.data.0.months.2', '0000000000000001')
+            ->where('preview.data.0.months.3', '123'));
 
     expect($older->id)->not->toBe($current->id);
 });

@@ -29,6 +29,9 @@ class OwnRevenueAbpreConfirmationController extends Controller
 
         Inertia::flash('success', 'Importación ABPRE confirmada correctamente.');
 
-        return to_route('finance.own-revenue.budgets.imports.show', $budget);
+        return to_route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $importFile,
+        ]);
     }
 }

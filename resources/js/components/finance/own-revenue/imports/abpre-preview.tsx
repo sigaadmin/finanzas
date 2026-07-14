@@ -13,31 +13,23 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { show } from '@/routes/finance/own-revenue/budgets/imports';
+import { preview as showPreview } from '@/routes/finance/own-revenue/budgets/imports/files';
 import type {
     LengthAwarePaginator,
     OwnRevenueAbprePreviewRow,
     OwnRevenueImportDecision,
     OwnRevenueImportIssue,
     OwnRevenueImportPermissions,
-    OwnRevenueImportFileStatus,
-    OwnRevenueSelectedImportFile,
+    OwnRevenueImportFile,
 } from '@/types/finance-own-revenue-imports';
 
 type Props = {
     budgetId: number;
     preview: LengthAwarePaginator<OwnRevenueAbprePreviewRow>;
-    previewFile: {
-        id: number;
-        name: string;
-        version: number;
-        status: OwnRevenueImportFileStatus;
-        analyzed_at: string | null;
-    } | null;
+    file: OwnRevenueImportFile;
     decisionWarnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
         has_more: boolean;
     };
-    selectedFile: OwnRevenueSelectedImportFile | null;
     permissions: OwnRevenueImportPermissions;
 };
 
@@ -82,23 +74,19 @@ function queryFor(
 export default function AbprePreview({
     budgetId,
     preview,
-    previewFile,
+    file,
     decisionWarnings,
-    selectedFile,
     permissions,
 }: Props) {
     const currentUrl = usePage().url;
     const [decisions, setDecisions] = useRemember<OwnRevenueImportDecision[]>(
         [],
-        importDecisionRememberKey(previewFile),
+        importDecisionRememberKey(file),
     );
     const form = useForm<{ decisions: OwnRevenueImportDecision[] }>({
         decisions: [],
     });
-    const canConfirm =
-        permissions.confirm &&
-        previewFile?.status === 'ready' &&
-        selectedFile?.id === previewFile.id;
+    const canConfirm = permissions.confirm && file.status === 'ready';
     const resolvedDecisionCount = decisions.length;
     const decisionsComplete = resolvedDecisionCount === decisionWarnings.total;
 
@@ -145,7 +133,7 @@ export default function AbprePreview({
     };
 
     const confirmImport = (): void => {
-        if (!previewFile || !canConfirm || !decisionsComplete) {
+        if (!canConfirm || !decisionsComplete) {
             return;
         }
 
@@ -161,7 +149,7 @@ export default function AbprePreview({
         form.submit(
             OwnRevenueAbpreConfirmationController({
                 budget: budgetId,
-                importFile: previewFile.id,
+                importFile: file.id,
             }),
             { preserveScroll: true },
         );
@@ -172,11 +160,8 @@ export default function AbprePreview({
             <CardHeader>
                 <CardTitle>Vista previa ABPRE</CardTitle>
                 <CardDescription>
-                    {previewFile
-                        ? `${previewFile.name} · versión ${previewFile.version}. `
-                        : ''}
-                    Importes exactos del análisis del servidor. Se muestran{' '}
-                    {preview.total} líneas.
+                    {file.name} · versión {file.version}. Importes exactos del
+                    análisis del servidor. Se muestran {preview.total} líneas.
                 </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4">
@@ -271,13 +256,19 @@ export default function AbprePreview({
                         {preview.current_page > 1 ? (
                             <Button asChild size="sm" variant="outline">
                                 <Link
-                                    href={show(budgetId, {
-                                        query: queryFor(
-                                            currentUrl,
-                                            'preview_page',
-                                            preview.current_page - 1,
-                                        ),
-                                    })}
+                                    href={showPreview(
+                                        {
+                                            budget: budgetId,
+                                            importFile: file.id,
+                                        },
+                                        {
+                                            query: queryFor(
+                                                currentUrl,
+                                                'preview_page',
+                                                preview.current_page - 1,
+                                            ),
+                                        },
+                                    )}
                                     preserveScroll
                                     preserveState
                                 >
@@ -295,13 +286,19 @@ export default function AbprePreview({
                         {preview.next_page_url ? (
                             <Button asChild size="sm" variant="outline">
                                 <Link
-                                    href={show(budgetId, {
-                                        query: queryFor(
-                                            currentUrl,
-                                            'preview_page',
-                                            preview.current_page + 1,
-                                        ),
-                                    })}
+                                    href={showPreview(
+                                        {
+                                            budget: budgetId,
+                                            importFile: file.id,
+                                        },
+                                        {
+                                            query: queryFor(
+                                                currentUrl,
+                                                'preview_page',
+                                                preview.current_page + 1,
+                                            ),
+                                        },
+                                    )}
                                     preserveScroll
                                     preserveState
                                 >
@@ -316,7 +313,7 @@ export default function AbprePreview({
                     </nav>
                 )}
 
-                {canConfirm && decisionWarnings.total > 0 && (
+                {decisionWarnings.total > 0 && (
                     <fieldset className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/30">
                         <legend className="px-1 text-sm font-semibold">
                             Decisiones requeridas
@@ -325,9 +322,9 @@ export default function AbprePreview({
                             className="text-sm text-muted-foreground"
                             aria-live="polite"
                         >
-                            {resolvedDecisionCount} de {decisionWarnings.total}{' '}
-                            advertencias resueltas. Cada decisión requiere una
-                            selección explícita.
+                            {canConfirm
+                                ? `${resolvedDecisionCount} de ${decisionWarnings.total} advertencias resueltas. Cada decisión requiere una selección explícita.`
+                                : `${decisionWarnings.total} advertencias requieren revisión. Los controles de decisión están disponibles sólo para quienes pueden confirmar.`}
                         </p>
                         {decisionWarnings.data.map((issue) => {
                             const decision = decisions.find(
@@ -347,86 +344,98 @@ export default function AbprePreview({
                                             {issue.code}
                                         </p>
                                     </div>
-                                    <div className="grid gap-3 sm:grid-cols-3">
-                                        <div className="grid gap-2">
-                                            <Label
-                                                htmlFor={`resolution-${issue.id}`}
-                                            >
-                                                Resolución
-                                            </Label>
-                                            <select
-                                                id={`resolution-${issue.id}`}
-                                                value={
-                                                    decision?.resolution ?? ''
-                                                }
-                                                onChange={(event) =>
-                                                    chooseDecision(
-                                                        issue.id,
-                                                        event.target
-                                                            .value as OwnRevenueImportDecision['resolution'],
-                                                    )
-                                                }
-                                                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                                            >
-                                                <option value="" disabled>
-                                                    Selecciona una resolución
-                                                </option>
-                                                <option value="manual">
-                                                    Captura manual
-                                                </option>
-                                                <option value="xlsx">
-                                                    Conservar XLSX
-                                                </option>
-                                                <option value="custom">
-                                                    Valor personalizado
-                                                </option>
-                                            </select>
-                                        </div>
-                                        <div className="grid gap-2">
-                                            <Label
-                                                htmlFor={`resolved-${issue.id}`}
-                                            >
-                                                Valor resuelto (opcional)
-                                            </Label>
-                                            <Input
-                                                id={`resolved-${issue.id}`}
-                                                value={String(
-                                                    decision?.resolved_value ??
-                                                        '',
-                                                )}
-                                                onChange={(event) =>
-                                                    updateDecision(issue.id, {
-                                                        resolved_value:
+                                    {canConfirm && (
+                                        <div className="grid gap-3 sm:grid-cols-3">
+                                            <div className="grid gap-2">
+                                                <Label
+                                                    htmlFor={`resolution-${issue.id}`}
+                                                >
+                                                    Resolución
+                                                </Label>
+                                                <select
+                                                    id={`resolution-${issue.id}`}
+                                                    value={
+                                                        decision?.resolution ??
+                                                        ''
+                                                    }
+                                                    onChange={(event) =>
+                                                        chooseDecision(
+                                                            issue.id,
                                                             event.target
-                                                                .value || null,
-                                                    })
-                                                }
-                                                disabled={!decision}
-                                            />
+                                                                .value as OwnRevenueImportDecision['resolution'],
+                                                        )
+                                                    }
+                                                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                                                >
+                                                    <option value="" disabled>
+                                                        Selecciona una
+                                                        resolución
+                                                    </option>
+                                                    <option value="manual">
+                                                        Captura manual
+                                                    </option>
+                                                    <option value="xlsx">
+                                                        Conservar XLSX
+                                                    </option>
+                                                    <option value="custom">
+                                                        Valor personalizado
+                                                    </option>
+                                                </select>
+                                            </div>
+                                            <div className="grid gap-2">
+                                                <Label
+                                                    htmlFor={`resolved-${issue.id}`}
+                                                >
+                                                    Valor resuelto (opcional)
+                                                </Label>
+                                                <Input
+                                                    id={`resolved-${issue.id}`}
+                                                    value={String(
+                                                        decision?.resolved_value ??
+                                                            '',
+                                                    )}
+                                                    onChange={(event) =>
+                                                        updateDecision(
+                                                            issue.id,
+                                                            {
+                                                                resolved_value:
+                                                                    event.target
+                                                                        .value ||
+                                                                    null,
+                                                            },
+                                                        )
+                                                    }
+                                                    disabled={!decision}
+                                                />
+                                            </div>
+                                            <div className="grid gap-2">
+                                                <Label
+                                                    htmlFor={`justification-${issue.id}`}
+                                                >
+                                                    Justificación (opcional)
+                                                </Label>
+                                                <Input
+                                                    id={`justification-${issue.id}`}
+                                                    value={
+                                                        decision?.justification ??
+                                                        ''
+                                                    }
+                                                    onChange={(event) =>
+                                                        updateDecision(
+                                                            issue.id,
+                                                            {
+                                                                justification:
+                                                                    event.target
+                                                                        .value ||
+                                                                    null,
+                                                            },
+                                                        )
+                                                    }
+                                                    disabled={!decision}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="grid gap-2">
-                                            <Label
-                                                htmlFor={`justification-${issue.id}`}
-                                            >
-                                                Justificación (opcional)
-                                            </Label>
-                                            <Input
-                                                id={`justification-${issue.id}`}
-                                                value={
-                                                    decision?.justification ??
-                                                    ''
-                                                }
-                                                onChange={(event) =>
-                                                    updateDecision(issue.id, {
-                                                        justification:
-                                                            event.target
-                                                                .value || null,
-                                                    })
-                                                }
-                                                disabled={!decision}
-                                            />
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             );
                         })}
@@ -438,14 +447,20 @@ export default function AbprePreview({
                                 {decisionWarnings.current_page > 1 ? (
                                     <Button asChild size="sm" variant="outline">
                                         <Link
-                                            href={show(budgetId, {
-                                                query: queryFor(
-                                                    currentUrl,
-                                                    'decisions_page',
-                                                    decisionWarnings.current_page -
-                                                        1,
-                                                ),
-                                            })}
+                                            href={showPreview(
+                                                {
+                                                    budget: budgetId,
+                                                    importFile: file.id,
+                                                },
+                                                {
+                                                    query: queryFor(
+                                                        currentUrl,
+                                                        'decisions_page',
+                                                        decisionWarnings.current_page -
+                                                            1,
+                                                    ),
+                                                },
+                                            )}
                                             preserveScroll
                                             preserveState
                                         >
@@ -468,14 +483,20 @@ export default function AbprePreview({
                                 {decisionWarnings.has_more ? (
                                     <Button asChild size="sm" variant="outline">
                                         <Link
-                                            href={show(budgetId, {
-                                                query: queryFor(
-                                                    currentUrl,
-                                                    'decisions_page',
-                                                    decisionWarnings.current_page +
-                                                        1,
-                                                ),
-                                            })}
+                                            href={showPreview(
+                                                {
+                                                    budget: budgetId,
+                                                    importFile: file.id,
+                                                },
+                                                {
+                                                    query: queryFor(
+                                                        currentUrl,
+                                                        'decisions_page',
+                                                        decisionWarnings.current_page +
+                                                            1,
+                                                    ),
+                                                },
+                                            )}
                                             preserveScroll
                                             preserveState
                                         >
