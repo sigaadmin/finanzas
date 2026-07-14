@@ -80,4 +80,10 @@ class OwnRevenueImportFile extends Model
     {
         return $this->hasMany(OwnRevenueImportIssue::class);
     }
+
+    /** @return HasMany<OwnRevenueAbpreLine, $this> */
+    public function abpreLines(): HasMany
+    {
+        return $this->hasMany(OwnRevenueAbpreLine::class);
+    }
 }

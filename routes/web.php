@@ -11,6 +11,7 @@ use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
+use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
 use App\Http\Controllers\Finance\PaymentRegistrationController;
@@ -125,6 +126,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/analyze', OwnRevenueImportAnalysisController::class)
             ->scopeBindings()
             ->name('own-revenue.budgets.imports.files.analyze');
+
+        Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/issues/{issue}/decision', OwnRevenueImportDecisionController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.issues.decision.store');
 
         Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/abpre/confirm', OwnRevenueAbpreConfirmationController::class)
             ->scopeBindings()

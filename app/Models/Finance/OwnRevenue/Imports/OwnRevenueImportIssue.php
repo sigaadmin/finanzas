@@ -2,6 +2,7 @@
 
 namespace App\Models\Finance\OwnRevenue\Imports;
 
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use Database\Factories\Finance\OwnRevenue\Imports\OwnRevenueImportIssueFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -37,5 +38,25 @@ class OwnRevenueImportIssue extends Model
     public function decisions(): HasMany
     {
         return $this->hasMany(OwnRevenueImportDecision::class);
+    }
+
+    public function hasPendingRequiredDecision(): bool
+    {
+        if (($this->context['requires_decision'] ?? false) !== true) {
+            return false;
+        }
+
+        if (! $this->decisions()->where('resolution', 'accepted')->exists()) {
+            return true;
+        }
+
+        if ($this->code !== 'work_sheet.abpre_mismatch') {
+            return false;
+        }
+
+        return ! OwnRevenueImportFile::query()
+            ->whereKey($this->context['abpre_import_file_id'] ?? null)
+            ->where('status', OwnRevenueImportFileStatus::Confirmed)
+            ->exists();
     }
 }

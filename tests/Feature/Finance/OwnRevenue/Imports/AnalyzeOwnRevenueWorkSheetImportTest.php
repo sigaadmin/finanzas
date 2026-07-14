@@ -9,6 +9,7 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportDecision;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
@@ -50,6 +51,28 @@ function workSheetAnalysisCog(int $year, string $code = '21101'): ExpenseClassif
     ]);
 }
 
+function confirmedAbpreForWorkSheetAnalysis(
+    OwnRevenueBudget $budget,
+    ExpenseClassification $classification,
+    int $annualAmountCents,
+): OwnRevenueImportFile {
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Confirmed,
+        'confirmed_at' => now()->subMinute(),
+    ]);
+    OwnRevenueAbpreLine::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'own_revenue_import_file_id' => $file->id,
+        'expense_classification_id' => $classification->id,
+        'specific_item_code' => $classification->specific_item_code,
+        'annual_amount_cents' => $annualAmountCents,
+    ]);
+
+    return $file;
+}
+
 /** @param array<int, array<string, string|array{value?: string|null, formula?: string, type?: string}>> $rows */
 function storedWorkSheetForAnalysis(OwnRevenueBudget $budget, User $manager, array $rows): OwnRevenueImportFile
 {
@@ -76,7 +99,8 @@ test('work sheet analysis persists source and normalized staging with warnings w
     $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
     $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
     $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
-    workSheetAnalysisCog($fiscalYear);
+    $classification = workSheetAnalysisCog($fiscalYear);
+    confirmedAbpreForWorkSheetAnalysis($budget, $classification, 1001);
     $file = storedWorkSheetForAnalysis($budget, $manager, [
         5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '04-001', 'E' => 'CHETUMAL', 'F' => '10.01', ...workSheetMonths('10.01'), 'S' => '10.01'],
     ]);
@@ -127,7 +151,8 @@ test('reanalyzing a work sheet atomically replaces prior staging and issues', fu
     $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
     $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
     $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
-    workSheetAnalysisCog($fiscalYear);
+    $classification = workSheetAnalysisCog($fiscalYear);
+    confirmedAbpreForWorkSheetAnalysis($budget, $classification, 100);
     $file = storedWorkSheetForAnalysis($budget, $manager, [
         5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '04-001', 'E' => 'CHETUMAL', 'F' => '1', ...workSheetMonths('1'), 'S' => '1'],
     ]);
@@ -149,7 +174,8 @@ test('a failed work sheet reanalysis preserves valid staging decisions and one o
     $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
     $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
     $activity = $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
-    workSheetAnalysisCog($fiscalYear);
+    $classification = workSheetAnalysisCog($fiscalYear);
+    confirmedAbpreForWorkSheetAnalysis($budget, $classification, 100);
     $contents = 'invalid workbook';
     $file = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,

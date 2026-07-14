@@ -27,6 +27,7 @@ class OwnRevenueImportViewData
         'region.normalized',
         'abpre.annual_mismatch',
         'abpre.missing_justification',
+        'work_sheet.abpre_mismatch',
     ];
 
     private const SAFE_ISSUE_CONTEXT_FIELDS = [
@@ -39,6 +40,14 @@ class OwnRevenueImportViewData
         'value',
         'source_cents',
         'calculated_cents',
+        'work_sheet_total_cents',
+        'abpre_total_cents',
+        'difference_cents',
+        'abpre_import_file_id',
+        'work_sheet_source_rows',
+        'abpre_line_ids',
+        'requires_decision',
+        'requires_reanalysis',
     ];
 
     /** @return array<string, mixed> */

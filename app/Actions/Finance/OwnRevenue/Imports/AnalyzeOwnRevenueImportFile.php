@@ -27,6 +27,7 @@ class AnalyzeOwnRevenueImportFile
         private readonly XlsxWorkbookReader $reader,
         private readonly AbpreWorkbookParser $parser,
         private readonly WorkSheetWorkbookParser $workSheetParser,
+        private readonly ReconcileOwnRevenueWorkSheetWithAbpre $reconcileWorkSheet = new ReconcileOwnRevenueWorkSheetWithAbpre,
     ) {}
 
     public function handle(OwnRevenueImportFile $file, User $user): OwnRevenueImportFile
@@ -231,6 +232,19 @@ class AnalyzeOwnRevenueImportFile
                 ]);
             }
 
+            if ($analysis instanceof WorkSheetAnalysis) {
+                foreach ($this->reconcileWorkSheet->handle($budget, $analysis) as $issue) {
+                    $lockedFile->issues()->create([
+                        'own_revenue_import_row_id' => null,
+                        'severity' => $issue->severity,
+                        'code' => $issue->code,
+                        'field' => $issue->field,
+                        'message' => $issue->message,
+                        'context' => $issue->context,
+                    ]);
+                }
+            }
+
             if ($analysis->lines === []) {
                 $isAbpre = $format === OwnRevenueImportFormat::Abpre;
                 $lockedFile->issues()->create([
@@ -245,8 +259,9 @@ class AnalyzeOwnRevenueImportFile
                 ]);
             }
 
-            $hasErrors = $analysis->lines === [] || collect($analysis->issues)
-                ->contains(fn ($issue): bool => $issue->severity === OwnRevenueImportIssueSeverity::Error);
+            $hasErrors = $analysis->lines === [] || $lockedFile->issues()
+                ->where('severity', OwnRevenueImportIssueSeverity::Error)
+                ->exists();
             $lockedFile->update([
                 'status' => $hasErrors ? OwnRevenueImportFileStatus::NeedsCorrection : OwnRevenueImportFileStatus::Ready,
                 'analysis_token' => null,
