@@ -103,6 +103,7 @@ test('unclassified uploads stay pending classification without changing ABPRE la
             format: null,
             analyzed: false,
             issueCount: 0,
+            canReclassify: true,
         }).label,
         'Pendiente de clasificar',
     );
@@ -112,8 +113,19 @@ test('unclassified uploads stay pending classification without changing ABPRE la
             format: 'abpre',
             analyzed: false,
             issueCount: 0,
+            canReclassify: false,
         }).label,
         'Listo para analizar',
+    );
+    assert.equal(
+        importFilePresentation({
+            status: 'discarded',
+            format: null,
+            analyzed: false,
+            issueCount: 0,
+            canReclassify: false,
+        }).label,
+        'Descartado',
     );
 });
 

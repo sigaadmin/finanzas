@@ -228,6 +228,8 @@ export default function OwnRevenueImportShow({
                                                         file.issue_counts
                                                             .warning +
                                                         file.issue_counts.info,
+                                                    canReclassify:
+                                                        file.can_reclassify,
                                                 }).label
                                             }
                                         </p>

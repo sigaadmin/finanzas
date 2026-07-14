@@ -20,12 +20,13 @@ export function importFilePresentation({
     format,
     analyzed,
     issueCount,
+    canReclassify,
 }) {
     const isAbpre = format === 'abpre';
 
     return {
         label:
-            format === null
+            format === null && canReclassify
                 ? 'Pendiente de clasificar'
                 : importFileStatusLabels[status],
         canAnalyze:

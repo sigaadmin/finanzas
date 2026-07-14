@@ -31,6 +31,7 @@ export function importFilePresentation(input: {
         | null;
     analyzed: boolean;
     issueCount: number;
+    canReclassify: boolean;
 }): {
     label: string;
     canAnalyze: boolean;
