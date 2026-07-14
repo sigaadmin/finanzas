@@ -279,7 +279,7 @@ test('dedicated ABPRE preview clamps stale paginator pages', function () {
             ->where('decision_warnings.data.0.id', $warning->id));
 });
 
-test('dedicated ABPRE preview enforces consultation authorization and aggregate boundaries', function () {
+test('dedicated import preview enforces consultation authorization and aggregate boundaries', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
     $unauthorized = User::factory()->create();
     $budget = OwnRevenueBudget::factory()->create();
@@ -308,7 +308,9 @@ test('dedicated ABPRE preview enforces consultation authorization and aggregate 
 
     $this->actingAs($manager)
         ->get($previewRoute($budget, $nonAbpre))
-        ->assertNotFound();
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('selected_file.format', 'fuel'));
 });
 
 test('stale issue pages clamp to the first page for the selected file', function () {
@@ -520,6 +522,7 @@ test('frontend import workspace honors navigation route money and permission con
     $issues = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-issue-list.tsx'));
     $frontendState = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-workspace-state.js'));
     $preview = file_get_contents(resource_path('js/components/finance/own-revenue/imports/abpre-preview.tsx'));
+    $supportingPreviewPath = resource_path('js/components/finance/own-revenue/imports/supporting-format-preview.tsx');
     $previewPagePath = resource_path('js/pages/finance/own-revenue/imports/preview.tsx');
     $types = file_get_contents(resource_path('js/types/finance-own-revenue-imports.ts'));
     $controller = file_get_contents(app_path('Http/Controllers/Finance/OwnRevenueImportController.php'));
@@ -590,6 +593,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('permissions: OwnRevenueImportPermissions');
 
     expect($previewPagePath)->toBeFile();
+    expect($supportingPreviewPath)->toBeFile();
 
     $previewPage = file_get_contents($previewPagePath);
 
@@ -598,6 +602,8 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('Volver a importaciones')
         ->toContain('import_file_id')
         ->toContain('<AbprePreview')
+        ->toContain('<SupportingFormatPreview')
+        ->toContain('Revisión de Ficha técnica')
         ->toContain('@/routes/finance/own-revenue/budgets/imports')
         ->toContain('workSheetPreviewBadge')
         ->and($slot)

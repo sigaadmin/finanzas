@@ -264,11 +264,7 @@ export default function ImportFileSlot({
                     {slot.has_confirmed ? (
                         <Badge className="bg-emerald-600">Confirmado</Badge>
                     ) : slot.has_parser_pending ? (
-                        <Badge variant="outline">
-                            {slot.format === 'work_sheet'
-                                ? 'Listo para analizar'
-                                : 'Revisión no disponible'}
-                        </Badge>
+                        <Badge variant="outline">Listo para analizar</Badge>
                     ) : slot.is_missing && slot.versions_total > 0 ? (
                         <Badge variant="secondary">Sólo auditoría</Badge>
                     ) : (

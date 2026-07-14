@@ -23,8 +23,13 @@ export function importFilePresentation({
     canReclassify,
 }) {
     const isAbpre = format === 'abpre';
-    const isWorkSheet = format === 'work_sheet';
-    const workSheetLabels = {
+    const isSupportingFormat = [
+        'work_sheet',
+        'technical_sheet',
+        'fuel',
+        'travel_expenses',
+    ].includes(format);
+    const supportingLabels = {
         uploaded: 'Listo para analizar',
         parser_pending: 'Listo para analizar',
         analyzing: 'Analizando',
@@ -38,13 +43,13 @@ export function importFilePresentation({
         label:
             format === null && canReclassify
                 ? 'Pendiente de clasificar'
-                : isWorkSheet && workSheetLabels[status]
-                  ? workSheetLabels[status]
+                : isSupportingFormat && supportingLabels[status]
+                  ? supportingLabels[status]
                   : importFileStatusLabels[status],
         canAnalyze:
             (isAbpre &&
                 ['uploaded', 'needs_correction', 'failed'].includes(status)) ||
-            (isWorkSheet &&
+            (isSupportingFormat &&
                 [
                     'uploaded',
                     'parser_pending',
@@ -52,7 +57,7 @@ export function importFilePresentation({
                     'failed',
                 ].includes(status)),
         canViewIssues: analyzed || issueCount > 0,
-        canViewPreview: (isAbpre || isWorkSheet) && analyzed,
+        canViewPreview: (isAbpre || isSupportingFormat) && analyzed,
     };
 }
 
@@ -61,9 +66,7 @@ export function importFileProgressLabel(status, format) {
         return null;
     }
 
-    return format === 'work_sheet'
-        ? 'Listo para revisar'
-        : 'Listo para confirmar';
+    return format === 'abpre' ? 'Listo para confirmar' : 'Listo para revisar';
 }
 
 function queryFromUrl(currentUrl) {

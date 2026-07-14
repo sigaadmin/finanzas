@@ -438,14 +438,14 @@ test('preview paginates before resolving only the visible item codes', function 
         ))->toBeTrue();
 });
 
-test('work sheet preview enforces authorization budget boundaries and supported formats', function () {
+test('work sheet preview enforces authorization budget boundaries and classification', function () {
     $manager = workSheetPreviewUser(UserRole::FinanceManager);
     $publicUser = workSheetPreviewUser(UserRole::Public);
     [$budget, $file] = workSheetPreviewScenario();
     $otherBudget = OwnRevenueBudget::factory()->create();
-    $unsupported = OwnRevenueImportFile::factory()->create([
+    $unclassified = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
-        'format' => OwnRevenueImportFormat::Fuel,
+        'format' => null,
     ]);
 
     $this->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file]))
@@ -457,6 +457,6 @@ test('work sheet preview enforces authorization budget boundaries and supported 
         ->get(route('finance.own-revenue.budgets.imports.files.preview', [$otherBudget, $file]))
         ->assertNotFound();
     $this->actingAs($manager)
-        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $unsupported]))
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $unclassified]))
         ->assertNotFound();
 });

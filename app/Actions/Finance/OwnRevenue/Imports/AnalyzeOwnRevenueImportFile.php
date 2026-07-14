@@ -4,6 +4,7 @@ namespace App\Actions\Finance\OwnRevenue\Imports;
 
 use App\Data\Finance\OwnRevenue\Imports\AbpreAnalysis;
 use App\Data\Finance\OwnRevenue\Imports\OwnRevenueImportAnalysisSnapshot;
+use App\Data\Finance\OwnRevenue\Imports\SupportingFormatAnalysis;
 use App\Data\Finance\OwnRevenue\Imports\WorkSheetAnalysis;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
@@ -14,6 +15,7 @@ use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\AbpreWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
+use App\Services\Finance\OwnRevenue\Imports\SupportingWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\WorkSheetWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +31,7 @@ class AnalyzeOwnRevenueImportFile
         private readonly XlsxWorkbookReader $reader,
         private readonly AbpreWorkbookParser $parser,
         private readonly WorkSheetWorkbookParser $workSheetParser,
+        private readonly SupportingWorkbookParser $supportingParser = new SupportingWorkbookParser,
         private readonly ReconcileOwnRevenueWorkSheetWithAbpre $reconcileWorkSheet = new ReconcileOwnRevenueWorkSheetWithAbpre,
         private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot = new CaptureOwnRevenueImportAnalysisSnapshot,
         private readonly CanonicalJson $canonicalJson = new CanonicalJson,
@@ -92,9 +95,13 @@ class AnalyzeOwnRevenueImportFile
                     $snapshot->activityMap,
                     $snapshot->cogMap,
                 ),
-                default => throw ValidationException::withMessages([
-                    'file' => 'Este analizador sólo admite los formatos ABPRE y Hoja de trabajo.',
-                ]),
+                OwnRevenueImportFormat::TechnicalSheet,
+                OwnRevenueImportFormat::Fuel,
+                OwnRevenueImportFormat::TravelExpenses => $this->supportingParser->parse(
+                    $workbook,
+                    $format,
+                    $snapshot->cogMap,
+                ),
             };
 
             return $this->persist($file, $analysis, $analysisToken, $format, $snapshot);
@@ -129,9 +136,9 @@ class AnalyzeOwnRevenueImportFile
     {
         $this->ensureMutable($file);
 
-        if (! in_array($file->format, [OwnRevenueImportFormat::Abpre, OwnRevenueImportFormat::WorkSheet], true)) {
+        if ($file->format === null) {
             throw ValidationException::withMessages([
-                'file' => 'Este analizador sólo admite los formatos ABPRE y Hoja de trabajo.',
+                'file' => 'Clasifique el archivo antes de analizarlo.',
             ]);
         }
     }
@@ -166,7 +173,7 @@ class AnalyzeOwnRevenueImportFile
 
     private function persist(
         OwnRevenueImportFile $file,
-        AbpreAnalysis|WorkSheetAnalysis $analysis,
+        AbpreAnalysis|WorkSheetAnalysis|SupportingFormatAnalysis $analysis,
         string $analysisToken,
         OwnRevenueImportFormat $format,
         OwnRevenueImportAnalysisSnapshot $snapshot,
@@ -191,21 +198,23 @@ class AnalyzeOwnRevenueImportFile
                 $rows[$sourceRow['sheet_name'].'|'.$sourceRow['row_number']] = $row;
             }
 
-            $normalizedSheet = $format === OwnRevenueImportFormat::Abpre
-                ? '__normalized_abpre__'
-                : '__normalized_work_sheet__';
-            $normalizedRowKind = $format === OwnRevenueImportFormat::Abpre
-                ? 'abpre_line'
-                : 'work_sheet_normalized_line';
+            $normalizedSheet = '__normalized_'.$format->value.'__';
+            $normalizedRowKind = match ($format) {
+                OwnRevenueImportFormat::Abpre => 'abpre_line',
+                OwnRevenueImportFormat::WorkSheet => 'work_sheet_normalized_line',
+                default => $format->value.'_normalized_line',
+            };
 
             foreach ($analysis->lines as $index => $line) {
+                $isSupporting = $analysis instanceof SupportingFormatAnalysis;
+                $normalizedPayload = $isSupporting ? $line->values : (array) $line;
                 $lockedFile->rows()->create([
                     'sheet_name' => $normalizedSheet,
                     'row_number' => $index + 1,
                     'row_kind' => $normalizedRowKind,
-                    'row_hash' => $this->canonicalJson->hash((array) $line),
-                    'source_payload' => ['source_rows' => $line->sourceRows],
-                    'normalized_payload' => (array) $line,
+                    'row_hash' => $this->canonicalJson->hash($normalizedPayload),
+                    'source_payload' => ['source_rows' => $isSupporting ? [$line->sourceRow] : $line->sourceRows],
+                    'normalized_payload' => $normalizedPayload,
                 ]);
             }
 
@@ -249,14 +258,19 @@ class AnalyzeOwnRevenueImportFile
 
             if ($analysis->lines === []) {
                 $isAbpre = $format === OwnRevenueImportFormat::Abpre;
+                $isWorkSheet = $format === OwnRevenueImportFormat::WorkSheet;
                 $lockedFile->issues()->create([
                     'own_revenue_import_row_id' => null,
                     'severity' => OwnRevenueImportIssueSeverity::Error,
-                    'code' => $isAbpre ? 'abpre.no_importable_lines' : 'work_sheet.no_importable_lines',
+                    'code' => $isAbpre
+                        ? 'abpre.no_importable_lines'
+                        : ($isWorkSheet ? 'work_sheet.no_importable_lines' : $format->value.'.no_importable_lines'),
                     'field' => null,
                     'message' => $isAbpre
                         ? 'El análisis no contiene líneas ABPRE importables.'
-                        : 'El análisis no contiene renglones importables de la Hoja de trabajo.',
+                        : ($isWorkSheet
+                            ? 'El análisis no contiene renglones importables de la Hoja de trabajo.'
+                            : 'El análisis no contiene renglones importables del formato seleccionado.'),
                     'context' => [],
                 ]);
             }

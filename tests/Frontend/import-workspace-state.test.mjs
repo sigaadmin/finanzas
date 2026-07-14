@@ -27,6 +27,10 @@ test('ready file progress distinguishes review from confirmation', () => {
         importFileProgressLabel('ready', 'abpre'),
         'Listo para confirmar',
     );
+    assert.equal(
+        importFileProgressLabel('ready', 'technical_sheet'),
+        'Listo para revisar',
+    );
     assert.equal(importFileProgressLabel('analyzing', 'work_sheet'), null);
 });
 
@@ -74,7 +78,7 @@ test('file statuses use operational language and expose only available ABPRE act
         ready: 'Listo para revisar',
         confirmed: 'Confirmado',
         failed: 'No se pudo analizar',
-        parser_pending: 'Revisión no disponible',
+        parser_pending: 'Listo para analizar',
         replaced: 'Reemplazado por otra versión',
         discarded: 'Descartado',
     };
@@ -139,10 +143,24 @@ test('file statuses use operational language and expose only available ABPRE act
             issueCount: 0,
         }),
         {
-            label: 'Revisión no disponible',
-            canAnalyze: false,
+            label: 'Listo para analizar',
+            canAnalyze: true,
             canViewIssues: false,
             canViewPreview: false,
+        },
+    );
+    assert.deepEqual(
+        importFilePresentation({
+            status: 'ready',
+            format: 'travel_expenses',
+            analyzed: true,
+            issueCount: 0,
+        }),
+        {
+            label: 'Listo para revisar',
+            canAnalyze: false,
+            canViewIssues: true,
+            canViewPreview: true,
         },
     );
 });

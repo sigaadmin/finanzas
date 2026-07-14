@@ -101,6 +101,45 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
         ->and($secondResult->analysis_revision)->not->toBe($firstRevision);
 });
 
+test('analysis accepts a supporting format and stores its review rows', function () {
+    Storage::fake('local');
+    $manager = analyzeImportUser();
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2026]);
+    analyzeCog(2026);
+    $session = app(StartOwnRevenueImportSession::class)->handle($budget, $manager);
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'Partida 21101' => [
+            16 => ['A' => 'Partida', 'B' => '#', 'C' => 'Cantidad', 'D' => 'Unidad', 'E' => 'Descripción', 'F' => 'Ragión', 'G' => 'Nombre de la Región', 'H' => 'Costo', 'I' => 'Mes Presupuestado'],
+            17 => ['A' => '21101', 'B' => '1', 'C' => '2', 'D' => 'PIEZA', 'E' => 'Insumo', 'F' => '02-001', 'G' => 'Felipe Carrillo Puerto', 'H' => '25.50', 'I' => 'ABRIL'],
+        ],
+    ]);
+    $file = app(UploadOwnRevenueImportFile::class)->handle(
+        $session,
+        $manager,
+        new UploadedFile($fixture, 'FICHA TECNICA.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        false,
+    );
+
+    $result = app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+
+    expect($result->format)->toBe(OwnRevenueImportFormat::TechnicalSheet)
+        ->and($result->status)->toBe(OwnRevenueImportFileStatus::Ready)
+        ->and($result->rows()->where('row_kind', 'technical_sheet_normalized_line')->count())->toBe(1)
+        ->and($result->rows()->where('row_kind', 'technical_sheet_line')->count())->toBe(1);
+
+    $this->withoutVite();
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $file,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('selected_file.format', 'technical_sheet')
+            ->where('preview.data.0.values.description', 'Insumo')
+            ->where('preview.data.0.values.amountCents', '2550'));
+});
+
 test('failed analysis clears attempt ownership', function () {
     Storage::fake('local');
     $manager = analyzeImportUser();

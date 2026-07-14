@@ -449,7 +449,7 @@ test('a stale work sheet attempt cannot replace newer staging or file ownership'
         ->and($row->fresh())->not->toBeNull();
 });
 
-test('work sheet analysis endpoint enforces authorization aggregate boundaries and supported formats', function () {
+test('work sheet analysis endpoint enforces authorization aggregate boundaries and classification', function () {
     Storage::fake('local');
     $manager = workSheetAnalysisManager();
     $budget = OwnRevenueBudget::factory()->create();
@@ -459,10 +459,10 @@ test('work sheet analysis endpoint enforces authorization aggregate boundaries a
         'format' => OwnRevenueImportFormat::WorkSheet,
         'status' => OwnRevenueImportFileStatus::ParserPending,
     ]);
-    $unsupported = OwnRevenueImportFile::factory()->create([
+    $unclassified = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
-        'format' => OwnRevenueImportFormat::Fuel,
-        'status' => OwnRevenueImportFileStatus::ParserPending,
+        'format' => null,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
     ]);
     $auditorEmail = 'work-sheet-auditor-'.fake()->uuid().'@crenfcp.edu.mx';
     AuthorizedAccess::create(['email' => $auditorEmail, 'role' => UserRole::FinanceAuditor, 'is_active' => true]);
@@ -476,7 +476,7 @@ test('work sheet analysis endpoint enforces authorization aggregate boundaries a
     $this->post($route($budget, $workSheet))->assertRedirect(route('login'));
     $this->actingAs($auditor)->post($route($budget, $workSheet))->assertForbidden();
     $this->actingAs($manager)->post($route($otherBudget, $workSheet))->assertNotFound();
-    $this->actingAs($manager)->post($route($budget, $unsupported))->assertSessionHasErrors([
-        'file' => 'Este analizador sólo admite los formatos ABPRE y Hoja de trabajo.',
+    $this->actingAs($manager)->post($route($budget, $unclassified))->assertSessionHasErrors([
+        'file' => 'Clasifique el archivo antes de analizarlo.',
     ]);
 });

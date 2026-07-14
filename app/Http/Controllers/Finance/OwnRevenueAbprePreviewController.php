@@ -18,10 +18,7 @@ class OwnRevenueAbprePreviewController extends Controller
     public function __invoke(OwnRevenueBudget $budget, OwnRevenueImportFile $importFile): Response
     {
         Gate::authorize('viewImports', $budget);
-        abort_unless(in_array($importFile->format, [
-            OwnRevenueImportFormat::Abpre,
-            OwnRevenueImportFormat::WorkSheet,
-        ], true), 404);
+        abort_if($importFile->format === null, 404);
         $importFile->loadCount($this->viewData->issueCounts());
 
         $workSheetState = $importFile->format === OwnRevenueImportFormat::WorkSheet
@@ -34,8 +31,8 @@ class OwnRevenueAbprePreviewController extends Controller
             && $canConfirm
             ? $this->viewData->workSheetConfirmationState($importFile)
             : null;
-        $previewData = $importFile->format === OwnRevenueImportFormat::WorkSheet
-            ? [
+        $previewData = match ($importFile->format) {
+            OwnRevenueImportFormat::WorkSheet => [
                 'preview' => $this->viewData->workSheetPreview($importFile),
                 'blocking_issues' => $this->viewData->workSheetIssues($importFile, true),
                 'review_issues' => $this->viewData->workSheetIssues($importFile, false),
@@ -49,11 +46,15 @@ class OwnRevenueAbprePreviewController extends Controller
                 'confirm_reasons' => $canManage && $canConfirm
                     ? ($workSheetConfirmation['reasons'] ?? [])
                     : ['Puedes consultar esta revisión, pero no confirmarla.'],
-            ]
-            : [
+            ],
+            OwnRevenueImportFormat::Abpre => [
                 'preview' => $this->viewData->preview($importFile),
                 'decision_warnings' => $this->viewData->decisionWarnings($importFile),
-            ];
+            ],
+            default => [
+                'preview' => $this->viewData->supportingPreview($importFile),
+            ],
+        };
 
         return Inertia::render('finance/own-revenue/imports/preview', [
             'budget' => $this->viewData->budget($budget),

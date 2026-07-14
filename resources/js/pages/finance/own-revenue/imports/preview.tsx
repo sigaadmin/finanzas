@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import AbprePreview from '@/components/finance/own-revenue/imports/abpre-preview';
 import { importFilePresentation } from '@/components/finance/own-revenue/imports/import-workspace-state';
+import SupportingFormatPreview from '@/components/finance/own-revenue/imports/supporting-format-preview';
 import WorkSheetPreview from '@/components/finance/own-revenue/imports/work-sheet-preview';
 import { workSheetPreviewBadge } from '@/components/finance/own-revenue/imports/work-sheet-preview-state';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +10,14 @@ import { Button } from '@/components/ui/button';
 import { show as showImports } from '@/routes/finance/own-revenue/budgets/imports';
 import type {
     OwnRevenueAbprePreviewProps,
+    OwnRevenueSupportingPreviewProps,
     OwnRevenueWorkSheetPreviewProps,
 } from '@/types/finance-own-revenue-imports';
 
-type Props = OwnRevenueAbprePreviewProps | OwnRevenueWorkSheetPreviewProps;
+type Props =
+    | OwnRevenueAbprePreviewProps
+    | OwnRevenueWorkSheetPreviewProps
+    | OwnRevenueSupportingPreviewProps;
 
 export default function OwnRevenueImportPreview({
     budget,
@@ -22,9 +27,15 @@ export default function OwnRevenueImportPreview({
     ...props
 }: Props) {
     const isWorkSheet = selectedFile.format === 'work_sheet';
-    const title = isWorkSheet
-        ? 'Revisión de Hoja de trabajo'
-        : 'Vista previa ABPRE';
+    const isAbpre = selectedFile.format === 'abpre';
+    const previewFormat = selectedFile.format ?? 'abpre';
+    const title = {
+        abpre: 'Vista previa ABPRE',
+        work_sheet: 'Revisión de Hoja de trabajo',
+        technical_sheet: 'Revisión de Ficha técnica',
+        fuel: 'Revisión de Combustible',
+        travel_expenses: 'Revisión de Viáticos',
+    }[previewFormat];
     const status = importFilePresentation({
         status: selectedFile.status,
         format: selectedFile.format,
@@ -82,7 +93,7 @@ export default function OwnRevenueImportPreview({
                                     <ShieldCheck className="size-3" />
                                     {workSheetStatus}
                                 </Badge>
-                            ) : (
+                            ) : isAbpre ? (
                                 <>
                                     <Badge variant="outline">
                                         {status.label}
@@ -94,6 +105,8 @@ export default function OwnRevenueImportPreview({
                                             : 'Sólo consulta'}
                                     </Badge>
                                 </>
+                            ) : (
+                                <Badge variant="outline">{status.label}</Badge>
                             )}
                         </div>
                     </div>
@@ -114,7 +127,7 @@ export default function OwnRevenueImportPreview({
                         confirmReasons={workSheetProps.confirm_reasons}
                         permissions={permissions}
                     />
-                ) : (
+                ) : isAbpre ? (
                     <AbprePreview
                         budgetId={budget.id}
                         file={selectedFile}
@@ -131,6 +144,17 @@ export default function OwnRevenueImportPreview({
                                     | 'permissions'
                                 >
                             ).decision_warnings
+                        }
+                        permissions={permissions}
+                    />
+                ) : (
+                    <SupportingFormatPreview
+                        budget={budget}
+                        selected_file={
+                            selectedFile as OwnRevenueSupportingPreviewProps['selected_file']
+                        }
+                        preview={
+                            preview as OwnRevenueSupportingPreviewProps['preview']
                         }
                         permissions={permissions}
                     />

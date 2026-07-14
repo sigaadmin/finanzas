@@ -260,6 +260,21 @@ export type OwnRevenueWorkSheetPreviewProps = {
     permissions: OwnRevenueImportPermissions;
 };
 
+export type OwnRevenueSupportingPreviewRow = {
+    id: number;
+    row_number: number;
+    values: Record<string, string | number | null>;
+};
+
+export type OwnRevenueSupportingPreviewProps = {
+    budget: OwnRevenueImportBudget;
+    selected_file: OwnRevenueImportFile & {
+        format: 'technical_sheet' | 'fuel' | 'travel_expenses';
+    };
+    preview: LengthAwarePaginator<OwnRevenueSupportingPreviewRow>;
+    permissions: OwnRevenueImportPermissions;
+};
+
 export type OwnRevenueImportDecision = {
     issue_id: number;
     resolution: OwnRevenueImportResolution;

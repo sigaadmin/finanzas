@@ -261,6 +261,25 @@ class OwnRevenueImportViewData
     }
 
     /** @return array<string, mixed> */
+    public function supportingPreview(OwnRevenueImportFile $file): array
+    {
+        return $this->paginateClamped(
+            $file->rows()
+                ->where('row_kind', $file->format?->value.'_normalized_line')
+                ->orderBy('row_number'),
+            self::PREVIEW_PER_PAGE,
+            'preview_page',
+            ['id', 'row_number', 'normalized_payload'],
+        )
+            ->through(fn (OwnRevenueImportRow $row): array => [
+                'id' => $row->id,
+                'row_number' => $row->row_number,
+                'values' => $this->exactMonetaryStrings($row->normalized_payload ?? []),
+            ])
+            ->toArray();
+    }
+
+    /** @return array<string, mixed> */
     public function workSheetIssues(OwnRevenueImportFile $file, bool $blocking): array
     {
         $severity = $blocking
