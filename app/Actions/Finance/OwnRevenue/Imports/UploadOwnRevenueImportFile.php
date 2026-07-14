@@ -9,6 +9,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Imports\InvalidXlsxWorkbookException;
 use App\Services\Finance\OwnRevenue\Imports\OwnRevenueWorkbookFormatDetector;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Http\UploadedFile;
@@ -50,7 +51,14 @@ class UploadOwnRevenueImportFile
             throw new RuntimeException('No se pudo calcular la huella del archivo XLSX.');
         }
 
-        $detection = $this->detector->detect($this->reader->read($realPath));
+        try {
+            $detection = $this->detector->detect($this->reader->read($realPath));
+        } catch (InvalidXlsxWorkbookException) {
+            throw ValidationException::withMessages([
+                'file' => 'El archivo XLSX no es válido o excede los límites de procesamiento.',
+            ]);
+        }
+
         $storagePath = $upload->store(
             "own-revenue/imports/{$budget->id}/{$session->id}",
             'local',

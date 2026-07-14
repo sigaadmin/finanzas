@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Finance\OwnRevenue\Imports\InvalidXlsxWorkbookException;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 
 require_once __DIR__.'/../../../../Fixtures/Finance/OwnRevenue/Imports/OwnRevenueXlsxFixtureFactory.php';
@@ -49,5 +50,44 @@ test('reader rejects an invalid XLSX archive', function () {
     $path = tempnam(sys_get_temp_dir(), 'invalid-xlsx-');
     file_put_contents($path, 'not a zip');
 
-    expect(fn () => (new XlsxWorkbookReader)->read($path))->toThrow(RuntimeException::class);
+    expect(fn () => (new XlsxWorkbookReader)->read($path))->toThrow(InvalidXlsxWorkbookException::class);
+});
+
+test('reader rejects highly compressible XLSX entries before materializing them', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'FICHA' => [3 => ['A' => 'FECHAS DE LA COMISION']],
+    ]);
+    $zip = new ZipArchive;
+
+    expect($zip->open($fixture))->toBeTrue();
+    $zip->addFromString('xl/media/padding.bin', str_repeat('A', 1024 * 1024));
+    $zip->close();
+
+    expect(filesize($fixture))->toBeLessThan(20 * 1024)
+        ->and(fn () => (new XlsxWorkbookReader)->read($fixture))
+        ->toThrow(InvalidXlsxWorkbookException::class, 'proporción de compresión');
+});
+
+test('reader limits parsed sheets even when names repeat', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'FICHA' => [3 => ['A' => 'FECHAS DE LA COMISION']],
+    ]);
+    $sheets = '';
+
+    for ($number = 1; $number <= 257; $number++) {
+        $sheets .= '<sheet name="FICHA" sheetId="'.$number.'" r:id="rId1"/>';
+    }
+
+    $workbook = '<?xml version="1.0" encoding="UTF-8"?>'
+        .'<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        .'<sheets>'.$sheets.'</sheets></workbook>';
+    $zip = new ZipArchive;
+
+    expect($zip->open($fixture))->toBeTrue();
+    $zip->addFromString('xl/workbook.xml', $workbook);
+    $zip->close();
+
+    expect(fn () => (new XlsxWorkbookReader)->read($fixture))
+        ->toThrow(InvalidXlsxWorkbookException::class, 'límite de hojas');
 });

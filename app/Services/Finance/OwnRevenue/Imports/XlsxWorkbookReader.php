@@ -6,27 +6,53 @@ use App\Data\Finance\OwnRevenue\Imports\XlsxCell;
 use App\Data\Finance\OwnRevenue\Imports\XlsxRow;
 use App\Data\Finance\OwnRevenue\Imports\XlsxSheet;
 use App\Data\Finance\OwnRevenue\Imports\XlsxWorkbook;
-use RuntimeException;
 use SimpleXMLElement;
 use ZipArchive;
 
 class XlsxWorkbookReader
 {
+    private const MAX_ARCHIVE_ENTRIES = 1024;
+
+    private const MAX_ENTRY_UNCOMPRESSED_BYTES = 16 * 1024 * 1024;
+
+    private const MAX_TOTAL_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
+
+    private const MAX_COMPRESSION_RATIO = 200;
+
+    private const MAX_SHEETS = 256;
+
+    private const MAX_SHARED_STRINGS = 250_000;
+
+    private const MAX_ROWS = 100_000;
+
+    private const MAX_CELLS = 1_000_000;
+
     public function read(string $path): XlsxWorkbook
     {
         $zip = new ZipArchive;
 
         if ($zip->open($path) !== true) {
-            throw new RuntimeException('No se pudo abrir el archivo XLSX.');
+            throw new InvalidXlsxWorkbookException('No se pudo abrir el archivo XLSX.');
         }
 
         try {
+            $this->validateArchive($zip);
+
             $workbook = $this->requiredXml($zip, 'xl/workbook.xml');
             $relationships = $this->workbookRelationships($zip);
             $sharedStrings = $this->sharedStrings($zip);
             $sheets = [];
+            $sheetCount = 0;
+            $totalRows = 0;
+            $totalCells = 0;
 
             foreach ($workbook->xpath('//*[local-name()="sheets"]/*[local-name()="sheet"]') ?: [] as $sheet) {
+                $sheetCount++;
+
+                if ($sheetCount > self::MAX_SHEETS) {
+                    throw new InvalidXlsxWorkbookException('El libro XLSX excede el límite de hojas.');
+                }
+
                 $name = (string) $sheet['name'];
                 $relationshipAttributes = $sheet->attributes(
                     'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
@@ -35,20 +61,60 @@ class XlsxWorkbookReader
                 $target = $relationships[$relationshipId] ?? null;
 
                 if ($name === '' || $target === null) {
-                    throw new RuntimeException('El libro XLSX contiene una hoja sin relación válida.');
+                    throw new InvalidXlsxWorkbookException('El libro XLSX contiene una hoja sin relación válida.');
                 }
 
                 $sheetXml = $this->requiredXml($zip, $this->workbookTargetPath($target));
-                $sheets[$name] = new XlsxSheet($name, $this->rows($sheetXml, $sharedStrings));
+                $sheets[$name] = new XlsxSheet(
+                    $name,
+                    $this->rows($sheetXml, $sharedStrings, $totalRows, $totalCells),
+                );
             }
 
             if ($sheets === []) {
-                throw new RuntimeException('El libro XLSX no contiene hojas legibles.');
+                throw new InvalidXlsxWorkbookException('El libro XLSX no contiene hojas legibles.');
             }
 
             return new XlsxWorkbook($sheets);
         } finally {
             $zip->close();
+        }
+    }
+
+    private function validateArchive(ZipArchive $zip): void
+    {
+        if ($zip->numFiles > self::MAX_ARCHIVE_ENTRIES) {
+            throw new InvalidXlsxWorkbookException('El archivo XLSX excede el límite de entradas.');
+        }
+
+        $totalUncompressedBytes = 0;
+
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $metadata = $zip->statIndex($index);
+
+            if ($metadata === false) {
+                throw new InvalidXlsxWorkbookException('No se pudo validar una entrada del archivo XLSX.');
+            }
+
+            $uncompressedBytes = (int) ($metadata['size'] ?? 0);
+            $compressedBytes = (int) ($metadata['comp_size'] ?? 0);
+
+            if ($uncompressedBytes > self::MAX_ENTRY_UNCOMPRESSED_BYTES) {
+                throw new InvalidXlsxWorkbookException('Una entrada del archivo XLSX excede el tamaño permitido.');
+            }
+
+            $totalUncompressedBytes += $uncompressedBytes;
+
+            if ($totalUncompressedBytes > self::MAX_TOTAL_UNCOMPRESSED_BYTES) {
+                throw new InvalidXlsxWorkbookException('El archivo XLSX excede el tamaño descomprimido permitido.');
+            }
+
+            if ($uncompressedBytes > 0 && (
+                $compressedBytes <= 0
+                || $uncompressedBytes / $compressedBytes > self::MAX_COMPRESSION_RATIO
+            )) {
+                throw new InvalidXlsxWorkbookException('Una entrada del archivo XLSX excede la proporción de compresión permitida.');
+            }
         }
     }
 
@@ -83,6 +149,10 @@ class XlsxWorkbookReader
         $strings = [];
 
         foreach ($xml->xpath('//*[local-name()="si"]') ?: [] as $item) {
+            if (count($strings) >= self::MAX_SHARED_STRINGS) {
+                throw new InvalidXlsxWorkbookException('El libro XLSX excede el límite de cadenas compartidas.');
+            }
+
             $strings[] = $this->textContent($item);
         }
 
@@ -93,18 +163,34 @@ class XlsxWorkbookReader
      * @param  list<string>  $sharedStrings
      * @return array<int, XlsxRow>
      */
-    private function rows(SimpleXMLElement $sheet, array $sharedStrings): array
-    {
+    private function rows(
+        SimpleXMLElement $sheet,
+        array $sharedStrings,
+        int &$totalRows,
+        int &$totalCells,
+    ): array {
         $rows = [];
         $previousRowNumber = 0;
 
         foreach ($sheet->xpath('//*[local-name()="sheetData"]/*[local-name()="row"]') ?: [] as $row) {
+            $totalRows++;
+
+            if ($totalRows > self::MAX_ROWS) {
+                throw new InvalidXlsxWorkbookException('El libro XLSX excede el límite de filas.');
+            }
+
             $rowNumber = (int) $row['r'];
             $rowNumber = $rowNumber > 0 ? $rowNumber : $previousRowNumber + 1;
             $previousRowNumber = $rowNumber;
             $cells = [];
 
             foreach ($row->xpath('./*[local-name()="c"]') ?: [] as $cell) {
+                $totalCells++;
+
+                if ($totalCells > self::MAX_CELLS) {
+                    throw new InvalidXlsxWorkbookException('El libro XLSX excede el límite de celdas.');
+                }
+
                 $coordinate = strtoupper((string) $cell['r']);
 
                 if (! preg_match('/^([A-Z]+)[0-9]+$/', $coordinate, $match)) {
@@ -152,7 +238,7 @@ class XlsxWorkbookReader
         $contents = $zip->getFromName($name);
 
         if ($contents === false) {
-            throw new RuntimeException("El archivo XLSX no contiene {$name}.");
+            throw new InvalidXlsxWorkbookException("El archivo XLSX no contiene {$name}.");
         }
 
         return $this->xml($contents, $name);
@@ -166,7 +252,7 @@ class XlsxWorkbookReader
             $xml = simplexml_load_string($contents, SimpleXMLElement::class, LIBXML_NONET | LIBXML_COMPACT);
 
             if ($xml === false) {
-                throw new RuntimeException("El XML {$name} del libro no es válido.");
+                throw new InvalidXlsxWorkbookException("El XML {$name} del libro no es válido.");
             }
 
             return $xml;

@@ -70,6 +70,7 @@ class AnalyzeOwnRevenueImportFile
 
             return DB::transaction(function () use ($file, $exception): OwnRevenueImportFile {
                 $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
+                $this->ensureMutable($lockedFile);
                 $lockedFile->issues()->delete();
                 $lockedFile->issues()->create([
                     'severity' => OwnRevenueImportIssueSeverity::Error,
@@ -103,6 +104,7 @@ class AnalyzeOwnRevenueImportFile
         return DB::transaction(function () use ($file, $budget, $analysis): OwnRevenueImportFile {
             OwnRevenueBudget::query()->lockForUpdate()->findOrFail($budget->id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
+            $this->ensureMutable($lockedFile);
             $lockedFile->issues()->delete();
             $lockedFile->rows()->delete();
             $rows = [];

@@ -56,6 +56,21 @@ function ownRevenueUploadedFile(string $path, string $name = 'presupuesto.xlsx')
     );
 }
 
+function ownRevenueHighlyCompressibleUploadFixture(): string
+{
+    $fixture = ownRevenueUploadFixture(OwnRevenueImportFormat::Abpre);
+    $zip = new ZipArchive;
+
+    if ($zip->open($fixture) !== true) {
+        throw new RuntimeException('No se pudo abrir el fixture XLSX.');
+    }
+
+    $zip->addFromString('xl/media/padding.bin', str_repeat('A', 1024 * 1024));
+    $zip->close();
+
+    return $fixture;
+}
+
 test('manager reuses one open session and stores an XLSX privately', function () {
     Storage::fake('local');
     $manager = ownRevenueUploadUser(UserRole::FinanceManager);
@@ -75,6 +90,20 @@ test('manager reuses one open session and stores an XLSX privately', function ()
         ->and($file->version_number)->toBe(1)
         ->and($file->sha256)->toHaveLength(64);
     Storage::disk('local')->assertExists($file->storage_path);
+});
+
+test('highly compressible XLSX uploads return a file validation error', function () {
+    Storage::fake('local');
+    $manager = ownRevenueUploadUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.imports.files.store', $budget), [
+            'file' => ownRevenueUploadedFile(ownRevenueHighlyCompressibleUploadFixture()),
+        ])
+        ->assertSessionHasErrors('file');
+
+    expect($budget->importFiles()->count())->toBe(0);
 });
 
 test('duplicate hashes require explicit reanalysis and then create the next version', function () {

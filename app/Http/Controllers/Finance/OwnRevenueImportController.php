@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportSessionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
@@ -10,6 +11,8 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Gate;
@@ -18,6 +21,10 @@ use Inertia\Response;
 
 class OwnRevenueImportController extends Controller
 {
+    private const ISSUES_PER_PAGE = 50;
+
+    private const VERSIONS_PER_PAGE = 10;
+
     private const SAFE_ISSUE_CONTEXT_FIELDS = [
         'detected_year',
         'fiscal_year',
@@ -30,37 +37,30 @@ class OwnRevenueImportController extends Controller
         'calculated_cents',
     ];
 
-    public function show(OwnRevenueBudget $budget): Response
+    public function show(Request $request, OwnRevenueBudget $budget): Response
     {
         Gate::authorize('viewImports', $budget);
 
         $session = $this->currentSession($budget);
-        $files = OwnRevenueImportFile::query()
-            ->whereBelongsTo($budget, 'budget')
-            ->with(['issues' => fn ($query) => $query->orderBy('id')])
+        $abpreFile = $this->fileSummaryQuery($budget)
+            ->where('format', OwnRevenueImportFormat::Abpre)
             ->orderByDesc('version_number')
             ->orderByDesc('id')
-            ->get();
-        $abpreFile = $files->first(
-            fn (OwnRevenueImportFile $file): bool => $file->format === OwnRevenueImportFormat::Abpre,
-        );
+            ->first();
+        $selectedFile = $request->integer('import_file_id') > 0
+            ? $this->fileSummaryQuery($budget)->find($request->integer('import_file_id'))
+            : $abpreFile;
 
         return Inertia::render('finance/own-revenue/imports/show', [
             'budget' => $this->budgetData($budget),
             'session' => $session === null ? null : $this->sessionData($session),
             'slots' => collect(OwnRevenueImportFormat::cases())
-                ->map(fn (OwnRevenueImportFormat $format): array => [
-                    'format' => $format->value,
-                    'label' => $this->formatLabel($format),
-                    'versions' => $files
-                        ->where('format', $format)
-                        ->values()
-                        ->map(fn (OwnRevenueImportFile $file): array => $this->fileData($file)),
-                ]),
-            'unassigned_files' => $files
-                ->whereNull('format')
-                ->values()
-                ->map(fn (OwnRevenueImportFile $file): array => $this->fileData($file)),
+                ->map(fn (OwnRevenueImportFormat $format): array => $this->slotData($budget, $format)),
+            ...$this->unassignedFilesData($budget),
+            'selected_file' => $selectedFile === null ? null : [
+                ...$this->fileData($selectedFile),
+                'issues' => $this->issuesData($selectedFile),
+            ],
             'preview' => $this->previewData($abpreFile),
             'permissions' => [
                 'upload' => Gate::allows('manageImports', $budget),
@@ -69,6 +69,68 @@ class OwnRevenueImportController extends Controller
                 'download' => Gate::allows('viewImports', $budget),
             ],
         ]);
+    }
+
+    /** @return Builder<OwnRevenueImportFile> */
+    private function fileSummaryQuery(OwnRevenueBudget $budget): Builder
+    {
+        return OwnRevenueImportFile::query()
+            ->select([
+                'id', 'own_revenue_budget_id', 'original_name', 'size_bytes', 'format', 'detected_format',
+                'detected_year', 'version_number', 'status', 'detection_confidence', 'analyzed_at',
+                'confirmed_at',
+            ])
+            ->whereBelongsTo($budget, 'budget')
+            ->withCount([
+                'issues as error_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Error),
+                'issues as warning_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Warning),
+                'issues as info_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Info),
+            ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function slotData(OwnRevenueBudget $budget, OwnRevenueImportFormat $format): array
+    {
+        $versions = $this->fileSummaryQuery($budget)
+            ->where('format', $format)
+            ->orderByDesc('version_number')
+            ->orderByDesc('id')
+            ->paginate(
+                self::VERSIONS_PER_PAGE,
+                ['*'],
+                "{$format->value}_versions_page",
+            );
+
+        return [
+            'format' => $format->value,
+            'label' => $this->formatLabel($format),
+            'versions' => $versions->getCollection()
+                ->map(fn (OwnRevenueImportFile $file): array => $this->fileData($file)),
+            'versions_total' => $versions->total(),
+            'versions_current_page' => $versions->currentPage(),
+            'versions_last_page' => $versions->lastPage(),
+            'versions_has_more' => $versions->hasMorePages(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function unassignedFilesData(OwnRevenueBudget $budget): array
+    {
+        $files = $this->fileSummaryQuery($budget)
+            ->whereNull('format')
+            ->orderByDesc('id')
+            ->paginate(self::VERSIONS_PER_PAGE, ['*'], 'unassigned_page');
+
+        return [
+            'unassigned_files' => $files->getCollection()
+                ->map(fn (OwnRevenueImportFile $file): array => $this->fileData($file)),
+            'unassigned_files_meta' => [
+                'total' => $files->total(),
+                'current_page' => $files->currentPage(),
+                'last_page' => $files->lastPage(),
+                'has_more' => $files->hasMorePages(),
+            ],
+        ];
     }
 
     private function currentSession(OwnRevenueBudget $budget): ?OwnRevenueImportSession
@@ -117,10 +179,6 @@ class OwnRevenueImportController extends Controller
     /** @return array<string, mixed> */
     private function fileData(OwnRevenueImportFile $file): array
     {
-        $issueCounts = $file->issues->countBy(
-            fn (OwnRevenueImportIssue $issue): string => $issue->severity->value,
-        );
-
         return [
             'id' => $file->id,
             'name' => $file->original_name,
@@ -136,11 +194,21 @@ class OwnRevenueImportController extends Controller
             'confirmed' => $file->confirmed_at !== null,
             'confirmed_at' => $file->confirmed_at?->toISOString(),
             'issue_counts' => [
-                'error' => $issueCounts->get('error', 0),
-                'warning' => $issueCounts->get('warning', 0),
-                'info' => $issueCounts->get('info', 0),
+                'error' => (int) ($file->error_issues_count ?? 0),
+                'warning' => (int) ($file->warning_issues_count ?? 0),
+                'info' => (int) ($file->info_issues_count ?? 0),
             ],
-            'issues' => $file->issues->map(fn (OwnRevenueImportIssue $issue): array => [
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function issuesData(OwnRevenueImportFile $file): array
+    {
+        $issues = $file->issues()
+            ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
+            ->orderBy('id')
+            ->paginate(self::ISSUES_PER_PAGE, ['*'], 'issues_page')
+            ->through(fn (OwnRevenueImportIssue $issue): array => [
                 'id' => $issue->id,
                 'severity' => $issue->severity->value,
                 'code' => $issue->code,
@@ -150,8 +218,11 @@ class OwnRevenueImportController extends Controller
                     $issue->context ?? [],
                     self::SAFE_ISSUE_CONTEXT_FIELDS,
                 )),
-            ]),
-        ];
+            ]);
+        $data = $issues->toArray();
+        $data['has_more'] = $issues->hasMorePages();
+
+        return $data;
     }
 
     /** @return array<string, mixed> */
