@@ -3,7 +3,7 @@
 final class OwnRevenueXlsxFixtureFactory
 {
     /**
-     * @param  array<string, array<int, array<string, string|array{value?: string|null, formula?: string, type?: string}>>>  $sheets
+     * @param  array<string, array<int, array<string, string|array{value?: string|null, formula?: string, formula_attributes?: array<string, string>, type?: string}>>>  $sheets
      */
     public static function create(array $sheets): string
     {
@@ -125,7 +125,13 @@ final class OwnRevenueXlsxFixtureFactory
                 $coordinate = strtoupper($column).$rowNumber;
                 $type = $cell['type'] ?? 'inline';
                 $value = $cell['value'] ?? null;
-                $formula = isset($cell['formula']) ? '<f>'.self::xml($cell['formula']).'</f>' : '';
+                $formulaAttributes = '';
+                foreach ($cell['formula_attributes'] ?? [] as $attribute => $attributeValue) {
+                    $formulaAttributes .= ' '.self::xml($attribute).'="'.self::xml($attributeValue).'"';
+                }
+                $formula = isset($cell['formula'])
+                    ? '<f'.$formulaAttributes.'>'.self::xml($cell['formula']).'</f>'
+                    : '';
 
                 if ($type === 'shared') {
                     $cellXml .= '<c r="'.$coordinate.'" t="s">'.$formula.'<v>'.$sharedStrings[(string) $value].'</v></c>';

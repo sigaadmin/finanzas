@@ -171,6 +171,7 @@ class XlsxWorkbookReader
     ): array {
         $rows = [];
         $previousRowNumber = 0;
+        $sharedFormulas = [];
 
         foreach ($sheet->xpath('//*[local-name()="sheetData"]/*[local-name()="row"]') ?: [] as $row) {
             $totalRows++;
@@ -201,7 +202,7 @@ class XlsxWorkbookReader
                 $cells[$column] = new XlsxCell(
                     coordinate: $coordinate,
                     value: $this->cellValue($cell, $sharedStrings),
-                    formula: $this->optionalChildText($cell, 'f'),
+                    formula: $this->cellFormula($cell, $coordinate, $sharedFormulas),
                 );
             }
 
@@ -231,6 +232,85 @@ class XlsxWorkbookReader
         }
 
         return $value;
+    }
+
+    /**
+     * @param  array<string, array{coordinate:string,formula:string}>  $sharedFormulas
+     */
+    private function cellFormula(SimpleXMLElement $cell, string $coordinate, array &$sharedFormulas): ?string
+    {
+        $formulas = $cell->xpath('./*[local-name()="f"]') ?: [];
+        if ($formulas === []) {
+            return null;
+        }
+
+        $formula = $formulas[0];
+        $formulaText = trim((string) $formula);
+        if ((string) $formula['t'] !== 'shared') {
+            return $formulaText;
+        }
+
+        $sharedIndex = (string) $formula['si'];
+        if ($formulaText !== '') {
+            $sharedFormulas[$sharedIndex] = ['coordinate' => $coordinate, 'formula' => $formulaText];
+
+            return $formulaText;
+        }
+
+        $master = $sharedFormulas[$sharedIndex] ?? null;
+        if ($master === null) {
+            return '';
+        }
+
+        return $this->translateSharedFormula($master['formula'], $master['coordinate'], $coordinate);
+    }
+
+    private function translateSharedFormula(string $formula, string $sourceCoordinate, string $targetCoordinate): string
+    {
+        if (! preg_match('/^([A-Z]+)(\d+)$/', $sourceCoordinate, $source)
+            || ! preg_match('/^([A-Z]+)(\d+)$/', $targetCoordinate, $target)) {
+            return $formula;
+        }
+
+        $columnOffset = $this->columnNumber($target[1]) - $this->columnNumber($source[1]);
+        $rowOffset = (int) $target[2] - (int) $source[2];
+
+        return preg_replace_callback(
+            '/(?<![A-Z0-9_])(\$?)([A-Z]{1,3})(\$?)(\d+)/i',
+            function (array $match) use ($columnOffset, $rowOffset): string {
+                $column = $match[1] === '$'
+                    ? strtoupper($match[2])
+                    : $this->columnName(max(1, $this->columnNumber($match[2]) + $columnOffset));
+                $row = $match[3] === '$'
+                    ? (int) $match[4]
+                    : max(1, (int) $match[4] + $rowOffset);
+
+                return $match[1].$column.$match[3].$row;
+            },
+            $formula,
+        ) ?? $formula;
+    }
+
+    private function columnNumber(string $column): int
+    {
+        $number = 0;
+        foreach (str_split(strtoupper($column)) as $letter) {
+            $number = ($number * 26) + ord($letter) - ord('A') + 1;
+        }
+
+        return $number;
+    }
+
+    private function columnName(int $number): string
+    {
+        $column = '';
+        while ($number > 0) {
+            $number--;
+            $column = chr(ord('A') + ($number % 26)).$column;
+            $number = intdiv($number, 26);
+        }
+
+        return $column;
     }
 
     private function requiredXml(ZipArchive $zip, string $name): SimpleXMLElement

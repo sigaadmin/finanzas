@@ -34,6 +34,30 @@ test('reader preserves cached values formulas coordinates and sheet names', func
         ->and($workbook->sheet('ABRPRE-01')->row(6)->cell('A')->value)->toBe('Clave Unidad Responsable');
 });
 
+test('reader reconstructs shared formulas for master and follower cells', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'HOJA FINAL' => [
+            5 => ['G' => [
+                'value' => '10',
+                'formula' => 'A5+B5',
+                'formula_attributes' => ['t' => 'shared', 'si' => '4', 'ref' => 'G5:G6'],
+                'type' => 'number',
+            ]],
+            6 => ['G' => [
+                'value' => '20',
+                'formula' => '',
+                'formula_attributes' => ['t' => 'shared', 'si' => '4'],
+                'type' => 'number',
+            ]],
+        ],
+    ]);
+
+    $sheet = (new XlsxWorkbookReader)->read($fixture)->sheet('HOJA FINAL');
+
+    expect($sheet->row(5)->cell('G')->formula)->toBe('A5+B5')
+        ->and($sheet->row(6)->cell('G')->formula)->toBe('A6+B6');
+});
+
 test('reader preserves sparse cells and explicit empty cached values', function () {
     $fixture = OwnRevenueXlsxFixtureFactory::create([
         'FICHA' => [3 => ['A' => 'Primero', 'D' => ['value' => null, 'type' => 'number']]],

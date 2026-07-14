@@ -35,6 +35,7 @@ class WorkSheetWorkbookParser
         $sourceRows = [];
         $groups = [];
         $currentActivity = null;
+        $warnedRegions = [];
 
         foreach ($sheet->rows() as $rowNumber => $row) {
             if ($rowNumber <= $lastHeaderRow) {
@@ -42,15 +43,14 @@ class WorkSheetWorkbookParser
             }
 
             [$values, $source] = $this->valuesForHeaders($row, $headers);
-            $specificItemCode = trim($values['partida'] ?? '');
-
-            if (! preg_match('/^\d{5}$/', $specificItemCode)) {
-                continue;
-            }
-
             $activityLabel = trim($values['actividad'] ?? '');
             if ($activityLabel !== '') {
                 $currentActivity = $this->parseActivity($activityLabel);
+            }
+
+            $specificItemCode = trim($values['partida'] ?? '');
+            if ($specificItemCode === '') {
+                continue;
             }
 
             $normalizedValues = $values;
@@ -67,6 +67,20 @@ class WorkSheetWorkbookParser
                 'source_payload' => $source,
                 'normalized_payload' => $normalizedValues,
             ];
+
+            if (! preg_match('/^\d{5}$/', $specificItemCode)) {
+                $issues[] = new ImportIssueData(
+                    OwnRevenueImportIssueSeverity::Error,
+                    'work_sheet.invalid_item_code',
+                    'specific_item_code',
+                    'La partida debe contener exactamente cinco dígitos.',
+                    ['specific_item_code' => $specificItemCode],
+                    $sheet->name,
+                    $rowNumber,
+                );
+
+                continue;
+            }
 
             if ($currentActivity === null) {
                 $issues[] = new ImportIssueData(
@@ -108,7 +122,10 @@ class WorkSheetWorkbookParser
 
             $sourceRegionCode = trim($values['region'] ?? '');
             $sourceRegionName = trim($values['nombre region'] ?? '');
-            if ($sourceRegionCode !== self::REGION_CODE || $sourceRegionName !== self::REGION_NAME) {
+            $regionIsInstitutional = $sourceRegionCode === self::REGION_CODE
+                && $this->normalize($sourceRegionName) === $this->normalize(self::REGION_NAME);
+            $regionWarningKey = $this->normalize($sourceRegionCode).'|'.$this->normalize($sourceRegionName);
+            if (! $regionIsInstitutional && ! isset($warnedRegions[$regionWarningKey])) {
                 $issues[] = new ImportIssueData(
                     OwnRevenueImportIssueSeverity::Warning,
                     'region.normalized',
@@ -122,11 +139,27 @@ class WorkSheetWorkbookParser
                     $sheet->name,
                     $rowNumber,
                 );
+                $warnedRegions[$regionWarningKey] = true;
             }
 
             $months = [];
             $invalidAmount = false;
             foreach (self::MONTHS as $month => $header) {
+                $sourceCell = $source[$header];
+                if ($sourceCell['value'] === null && $sourceCell['formula'] !== null) {
+                    $issues[] = new ImportIssueData(
+                        OwnRevenueImportIssueSeverity::Error,
+                        'amount.invalid',
+                        $header,
+                        'La fórmula mensual no tiene un valor calculado disponible.',
+                        ['value' => null, 'formula' => $sourceCell['formula']],
+                        $sheet->name,
+                        $rowNumber,
+                    );
+                    $invalidAmount = true;
+                    break;
+                }
+
                 $amountCents = $this->pesosToCents($values[$header] ?? null, blankAsZero: true);
                 if ($amountCents === null) {
                     $issues[] = new ImportIssueData(
@@ -144,30 +177,45 @@ class WorkSheetWorkbookParser
                 $months[$month] = $amountCents;
             }
 
-            $sourceAnnual = $this->pesosToCents($values['anual'] ?? null);
-            if ($sourceAnnual === null) {
-                $issues[] = new ImportIssueData(
-                    OwnRevenueImportIssueSeverity::Error,
-                    'amount.invalid',
-                    'anual',
-                    'El importe anual no es válido.',
-                    ['value' => $values['anual'] ?? null],
-                    $sheet->name,
-                    $rowNumber,
-                );
-                $invalidAmount = true;
-            }
-
             if ($invalidAmount) {
                 continue;
             }
 
             $calculatedAnnual = $this->sum($months);
+            if ($calculatedAnnual === null) {
+                $issues[] = new ImportIssueData(
+                    OwnRevenueImportIssueSeverity::Error,
+                    'amount.overflow',
+                    'annual',
+                    'La suma anual excede el importe máximo permitido.',
+                    ['source_rows' => [$rowNumber]],
+                    $sheet->name,
+                    $rowNumber,
+                );
+
+                continue;
+            }
+
             $sourceRowIndex = array_key_last($sourceRows);
             $sourceRows[$sourceRowIndex]['normalized_payload']['months'] = $months;
             $sourceRows[$sourceRowIndex]['normalized_payload']['annual_amount_cents'] = $calculatedAnnual;
 
-            if ($sourceAnnual !== $calculatedAnnual) {
+            $sourceAnnual = $this->pesosToCents($values['anual'] ?? null);
+            if ($sourceAnnual === null) {
+                $issues[] = new ImportIssueData(
+                    OwnRevenueImportIssueSeverity::Warning,
+                    'work_sheet.annual_unavailable',
+                    'annual',
+                    'El anual informado no está disponible; se usará la suma mensual.',
+                    [
+                        'value' => $values['anual'] ?? null,
+                        'formula' => $source['anual']['formula'],
+                        'calculated_cents' => $calculatedAnnual,
+                    ],
+                    $sheet->name,
+                    $rowNumber,
+                );
+            } elseif ($sourceAnnual !== $calculatedAnnual) {
                 $issues[] = new ImportIssueData(
                     OwnRevenueImportIssueSeverity::Warning,
                     'work_sheet.annual_mismatch',
@@ -190,10 +238,15 @@ class WorkSheetWorkbookParser
                     'source_regions' => [],
                     'months' => array_fill(1, 12, '0'),
                     'source_rows' => [],
+                    'invalid' => false,
+                    'overflow_reported' => false,
                 ];
             }
 
             $itemName = trim($values['insumo'] ?? '');
+            if ($groups[$key]['item_name'] === '' && $itemName !== '') {
+                $groups[$key]['item_name'] = $itemName;
+            }
             if ($itemName !== '' && ! in_array($itemName, $groups[$key]['item_names'], true)) {
                 $groups[$key]['item_names'][] = $itemName;
             }
@@ -202,11 +255,34 @@ class WorkSheetWorkbookParser
                 $groups[$key]['source_regions'][] = $sourceRegion;
             }
             foreach ($months as $month => $amountCents) {
-                $groups[$key]['months'][$month] = $this->add($groups[$key]['months'][$month], $amountCents);
+                $groupedAmount = $this->add($groups[$key]['months'][$month], $amountCents);
+                if ($groupedAmount === null) {
+                    $groups[$key]['invalid'] = true;
+                    if (! $groups[$key]['overflow_reported']) {
+                        $issues[] = new ImportIssueData(
+                            OwnRevenueImportIssueSeverity::Error,
+                            'amount.overflow',
+                            self::MONTHS[$month],
+                            'La suma mensual agrupada excede el importe máximo permitido.',
+                            [
+                                'activity_code' => $currentActivity['code'],
+                                'specific_item_code' => $specificItemCode,
+                                'source_rows' => [...$groups[$key]['source_rows'], $rowNumber],
+                            ],
+                            $sheet->name,
+                            $rowNumber,
+                        );
+                        $groups[$key]['overflow_reported'] = true;
+                    }
+
+                    continue;
+                }
+                $groups[$key]['months'][$month] = $groupedAmount;
             }
             $groups[$key]['source_rows'][] = $rowNumber;
         }
 
+        $lines = [];
         foreach ($groups as $group) {
             if (count($group['source_rows']) > 1) {
                 $issues[] = new ImportIssueData(
@@ -238,20 +314,42 @@ class WorkSheetWorkbookParser
                     $sheet->name,
                 );
             }
-        }
 
-        $lines = array_map(fn (array $group): WorkSheetLineData => new WorkSheetLineData(
-            activityCode: $group['activity_code'],
-            activityName: $group['activity_name'],
-            itemName: $group['item_name'],
-            specificItemCode: $group['specific_item_code'],
-            regionCode: self::REGION_CODE,
-            regionName: self::REGION_NAME,
-            sourceRegions: $group['source_regions'],
-            months: $group['months'],
-            annualAmountCents: $this->sum($group['months']),
-            sourceRows: $group['source_rows'],
-        ), array_values($groups));
+            if ($group['invalid']) {
+                continue;
+            }
+
+            $annualAmountCents = $this->sum($group['months']);
+            if ($annualAmountCents === null) {
+                $issues[] = new ImportIssueData(
+                    OwnRevenueImportIssueSeverity::Error,
+                    'amount.overflow',
+                    'annual',
+                    'La suma anual agrupada excede el importe máximo permitido.',
+                    [
+                        'activity_code' => $group['activity_code'],
+                        'specific_item_code' => $group['specific_item_code'],
+                        'source_rows' => $group['source_rows'],
+                    ],
+                    $sheet->name,
+                );
+
+                continue;
+            }
+
+            $lines[] = new WorkSheetLineData(
+                activityCode: $group['activity_code'],
+                activityName: $group['activity_name'],
+                itemName: $group['item_name'],
+                specificItemCode: $group['specific_item_code'],
+                regionCode: self::REGION_CODE,
+                regionName: self::REGION_NAME,
+                sourceRegions: $group['source_regions'],
+                months: $group['months'],
+                annualAmountCents: $annualAmountCents,
+                sourceRows: $group['source_rows'],
+            );
+        }
 
         return new WorkSheetAnalysis($lines, $issues, $sourceRows);
     }
@@ -260,8 +358,13 @@ class WorkSheetWorkbookParser
     private function findHeader(XlsxWorkbook $workbook): array
     {
         $required = ['actividad', 'insumo', 'partida', 'region', 'nombre region', 'presupuesto', 'anual', ...array_values(self::MONTHS)];
+        $preferredSheets = array_filter(
+            $workbook->sheets(),
+            fn (XlsxSheet $sheet): bool => $this->normalize($sheet->name) === 'hoja final',
+        );
+        $candidateSheets = $preferredSheets !== [] ? $preferredSheets : $workbook->sheets();
 
-        foreach ($workbook->sheets() as $sheet) {
+        foreach ($candidateSheets as $sheet) {
             $rows = $sheet->rows();
             foreach ($rows as $rowNumber => $upperRow) {
                 $lowerRow = $rows[$rowNumber + 1] ?? null;
@@ -363,17 +466,20 @@ class WorkSheetWorkbookParser
     }
 
     /** @param array<int, string> $values */
-    private function sum(array $values): string
+    private function sum(array $values): ?string
     {
         $sum = '0';
         foreach ($values as $value) {
             $sum = $this->add($sum, $value);
+            if ($sum === null) {
+                return null;
+            }
         }
 
         return $sum;
     }
 
-    private function add(string $left, string $right): string
+    private function add(string $left, string $right): ?string
     {
         $carry = 0;
         $result = '';
@@ -390,7 +496,17 @@ class WorkSheetWorkbookParser
             $result .= (string) $carry;
         }
 
-        return strrev($result);
+        $result = strrev($result);
+
+        return $this->exceedsUnsignedBigInteger($result) ? null : $result;
+    }
+
+    private function exceedsUnsignedBigInteger(string $value): bool
+    {
+        $maximum = '18446744073709551615';
+
+        return strlen($value) > strlen($maximum)
+            || (strlen($value) === strlen($maximum) && strcmp($value, $maximum) > 0);
     }
 
     private function normalize(string $value): string
