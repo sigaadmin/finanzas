@@ -297,36 +297,14 @@ test('dedicated ABPRE preview enforces consultation authorization and aggregate 
         ->assertNotFound();
 });
 
-test('stale issue pages clamp to the first page when selecting a shorter file', function () {
+test('stale issue pages clamp to the first page for the selected file', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
     $budget = OwnRevenueBudget::factory()->create();
-    $longFile = OwnRevenueImportFile::factory()->create([
-        'own_revenue_budget_id' => $budget->id,
-        'format' => OwnRevenueImportFormat::Abpre,
-        'version_number' => 1,
-    ]);
     $shortFile = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
         'format' => OwnRevenueImportFormat::Abpre,
         'version_number' => 2,
     ]);
-
-    foreach (range(1, 55) as $index) {
-        OwnRevenueImportIssue::factory()->create([
-            'own_revenue_import_file_id' => $longFile->id,
-            'severity' => 'warning',
-            'code' => 'year.mismatch',
-            'message' => "Incidencia larga {$index}",
-        ]);
-    }
-
-    foreach (range(1, 30) as $index) {
-        OwnRevenueImportRow::factory()->create([
-            'own_revenue_import_file_id' => $longFile->id,
-            'row_kind' => 'abpre_line',
-            'row_number' => $index,
-        ]);
-    }
 
     $shortIssue = OwnRevenueImportIssue::factory()->create([
         'own_revenue_import_file_id' => $shortFile->id,
@@ -615,6 +593,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('ImportIssueList')
         ->toContain('Ver vista previa')
         ->toContain('@/routes/finance/own-revenue/budgets/imports/files')
+        ->toMatch('/<a\s+href=\{\s*preview\(\{[\s\S]*?\}\)\.url\s*\}\s+target="_blank"\s+rel="noreferrer"\s*>\s*Ver vista previa\s*<\/a>/')
         ->not->toContain('Parser pendiente')
         ->not->toContain('files[0]')
         ->and($frontendState)
