@@ -8,7 +8,7 @@ import {
     resolveFailedUpload,
     startImportMutation,
     takeNextUpload,
-} from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.ts';
+} from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.js';
 
 test('mutation feedback clears stale errors and exposes validation failures', () => {
     const started = startImportMutation(
