@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('own_revenue_work_sheet_months', function (Blueprint $table) {
             $table->id();
             $table->foreignId('own_revenue_work_sheet_line_id')->constrained()->cascadeOnDelete();
-            $table->unsignedTinyInteger('month');
+            $table->enum('month', array_map(strval(...), range(1, 12)));
             $table->unsignedBigInteger('amount_cents');
             $table->timestamps();
             $table->unique(['own_revenue_work_sheet_line_id', 'month']);

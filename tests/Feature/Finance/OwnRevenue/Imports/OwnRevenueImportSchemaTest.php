@@ -11,6 +11,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetMonth;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use Illuminate\Database\Eloquent\Factories\Sequence;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Schema;
 
@@ -82,10 +83,19 @@ test('work sheet schema stores confirmed activity item calendarization with trac
         'region_name' => 'Felipe Carrillo Puerto',
         'annual_amount_cents' => 12_345,
     ]);
-    $month = OwnRevenueWorkSheetMonth::factory()->for($line, 'line')->create([
-        'month' => 1,
-        'amount_cents' => 1_234,
-    ]);
+    $months = OwnRevenueWorkSheetMonth::factory()
+        ->count(12)
+        ->for($line, 'line')
+        ->sequence(fn (Sequence $sequence): array => [
+            'month' => $sequence->index + 1,
+            'amount_cents' => match ($sequence->index) {
+                0 => 1_234,
+                11 => 1_111,
+                default => 1_000,
+            },
+        ])
+        ->create();
+    $month = $months->firstWhere('month', 1);
     $lineOrigin = $line->origins()->create([
         'own_revenue_import_row_id' => $line->file->rows()->create([
             'sheet_name' => 'HOJA FINAL',
@@ -114,17 +124,36 @@ test('work sheet schema stores confirmed activity item calendarization with trac
         ->and($line->item_name)->toBe('Materiales y útiles de oficina')
         ->and($line->region_code)->toBe('02-001')
         ->and($line->annual_amount_cents)->toBe(12_345)
+        ->and($months)->toHaveCount(12)
+        ->and($months->pluck('month')->all())->toBe(range(1, 12))
+        ->and($months->sum('amount_cents'))->toBe($line->annual_amount_cents)
         ->and($month->amount_cents)->toBe(1_234)
         ->and($lineOrigin->originable->is($line))->toBeTrue()
-        ->and($monthOrigin->originable->is($month))->toBeTrue()
-        ->and(fn () => OwnRevenueWorkSheetLine::factory()->create([
-            'own_revenue_budget_id' => $line->own_revenue_budget_id,
-            'own_revenue_import_file_id' => $line->own_revenue_import_file_id,
-            'own_revenue_activity_id' => $line->own_revenue_activity_id,
-            'expense_classification_id' => $line->expense_classification_id,
-            'region_code' => $line->region_code,
-        ]))->toThrow(QueryException::class)
-        ->and(fn () => OwnRevenueWorkSheetMonth::factory()->for($line, 'line')->create([
-            'month' => 1,
-        ]))->toThrow(QueryException::class);
+        ->and($monthOrigin->originable->is($month))->toBeTrue();
 });
+
+test('work sheet lines are unique by file activity item and region', function () {
+    $line = OwnRevenueWorkSheetLine::factory()->create();
+
+    expect(fn () => OwnRevenueWorkSheetLine::factory()->create([
+        'own_revenue_budget_id' => $line->own_revenue_budget_id,
+        'own_revenue_import_file_id' => $line->own_revenue_import_file_id,
+        'own_revenue_activity_id' => $line->own_revenue_activity_id,
+        'expense_classification_id' => $line->expense_classification_id,
+        'region_code' => $line->region_code,
+    ]))->toThrow(QueryException::class);
+});
+
+test('work sheet months are unique within a line', function () {
+    $month = OwnRevenueWorkSheetMonth::factory()->create(['month' => 1]);
+
+    expect(fn () => OwnRevenueWorkSheetMonth::factory()->for($month->line, 'line')->create([
+        'month' => 1,
+    ]))->toThrow(QueryException::class);
+});
+
+test('work sheet months reject values outside the calendar year', function (int $month) {
+    expect(fn () => OwnRevenueWorkSheetMonth::factory()->create([
+        'month' => $month,
+    ]))->toThrow(QueryException::class);
+})->with([0, 13]);

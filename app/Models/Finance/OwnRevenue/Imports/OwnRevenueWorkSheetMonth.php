@@ -15,6 +15,14 @@ class OwnRevenueWorkSheetMonth extends Model
     /** @use HasFactory<OwnRevenueWorkSheetMonthFactory> */
     use HasFactory;
 
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'month' => 'integer',
+        ];
+    }
+
     /** @return BelongsTo<OwnRevenueWorkSheetLine, $this> */
     public function line(): BelongsTo
     {
