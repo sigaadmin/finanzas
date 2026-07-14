@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('specific_item_code');
             $table->string('region_code')->default('02-001');
             $table->string('region_name')->default('Felipe Carrillo Puerto');
-            $table->unsignedBigInteger('annual_amount_cents');
+            $table->bigInteger('annual_amount_cents');
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();
 

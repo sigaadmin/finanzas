@@ -13,6 +13,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\AbpreWorkbookParser;
+use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
 use App\Services\Finance\OwnRevenue\Imports\WorkSheetWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,7 @@ class AnalyzeOwnRevenueImportFile
         private readonly WorkSheetWorkbookParser $workSheetParser,
         private readonly ReconcileOwnRevenueWorkSheetWithAbpre $reconcileWorkSheet = new ReconcileOwnRevenueWorkSheetWithAbpre,
         private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot = new CaptureOwnRevenueImportAnalysisSnapshot,
+        private readonly CanonicalJson $canonicalJson = new CanonicalJson,
     ) {}
 
     public function handle(OwnRevenueImportFile $file, User $user): OwnRevenueImportFile
@@ -184,7 +186,7 @@ class AnalyzeOwnRevenueImportFile
             foreach ($analysis->sourceRows as $sourceRow) {
                 $row = $lockedFile->rows()->create([
                     ...$sourceRow,
-                    'row_hash' => hash('sha256', json_encode($sourceRow['source_payload'], JSON_THROW_ON_ERROR)),
+                    'row_hash' => $this->canonicalJson->hash($sourceRow['source_payload']),
                 ]);
                 $rows[$sourceRow['sheet_name'].'|'.$sourceRow['row_number']] = $row;
             }
@@ -201,7 +203,7 @@ class AnalyzeOwnRevenueImportFile
                     'sheet_name' => $normalizedSheet,
                     'row_number' => $index + 1,
                     'row_kind' => $normalizedRowKind,
-                    'row_hash' => hash('sha256', json_encode($line, JSON_THROW_ON_ERROR)),
+                    'row_hash' => $this->canonicalJson->hash((array) $line),
                     'source_payload' => ['source_rows' => $line->sourceRows],
                     'normalized_payload' => (array) $line,
                 ]);
@@ -212,7 +214,7 @@ class AnalyzeOwnRevenueImportFile
                     'sheet_name' => '__normalized_justifications__',
                     'row_number' => $index + 1,
                     'row_kind' => 'abpre_justification',
-                    'row_hash' => hash('sha256', json_encode($justification, JSON_THROW_ON_ERROR)),
+                    'row_hash' => $this->canonicalJson->hash((array) $justification),
                     'source_payload' => ['source_row' => $justification->sourceRow],
                     'normalized_payload' => (array) $justification,
                 ]);

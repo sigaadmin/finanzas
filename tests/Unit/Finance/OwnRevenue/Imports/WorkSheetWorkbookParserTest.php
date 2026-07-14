@@ -254,7 +254,7 @@ test('work sheet parser prioritizes the semantic HOJA FINAL over an earlier comp
 });
 
 test('work sheet parser blocks annual overflow across months', function () {
-    $maximumPesos = '184467440737095516.15';
+    $maximumPesos = '92233720368547758.07';
     $fixture = workSheetParserFixture([
         5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => $maximumPesos, ...workSheetMonths($maximumPesos, '0.01'), 'S' => $maximumPesos],
     ]);
@@ -270,7 +270,7 @@ test('work sheet parser blocks annual overflow across months', function () {
 });
 
 test('work sheet parser blocks overflow while grouping duplicate months', function () {
-    $maximumPesos = '184467440737095516.15';
+    $maximumPesos = '92233720368547758.07';
     $fixture = workSheetParserFixture([
         5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => $maximumPesos, ...workSheetMonths($maximumPesos), 'S' => $maximumPesos],
         6 => ['B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => '0.01', ...workSheetMonths('0.01'), 'S' => '0.01'],
@@ -283,6 +283,35 @@ test('work sheet parser blocks overflow while grouping duplicate months', functi
     expect($issue)->not->toBeNull()
         ->and($issue->severity)->toBe(OwnRevenueImportIssueSeverity::Error)
         ->and($issue->field)->toBe('enero')
+        ->and($analysis->lines)->toBeEmpty();
+});
+
+test('work sheet parser accepts the exact portable signed BIGINT cents boundary', function () {
+    $maximumPesos = '92233720368547758.07';
+    $fixture = workSheetParserFixture([
+        5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => $maximumPesos, ...workSheetMonths($maximumPesos), 'S' => $maximumPesos],
+    ]);
+    [$parser, $reader] = workSheetParserServices();
+
+    $analysis = $parser->parse($reader->read($fixture), ['A03-A01' => 1], ['21101' => 11]);
+
+    expect($analysis->lines)->toHaveCount(1)
+        ->and($analysis->lines[0]->months[1])->toBe('9223372036854775807')
+        ->and($analysis->lines[0]->annualAmountCents)->toBe('9223372036854775807')
+        ->and(collect($analysis->issues)->where('severity', OwnRevenueImportIssueSeverity::Error))->toBeEmpty();
+});
+
+test('work sheet parser blocks cents above the portable signed BIGINT boundary', function () {
+    $overflowPesos = '92233720368547758.08';
+    $fixture = workSheetParserFixture([
+        5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => $overflowPesos, ...workSheetMonths($overflowPesos), 'S' => $overflowPesos],
+    ]);
+    [$parser, $reader] = workSheetParserServices();
+
+    $analysis = $parser->parse($reader->read($fixture), ['A03-A01' => 1], ['21101' => 11]);
+    $issue = collect($analysis->issues)->firstWhere('severity', OwnRevenueImportIssueSeverity::Error);
+
+    expect($issue)->not->toBeNull()
         ->and($analysis->lines)->toBeEmpty();
 });
 

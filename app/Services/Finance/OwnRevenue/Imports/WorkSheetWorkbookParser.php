@@ -24,6 +24,10 @@ class WorkSheetWorkbookParser
 
     private const REGION_NAME = 'Felipe Carrillo Puerto';
 
+    public function __construct(
+        private readonly PortableIntegerAmount $amounts = new PortableIntegerAmount,
+    ) {}
+
     /**
      * @param  array<string, int>  $activityMap
      * @param  array<string, int>  $cogMap
@@ -457,8 +461,7 @@ class WorkSheetWorkbookParser
         }
 
         $cents = ltrim($match[1].str_pad($match[2] ?? '', 2, '0'), '0') ?: '0';
-        $max = '18446744073709551615';
-        if (strlen($cents) > strlen($max) || (strlen($cents) === strlen($max) && strcmp($cents, $max) > 0)) {
+        if (! $this->amounts->isValid($cents)) {
             return null;
         }
 
@@ -468,45 +471,12 @@ class WorkSheetWorkbookParser
     /** @param array<int, string> $values */
     private function sum(array $values): ?string
     {
-        $sum = '0';
-        foreach ($values as $value) {
-            $sum = $this->add($sum, $value);
-            if ($sum === null) {
-                return null;
-            }
-        }
-
-        return $sum;
+        return $this->amounts->sum($values);
     }
 
     private function add(string $left, string $right): ?string
     {
-        $carry = 0;
-        $result = '';
-        $left = strrev($left);
-        $right = strrev($right);
-        $length = max(strlen($left), strlen($right));
-
-        for ($index = 0; $index < $length; $index++) {
-            $total = (int) ($left[$index] ?? 0) + (int) ($right[$index] ?? 0) + $carry;
-            $result .= (string) ($total % 10);
-            $carry = intdiv($total, 10);
-        }
-        if ($carry > 0) {
-            $result .= (string) $carry;
-        }
-
-        $result = strrev($result);
-
-        return $this->exceedsUnsignedBigInteger($result) ? null : $result;
-    }
-
-    private function exceedsUnsignedBigInteger(string $value): bool
-    {
-        $maximum = '18446744073709551615';
-
-        return strlen($value) > strlen($maximum)
-            || (strlen($value) === strlen($maximum) && strcmp($value, $maximum) > 0);
+        return $this->amounts->add($left, $right);
     }
 
     private function normalize(string $value): string

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('own_revenue_work_sheet_line_id')->constrained()->cascadeOnDelete();
             $table->enum('month', array_map(strval(...), range(1, 12)));
-            $table->unsignedBigInteger('amount_cents');
+            $table->bigInteger('amount_cents');
             $table->timestamps();
             $table->unique(['own_revenue_work_sheet_line_id', 'month']);
         });

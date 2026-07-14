@@ -17,6 +17,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportOrigin;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -157,7 +158,7 @@ function readyWorkSheetConfirmationFile(User $manager, ?OwnRevenueBudget $budget
                 'sheet_name' => 'HOJA FINAL',
                 'row_number' => $sourceRow,
                 'row_kind' => 'work_sheet_line',
-                'row_hash' => hash('sha256', json_encode($sourcePayload, JSON_THROW_ON_ERROR)),
+                'row_hash' => app(CanonicalJson::class)->hash($sourcePayload),
                 'source_payload' => $sourcePayload,
                 'normalized_payload' => ['months' => $lineData['months']],
             ]);
@@ -180,7 +181,7 @@ function readyWorkSheetConfirmationFile(User $manager, ?OwnRevenueBudget $budget
             'sheet_name' => '__normalized_work_sheet__',
             'row_number' => $index + 1,
             'row_kind' => 'work_sheet_normalized_line',
-            'row_hash' => hash('sha256', json_encode($normalizedPayload, JSON_THROW_ON_ERROR)),
+            'row_hash' => app(CanonicalJson::class)->hash($normalizedPayload),
             'source_payload' => ['source_rows' => $lineData['source_rows']],
             'normalized_payload' => $normalizedPayload,
         ]);
@@ -314,21 +315,92 @@ test('blocking analysis errors prevent confirmation', function () {
         ->toThrow(ValidationException::class);
 });
 
-test('confirmation rejects altered files and missing normalized staging', function (string $state) {
+test('confirmation distinguishes a missing stored file from an altered SHA', function (string $state, string $message) {
     Storage::fake('local');
     $manager = workSheetConfirmationUser();
     ['file' => $file] = readyWorkSheetConfirmationFile($manager);
-    if ($state === 'file') {
+    if ($state === 'altered') {
         Storage::disk('local')->put($file->storage_path, 'altered-work-sheet');
     } else {
-        $file->rows()->where('row_kind', 'work_sheet_normalized_line')->delete();
+        Storage::disk('local')->delete($file->storage_path);
     }
+
+    try {
+        app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision);
+        $this->fail('La confirmación debió rechazar el archivo almacenado.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors()['file'][0])->toBe($message);
+    }
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Ready)
+        ->and($file->workSheetLines()->exists())->toBeFalse();
+})->with([
+    'ausente' => ['missing', 'No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.'],
+    'alterado' => ['altered', 'El archivo almacenado cambió; vuelva a cargar la Hoja de trabajo.'],
+]);
+
+test('confirmation rejects missing normalized staging', function () {
+    Storage::fake('local');
+    $manager = workSheetConfirmationUser();
+    ['file' => $file] = readyWorkSheetConfirmationFile($manager);
+    $file->rows()->where('row_kind', 'work_sheet_normalized_line')->delete();
 
     expect(fn () => app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision))
         ->toThrow(ValidationException::class);
-    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Ready)
-        ->and($file->workSheetLines()->exists())->toBeFalse();
-})->with(['file', 'staging']);
+});
+
+test('confirmation persists the exact signed BIGINT cents boundary without precision loss', function () {
+    Storage::fake('local');
+    $manager = workSheetConfirmationUser();
+    ['file' => $file] = readyWorkSheetConfirmationFile($manager, lines: [[
+        'activity_code' => 'A03-A01', 'activity_name' => 'Investigación', 'item_name' => 'Papelería',
+        'specific_item_code' => '21101',
+        'months' => [1 => '9223372036854775807', 2 => '0', 3 => '0', 4 => '0', 5 => '0', 6 => '0', 7 => '0', 8 => '0', 9 => '0', 10 => '0', 11 => '0', 12 => '0'],
+        'source_rows' => [5],
+    ]]);
+
+    app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision);
+
+    $line = $file->workSheetLines()->sole();
+    expect((string) $line->annual_amount_cents)->toBe('9223372036854775807')
+        ->and((string) $line->months()->where('month', 1)->sole()->amount_cents)->toBe('9223372036854775807');
+});
+
+test('confirmation defensively rejects staged cents above the signed BIGINT boundary', function () {
+    Storage::fake('local');
+    $manager = workSheetConfirmationUser();
+    ['file' => $file] = readyWorkSheetConfirmationFile($manager);
+    $row = $file->rows()->where('row_kind', 'work_sheet_normalized_line')->firstOrFail();
+    $payload = $row->normalized_payload;
+    $payload['months'][1] = '9223372036854775808';
+    $row->update([
+        'normalized_payload' => $payload,
+        'row_hash' => app(CanonicalJson::class)->hash($payload),
+    ]);
+
+    expect(fn () => app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision))
+        ->toThrow(ValidationException::class);
+    expect($file->workSheetLines()->exists())->toBeFalse();
+});
+
+test('confirmation accepts semantically identical staging with reordered JSON keys but rejects a real change', function (string $state) {
+    Storage::fake('local');
+    $manager = workSheetConfirmationUser();
+    ['file' => $file] = readyWorkSheetConfirmationFile($manager);
+    $row = $file->rows()->where('row_kind', 'work_sheet_normalized_line')->firstOrFail();
+    $payload = array_reverse($row->normalized_payload, true);
+    if ($state === 'changed') {
+        $payload['itemName'] = 'Contenido alterado';
+    }
+    $row->update(['normalized_payload' => $payload]);
+
+    if ($state === 'reordered') {
+        app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision);
+        expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Confirmed);
+    } else {
+        expect(fn () => app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision))
+            ->toThrow(ValidationException::class);
+    }
+})->with(['reordered', 'changed']);
 
 test('confirmation rejects stale analysis UUID and active analysis tokens', function (string $state) {
     Storage::fake('local');

@@ -14,6 +14,8 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
+use App\Services\Finance\OwnRevenue\Imports\PortableIntegerAmount;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -24,10 +26,10 @@ use Throwable;
 
 class ConfirmOwnRevenueWorkSheetImport
 {
-    private const MAXIMUM_UNSIGNED_BIG_INTEGER = '18446744073709551615';
-
     public function __construct(
         private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot,
+        private readonly CanonicalJson $canonicalJson,
+        private readonly PortableIntegerAmount $amounts,
     ) {}
 
     public function handle(
@@ -149,13 +151,24 @@ class ConfirmOwnRevenueWorkSheetImport
 
         try {
             $path = Storage::disk($file->storage_disk)->path($file->storage_path);
-            $hash = hash_file('sha256', $path);
         } catch (Throwable) {
-            $hash = false;
+            $path = null;
         }
-        if ($hash === false || ! hash_equals($file->sha256, $hash)) {
+        if ($path === null || ! is_file($path) || ! is_readable($path)) {
             throw ValidationException::withMessages([
-                'file' => 'La huella del archivo almacenado no coincide.',
+                'file' => 'No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.',
+            ]);
+        }
+
+        $hash = hash_file('sha256', $path);
+        if ($hash === false) {
+            throw ValidationException::withMessages([
+                'file' => 'No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.',
+            ]);
+        }
+        if (! hash_equals($file->sha256, $hash)) {
+            throw ValidationException::withMessages([
+                'file' => 'El archivo almacenado cambió; vuelva a cargar la Hoja de trabajo.',
             ]);
         }
     }
@@ -229,7 +242,7 @@ class ConfirmOwnRevenueWorkSheetImport
     ): void {
         $payload = $normalizedRow->normalized_payload;
         if (! is_array($payload)
-            || ! hash_equals($normalizedRow->row_hash, hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR)))) {
+            || ! hash_equals($normalizedRow->row_hash, $this->canonicalJson->hash($payload))) {
             throw ValidationException::withMessages([
                 'file' => 'Los datos analizados de la Hoja de trabajo ya no son íntegros.',
             ]);
@@ -246,7 +259,10 @@ class ConfirmOwnRevenueWorkSheetImport
         }
 
         $months = $this->validatedMonths($payload['months'] ?? null);
-        $annualAmountCents = $this->sum($months);
+        $annualAmountCents = $this->amounts->sum($months);
+        if ($annualAmountCents === null) {
+            throw ValidationException::withMessages(['file' => 'La suma anual excede el importe máximo permitido.']);
+        }
         $line = OwnRevenueWorkSheetLine::query()->create([
             'own_revenue_budget_id' => $budget->id,
             'own_revenue_import_file_id' => $file->id,
@@ -283,10 +299,10 @@ class ConfirmOwnRevenueWorkSheetImport
         $validated = [];
         foreach (range(1, 12) as $month) {
             $amount = $months[$month] ?? $months[(string) $month] ?? null;
-            if (! is_string($amount) || ! preg_match('/^\d+$/', $amount) || $this->exceedsMaximum($amount)) {
+            if (! is_string($amount) || ! $this->amounts->isValid($amount)) {
                 throw ValidationException::withMessages(['file' => 'La calendarización analizada no es válida.']);
             }
-            $validated[$month] = ltrim($amount, '0') ?: '0';
+            $validated[$month] = $this->amounts->normalize($amount);
         }
 
         if (count($months) !== 12) {
@@ -310,7 +326,7 @@ class ConfirmOwnRevenueWorkSheetImport
         foreach ($rowNumbers as $rowNumber) {
             $sourceRow = is_int($rowNumber) ? $sourceRows->get($rowNumber) : null;
             if (! $sourceRow instanceof OwnRevenueImportRow
-                || ! hash_equals($sourceRow->row_hash, hash('sha256', json_encode($sourceRow->source_payload, JSON_THROW_ON_ERROR)))) {
+                || ! hash_equals($sourceRow->row_hash, $this->canonicalJson->hash($sourceRow->source_payload))) {
                 throw ValidationException::withMessages(['file' => 'El origen de los datos analizados ya no es íntegro.']);
             }
             $origins[] = $sourceRow;
@@ -328,47 +344,5 @@ class ConfirmOwnRevenueWorkSheetImport
                 'field_name' => $fieldName,
             ]);
         }
-    }
-
-    /** @param array<int, string> $amounts */
-    private function sum(array $amounts): string
-    {
-        $sum = '0';
-        foreach ($amounts as $amount) {
-            $sum = $this->add($sum, $amount);
-        }
-
-        return $sum;
-    }
-
-    private function add(string $left, string $right): string
-    {
-        $left = strrev($left);
-        $right = strrev($right);
-        $result = '';
-        $carry = 0;
-        for ($index = 0, $length = max(strlen($left), strlen($right)); $index < $length; $index++) {
-            $total = (int) ($left[$index] ?? 0) + (int) ($right[$index] ?? 0) + $carry;
-            $result .= (string) ($total % 10);
-            $carry = intdiv($total, 10);
-        }
-        if ($carry > 0) {
-            $result .= (string) $carry;
-        }
-        $sum = ltrim(strrev($result), '0') ?: '0';
-        if ($this->exceedsMaximum($sum)) {
-            throw ValidationException::withMessages(['file' => 'La suma anual excede el importe máximo permitido.']);
-        }
-
-        return $sum;
-    }
-
-    private function exceedsMaximum(string $amount): bool
-    {
-        $amount = ltrim($amount, '0') ?: '0';
-
-        return strlen($amount) > strlen(self::MAXIMUM_UNSIGNED_BIG_INTEGER)
-            || (strlen($amount) === strlen(self::MAXIMUM_UNSIGNED_BIG_INTEGER)
-                && strcmp($amount, self::MAXIMUM_UNSIGNED_BIG_INTEGER) > 0);
     }
 }

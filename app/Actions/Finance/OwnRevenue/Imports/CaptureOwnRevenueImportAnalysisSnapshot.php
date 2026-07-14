@@ -10,9 +10,14 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
 
 class CaptureOwnRevenueImportAnalysisSnapshot
 {
+    public function __construct(
+        private readonly CanonicalJson $canonicalJson = new CanonicalJson,
+    ) {}
+
     public function handle(OwnRevenueBudget $budget): OwnRevenueImportAnalysisSnapshot
     {
         $activities = $budget->activities()
@@ -41,31 +46,18 @@ class CaptureOwnRevenueImportAnalysisSnapshot
                 ->map(fn (OwnRevenueAbpreLine $line): array => $line->getAttributes())
                 ->all(),
         ];
-        $source = $this->canonicalize([
+        $source = [
             'budget' => $budget->getAttributes(),
             'activities' => $activities,
             'classifications' => $classifications,
             'confirmed_abpre' => $abpre,
-        ]);
+        ];
 
         return new OwnRevenueImportAnalysisSnapshot(
-            fingerprint: hash('sha256', json_encode($source, JSON_THROW_ON_ERROR)),
+            fingerprint: $this->canonicalJson->hash($source),
             budget: $budget->getAttributes(),
             activityMap: collect($activities)->pluck('id', 'code')->map(fn (mixed $id): int => (int) $id)->all(),
             cogMap: collect($classifications)->pluck('id', 'specific_item_code')->map(fn (mixed $id): int => (int) $id)->all(),
-        );
-    }
-
-    /** @return array<mixed> */
-    private function canonicalize(array $value): array
-    {
-        if (! array_is_list($value)) {
-            ksort($value);
-        }
-
-        return array_map(
-            fn (mixed $item): mixed => is_array($item) ? $this->canonicalize($item) : $item,
-            $value,
         );
     }
 }
