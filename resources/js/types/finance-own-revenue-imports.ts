@@ -78,6 +78,8 @@ export type OwnRevenueImportSlot = {
     versions_current_page: number;
     versions_last_page: number;
     versions_has_more: boolean;
+    has_active: boolean;
+    is_missing: boolean;
     has_confirmed: boolean;
     has_parser_pending: boolean;
     latest_status: OwnRevenueImportFileStatus | null;

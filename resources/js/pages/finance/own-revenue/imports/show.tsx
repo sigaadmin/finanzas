@@ -1,11 +1,18 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Download, FileQuestion, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
 import OwnRevenueImportFileController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportFileController';
 import AbprePreview, {
     formatCents,
 } from '@/components/finance/own-revenue/imports/abpre-preview';
 import ImportFileSlot from '@/components/finance/own-revenue/imports/import-file-slot';
 import ImportIssueList from '@/components/finance/own-revenue/imports/import-issue-list';
+import {
+    failImportMutation,
+    finishImportMutation,
+    initialImportMutation,
+    startImportMutation,
+} from '@/components/finance/own-revenue/imports/import-workspace-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,21 +57,33 @@ export default function OwnRevenueImportShow({
     const parserPendingCount = slots.filter(
         (slot) => slot.has_parser_pending,
     ).length;
-    const missingCount = slots.filter(
-        (slot) => slot.versions_total === 0,
-    ).length;
+    const missingCount = slots.filter((slot) => slot.is_missing).length;
+    const [mutationFeedback, setMutationFeedback] = useState(
+        initialImportMutation,
+    );
 
     const assignUnclassified = (
         fileId: number,
         format: OwnRevenueImportFormat,
     ): void => {
+        setMutationFeedback((current) => startImportMutation(current, fileId));
         router.put(
             OwnRevenueImportFileController.updateFormat({
                 budget: budget.id,
                 importFile: fileId,
             }),
             { format },
-            { preserveScroll: true },
+            {
+                preserveScroll: true,
+                onError: (errors) =>
+                    setMutationFeedback((current) =>
+                        failImportMutation(current, errors),
+                    ),
+                onFinish: () =>
+                    setMutationFeedback((current) =>
+                        finishImportMutation(current),
+                    ),
+            },
         );
     };
 
@@ -198,6 +217,15 @@ export default function OwnRevenueImportShow({
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-2">
+                            {mutationFeedback.error && (
+                                <p
+                                    role="alert"
+                                    aria-live="assertive"
+                                    className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                                >
+                                    {mutationFeedback.error}
+                                </p>
+                            )}
                             {unassignedFiles.map((file) => (
                                 <div
                                     key={file.id}
@@ -240,6 +268,10 @@ export default function OwnRevenueImportShow({
                                                 <select
                                                     aria-label={`Asignar tipo de ${file.name}`}
                                                     defaultValue=""
+                                                    disabled={
+                                                        mutationFeedback.activeFileId !==
+                                                        null
+                                                    }
                                                     onChange={(event) =>
                                                         assignUnclassified(
                                                             file.id,

@@ -12,6 +12,14 @@ import {
 import { useRef, useState } from 'react';
 import OwnRevenueImportAnalysisController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportAnalysisController';
 import OwnRevenueImportFileController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportFileController';
+import {
+    failImportMutation,
+    finishImportMutation,
+    initialImportMutation,
+    resolveFailedUpload,
+    startImportMutation,
+    takeNextUpload,
+} from '@/components/finance/own-revenue/imports/import-workspace-state';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -124,6 +132,9 @@ export default function ImportFileSlot({
     );
     const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
     const [duplicateUploads, setDuplicateUploads] = useState<File[]>([]);
+    const [mutationFeedback, setMutationFeedback] = useState(
+        initialImportMutation,
+    );
     const uploadForm = useForm<UploadData>({
         file: null,
         force_reanalysis: false,
@@ -139,8 +150,8 @@ export default function ImportFileSlot({
             return;
         }
 
-        const remainingQueue = [...uploadQueueRef.current];
-        const nextUpload = remainingQueue.shift();
+        const { current: nextUpload, remaining: remainingQueue } =
+            takeNextUpload(uploadQueueRef.current);
 
         if (!nextUpload) {
             return;
@@ -165,13 +176,18 @@ export default function ImportFileSlot({
                 const message =
                     errors.file ?? 'No fue posible cargar el archivo.';
                 setFailedUploads((failures) => [
-                    ...failures,
+                    ...resolveFailedUpload(failures, nextUpload.file),
                     { file: nextUpload.file, message },
                 ]);
 
                 if (message.includes('ya fue cargado')) {
                     setDuplicateUploads((files) => [...files, nextUpload.file]);
                 }
+            },
+            onSuccess: () => {
+                setFailedUploads((failures) =>
+                    resolveFailedUpload(failures, nextUpload.file),
+                );
             },
             onFinish: () => {
                 uploadForm.reset();
@@ -218,20 +234,34 @@ export default function ImportFileSlot({
         setDuplicateUploads((files) =>
             files.filter((file) => file !== duplicateUpload),
         );
+        setFailedUploads((failures) =>
+            resolveFailedUpload(failures, duplicateUpload),
+        );
         startNextUpload();
     };
+
+    const mutationOptions = () => ({
+        preserveScroll: true,
+        onError: (errors: Record<string, string>) =>
+            setMutationFeedback((current) =>
+                failImportMutation(current, errors),
+            ),
+        onFinish: () =>
+            setMutationFeedback((current) => finishImportMutation(current)),
+    });
 
     const assignFormat = (
         file: OwnRevenueImportFile,
         format: OwnRevenueImportFormat,
     ): void => {
+        setMutationFeedback((current) => startImportMutation(current, file.id));
         router.put(
             OwnRevenueImportFileController.updateFormat({
                 budget: budgetId,
                 importFile: file.id,
             }),
             { format },
-            { preserveScroll: true },
+            mutationOptions(),
         );
     };
 
@@ -254,12 +284,23 @@ export default function ImportFileSlot({
                         <Badge className="bg-emerald-600">Confirmado</Badge>
                     ) : slot.has_parser_pending ? (
                         <Badge variant="outline">Parser pendiente</Badge>
+                    ) : slot.is_missing && slot.versions_total > 0 ? (
+                        <Badge variant="secondary">Sólo auditoría</Badge>
                     ) : (
                         <Badge variant="secondary">Pendiente</Badge>
                     )}
                 </div>
             </CardHeader>
             <CardContent className="grid gap-4">
+                {mutationFeedback.error && (
+                    <p
+                        role="alert"
+                        aria-live="assertive"
+                        className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                    >
+                        {mutationFeedback.error}
+                    </p>
+                )}
                 {permissions.upload && (
                     <div className="grid gap-2">
                         <input
@@ -460,7 +501,18 @@ export default function ImportFileSlot({
                                                 type="button"
                                                 size="sm"
                                                 variant="outline"
-                                                onClick={() =>
+                                                disabled={
+                                                    mutationFeedback.activeFileId !==
+                                                    null
+                                                }
+                                                onClick={() => {
+                                                    setMutationFeedback(
+                                                        (current) =>
+                                                            startImportMutation(
+                                                                current,
+                                                                file.id,
+                                                            ),
+                                                    );
                                                     router.post(
                                                         OwnRevenueImportAnalysisController(
                                                             {
@@ -470,11 +522,9 @@ export default function ImportFileSlot({
                                                             },
                                                         ),
                                                         {},
-                                                        {
-                                                            preserveScroll: true,
-                                                        },
-                                                    )
-                                                }
+                                                        mutationOptions(),
+                                                    );
+                                                }}
                                             >
                                                 <Search className="size-3" />{' '}
                                                 Analizar ABPRE
@@ -485,6 +535,10 @@ export default function ImportFileSlot({
                                             <select
                                                 aria-label={`Corregir tipo de ${file.name}`}
                                                 value={file.format ?? ''}
+                                                disabled={
+                                                    mutationFeedback.activeFileId !==
+                                                    null
+                                                }
                                                 onChange={(event) =>
                                                     assignFormat(
                                                         file,
@@ -519,12 +573,23 @@ export default function ImportFileSlot({
                                             type="button"
                                             size="sm"
                                             variant="ghost"
+                                            disabled={
+                                                mutationFeedback.activeFileId !==
+                                                null
+                                            }
                                             onClick={() => {
                                                 if (
                                                     window.confirm(
                                                         `Descartar la versión ${file.version} de ${file.name}?`,
                                                     )
                                                 ) {
+                                                    setMutationFeedback(
+                                                        (current) =>
+                                                            startImportMutation(
+                                                                current,
+                                                                file.id,
+                                                            ),
+                                                    );
                                                     router.delete(
                                                         OwnRevenueImportFileController.destroy(
                                                             {
@@ -533,9 +598,7 @@ export default function ImportFileSlot({
                                                                     file.id,
                                                             },
                                                         ),
-                                                        {
-                                                            preserveScroll: true,
-                                                        },
+                                                        mutationOptions(),
                                                     );
                                                 }
                                             }}

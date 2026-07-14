@@ -299,11 +299,41 @@ test('slot summaries inspect complete history outside the bounded versions page'
             ->has('slots.0.versions', 10)
             ->where('slots.0.has_confirmed', true)
             ->where('slots.0.has_parser_pending', false)
+            ->where('slots.0.has_active', true)
+            ->where('slots.0.is_missing', false)
             ->where('slots.0.latest_status', 'uploaded')
             ->has('slots.3.versions', 10)
             ->where('slots.3.has_confirmed', false)
             ->where('slots.3.has_parser_pending', true)
+            ->where('slots.3.has_active', true)
+            ->where('slots.3.is_missing', false)
             ->where('slots.3.latest_status', 'uploaded'));
+});
+
+test('discarded-only history remains auditable while the format is missing', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Discarded,
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('slots.0.versions_total', 1)
+            ->where('slots.0.has_active', false)
+            ->where('slots.0.is_missing', true));
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.show', $budget))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('import_summary.missing', 5)
+            ->where('import_summary.confirmed', 0)
+            ->where('import_summary.parser_pending', 0));
 });
 
 test('budget dashboard summarizes confirmed missing and parser pending import formats', function () {
@@ -403,15 +433,26 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain("query.delete('preview_page')")
         ->toContain("query.delete('decisions_page')")
         ->toContain('file.can_reclassify')
+        ->toContain('mutationFeedback.activeFileId')
+        ->toContain('role="alert"')
+        ->toContain('aria-live="assertive"')
+        ->toContain('resolveFailedUpload')
+        ->toContain('takeNextUpload')
         ->not->toContain('files[0]')
         ->and($workspace)
         ->toContain('slot.has_confirmed')
         ->toContain('slot.has_parser_pending')
         ->toContain('file.can_reclassify')
+        ->toContain('slot.is_missing')
+        ->toContain('mutationFeedback.activeFileId')
+        ->toContain('role="alert"')
+        ->toContain('aria-live="assertive"')
         ->toContain('previewFile?.analyzed_at')
         ->and($preview)
-        ->toContain('previewFile?.analyzed_at')
+        ->toContain('importDecisionRememberKey(previewFile)')
         ->and($types)
         ->toContain('can_reclassify: boolean')
+        ->toContain('has_active: boolean')
+        ->toContain('is_missing: boolean')
         ->toContain('analyzed_at: string | null');
 });

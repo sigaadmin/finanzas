@@ -115,6 +115,9 @@ class OwnRevenueImportController extends Controller
     private function slotData(OwnRevenueBudget $budget, OwnRevenueImportFormat $format): array
     {
         $history = $budget->importFiles()->where('format', $format);
+        $hasActive = (clone $history)
+            ->where('status', '!=', OwnRevenueImportFileStatus::Discarded)
+            ->exists();
         $versions = $this->paginateClamped(
             $this->fileSummaryQuery($budget)
                 ->where('format', $format)
@@ -133,6 +136,8 @@ class OwnRevenueImportController extends Controller
             'versions_current_page' => $versions->currentPage(),
             'versions_last_page' => $versions->lastPage(),
             'versions_has_more' => $versions->hasMorePages(),
+            'has_active' => $hasActive,
+            'is_missing' => ! $hasActive,
             'has_confirmed' => (clone $history)
                 ->where(function (Builder $query): void {
                     $query->whereNotNull('confirmed_at')

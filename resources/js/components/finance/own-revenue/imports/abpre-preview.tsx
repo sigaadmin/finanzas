@@ -1,6 +1,7 @@
 import { Link, useForm, usePage, useRemember } from '@inertiajs/react';
 import { CheckCircle2 } from 'lucide-react';
 import OwnRevenueAbpreConfirmationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueAbpreConfirmationController';
+import { importDecisionRememberKey } from '@/components/finance/own-revenue/imports/import-workspace-state';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -89,7 +90,7 @@ export default function AbprePreview({
     const currentUrl = usePage().url;
     const [decisions, setDecisions] = useRemember<OwnRevenueImportDecision[]>(
         [],
-        `own-revenue-abpre-decisions-${previewFile?.id ?? 'none'}-${previewFile?.analyzed_at ?? 'unanalyzed'}`,
+        importDecisionRememberKey(previewFile),
     );
     const form = useForm<{ decisions: OwnRevenueImportDecision[] }>({
         decisions: [],
