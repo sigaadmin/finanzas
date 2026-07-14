@@ -13,6 +13,13 @@ use Illuminate\Validation\ValidationException;
 
 class AssignOwnRevenueImportFormat
 {
+    private const ALLOWED_STATUSES = [
+        OwnRevenueImportFileStatus::Uploaded,
+        OwnRevenueImportFileStatus::NeedsCorrection,
+        OwnRevenueImportFileStatus::Failed,
+        OwnRevenueImportFileStatus::ParserPending,
+    ];
+
     public function handle(
         OwnRevenueImportFile $file,
         User $user,
@@ -24,10 +31,10 @@ class AssignOwnRevenueImportFormat
             OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
 
-            if ($lockedFile->status === OwnRevenueImportFileStatus::Confirmed
+            if (! in_array($lockedFile->status, self::ALLOWED_STATUSES, true)
                 || $lockedFile->confirmed_at !== null) {
                 throw ValidationException::withMessages([
-                    'format' => 'No se puede reclasificar un archivo confirmado.',
+                    'format' => 'El estado actual del archivo no permite corregir su formato.',
                 ]);
             }
 

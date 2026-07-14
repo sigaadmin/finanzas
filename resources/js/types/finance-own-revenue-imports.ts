@@ -77,6 +77,9 @@ export type OwnRevenueImportSlot = {
     versions_current_page: number;
     versions_last_page: number;
     versions_has_more: boolean;
+    has_confirmed: boolean;
+    has_parser_pending: boolean;
+    latest_status: OwnRevenueImportFileStatus | null;
 };
 
 export type OwnRevenueImportIssueContext = Partial<{
@@ -139,6 +142,7 @@ export type OwnRevenueAbprePreviewRow = {
     officialActivityName?: string;
     regionCode?: string;
     regionName?: string;
+    sourceRegions?: Array<{ code: string; name: string }>;
     specificExpenseConceptCode?: string | null;
     specificItemCode?: string;
     months: Record<string, string>;
@@ -165,7 +169,16 @@ export type OwnRevenueImportWorkspaceProps = {
         has_more: boolean;
     };
     selected_file: OwnRevenueSelectedImportFile | null;
+    preview_file: {
+        id: number;
+        name: string;
+        version: number;
+        status: OwnRevenueImportFileStatus;
+    } | null;
     preview: LengthAwarePaginator<OwnRevenueAbprePreviewRow>;
+    decision_warnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
+        has_more: boolean;
+    };
     permissions: OwnRevenueImportPermissions;
 };
 

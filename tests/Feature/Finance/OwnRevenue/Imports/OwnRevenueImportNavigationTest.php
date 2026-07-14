@@ -87,7 +87,123 @@ test('assistant workspace is readonly while download remains available', functio
             ->where('permissions.upload', false)
             ->where('permissions.manage', false)
             ->where('permissions.confirm', false)
-            ->where('permissions.download', true));
+            ->where('permissions.download', true)
+            ->where('decision_warnings.has_more', false));
+});
+
+test('selected ABPRE owns both preview rows and required decision warnings', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $older = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'version_number' => 1,
+        'status' => OwnRevenueImportFileStatus::Ready,
+        'original_name' => 'ABPRE anterior.xlsx',
+    ]);
+    $newer = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'version_number' => 2,
+        'status' => OwnRevenueImportFileStatus::Ready,
+        'original_name' => 'ABPRE nuevo.xlsx',
+    ]);
+    OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $older->id,
+        'row_kind' => 'abpre_line',
+        'normalized_payload' => ['months' => [1 => '100'], 'annualAmountCents' => '100'],
+    ]);
+    OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $newer->id,
+        'row_kind' => 'abpre_line',
+        'normalized_payload' => ['months' => [1 => '200'], 'annualAmountCents' => '200'],
+    ]);
+    $warning = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $older->id,
+        'severity' => 'warning',
+        'code' => 'year.mismatch',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', [
+            'budget' => $budget,
+            'import_file_id' => $older->id,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('selected_file.id', $older->id)
+            ->where('preview_file.id', $older->id)
+            ->where('preview_file.name', 'ABPRE anterior.xlsx')
+            ->where('preview_file.version', 1)
+            ->where('preview.data.0.annualAmountCents', '100')
+            ->where('decision_warnings.data.0.id', $warning->id)
+            ->where('decision_warnings.total', 1));
+});
+
+test('required warning decisions have their own bounded paginator', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+    ]);
+
+    foreach (range(1, 30) as $index) {
+        OwnRevenueImportIssue::factory()->create([
+            'own_revenue_import_file_id' => $file->id,
+            'severity' => 'warning',
+            'code' => $index % 2 === 0 ? 'region.normalized' : 'abpre.annual_mismatch',
+        ]);
+    }
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', [
+            'budget' => $budget,
+            'decisions_page' => 2,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->has('decision_warnings.data', 5)
+            ->where('decision_warnings.current_page', 2)
+            ->where('decision_warnings.per_page', 25)
+            ->where('decision_warnings.total', 30));
+});
+
+test('slot summaries inspect complete history outside the bounded versions page', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+
+    foreach (range(1, 12) as $version) {
+        OwnRevenueImportFile::factory()->create([
+            'own_revenue_budget_id' => $budget->id,
+            'format' => OwnRevenueImportFormat::Abpre,
+            'version_number' => $version,
+            'status' => $version === 1
+                ? OwnRevenueImportFileStatus::Confirmed
+                : OwnRevenueImportFileStatus::Uploaded,
+        ]);
+        OwnRevenueImportFile::factory()->create([
+            'own_revenue_budget_id' => $budget->id,
+            'format' => OwnRevenueImportFormat::Fuel,
+            'version_number' => $version,
+            'status' => $version === 1
+                ? OwnRevenueImportFileStatus::ParserPending
+                : OwnRevenueImportFileStatus::Uploaded,
+        ]);
+    }
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->has('slots.0.versions', 10)
+            ->where('slots.0.has_confirmed', true)
+            ->where('slots.0.has_parser_pending', false)
+            ->where('slots.0.latest_status', 'uploaded')
+            ->has('slots.3.versions', 10)
+            ->where('slots.3.has_confirmed', false)
+            ->where('slots.3.has_parser_pending', true)
+            ->where('slots.3.latest_status', 'uploaded'));
 });
 
 test('budget dashboard summarizes confirmed missing and parser pending import formats', function () {
@@ -123,6 +239,7 @@ test('frontend import workspace honors navigation route money and permission con
     $issues = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-issue-list.tsx'));
     $preview = file_get_contents(resource_path('js/components/finance/own-revenue/imports/abpre-preview.tsx'));
     $types = file_get_contents(resource_path('js/types/finance-own-revenue-imports.ts'));
+    $controller = file_get_contents(app_path('Http/Controllers/Finance/OwnRevenueImportController.php'));
 
     expect($createPage)
         ->toContain("type Mode = 'blank' | 'copy' | 'import'")
@@ -154,13 +271,15 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('preview_page')
         ->toContain('formatCents')
         ->toContain('useRemember')
-        ->toContain('year.mismatch')
-        ->toContain('region.normalized')
-        ->toContain('abpre.annual_mismatch')
-        ->toContain('abpre.missing_justification')
+        ->toContain('decisionWarnings')
+        ->toContain('decisions_page')
+        ->toContain('resolvedDecisionCount')
+        ->toContain('decisionWarnings.total')
         ->toContain('<option value="manual">')
         ->toContain('<option value="xlsx">')
         ->toContain('<option value="custom">')
+        ->not->toContain("resolution: 'manual' as const")
+        ->not->toContain('useEffect')
         ->not->toContain('parseFloat(')
         ->not->toContain('Number(')
         ->and($types)
@@ -168,4 +287,20 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('estimated_income_cents: string | null')
         ->toContain('months: Record<string, string>')
         ->toContain('permissions: OwnRevenueImportPermissions');
+
+    expect($controller)
+        ->toContain('year.mismatch')
+        ->toContain('region.normalized')
+        ->toContain('abpre.annual_mismatch')
+        ->toContain('abpre.missing_justification');
+
+    expect($slot)
+        ->toContain('multiple')
+        ->toContain('uploadQueue')
+        ->toContain('filesToQueue')
+        ->toContain('onFinish')
+        ->not->toContain('files[0]')
+        ->and($workspace)
+        ->toContain('slot.has_confirmed')
+        ->toContain('slot.has_parser_pending');
 });

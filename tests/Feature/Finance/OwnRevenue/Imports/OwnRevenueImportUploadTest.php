@@ -8,6 +8,7 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -179,6 +180,31 @@ test('recognized secondary formats remain pending their parser', function () {
     expect($file->format)->toBe(OwnRevenueImportFormat::Fuel)
         ->and($file->status)->toBe(OwnRevenueImportFileStatus::ParserPending);
 });
+
+test('format reassignment rejects immutable and in-flight audit states', function (OwnRevenueImportFileStatus $status) {
+    $manager = ownRevenueUploadUser(UserRole::FinanceManager);
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => OwnRevenueBudget::factory(),
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => $status,
+        'confirmed_at' => $status === OwnRevenueImportFileStatus::Replaced ? now() : null,
+    ]);
+
+    expect(fn () => app(AssignOwnRevenueImportFormat::class)->handle(
+        $file,
+        $manager,
+        OwnRevenueImportFormat::Fuel,
+    ))->toThrow(ValidationException::class);
+
+    expect($file->fresh()->format)->toBe(OwnRevenueImportFormat::Abpre)
+        ->and($file->fresh()->status)->toBe($status);
+})->with([
+    OwnRevenueImportFileStatus::Discarded,
+    OwnRevenueImportFileStatus::Replaced,
+    OwnRevenueImportFileStatus::Analyzing,
+    OwnRevenueImportFileStatus::Confirmed,
+    OwnRevenueImportFileStatus::Ready,
+]);
 
 test('discard preserves evidence but confirmed files cannot be discarded', function () {
     Storage::fake('local');

@@ -42,6 +42,16 @@ type UploadData = {
     force_reanalysis: boolean;
 };
 
+type UploadQueueEntry = {
+    file: File;
+    forceReanalysis: boolean;
+};
+
+type FailedUpload = {
+    file: File;
+    message: string;
+};
+
 const statusLabels: Record<OwnRevenueImportFile['status'], string> = {
     uploaded: 'Cargado',
     analyzing: 'Analizando',
@@ -84,6 +94,15 @@ function canDiscard(file: OwnRevenueImportFile): boolean {
     );
 }
 
+function canCorrectFormat(file: OwnRevenueImportFile): boolean {
+    return (
+        !file.confirmed &&
+        ['uploaded', 'needs_correction', 'failed', 'parser_pending'].includes(
+            file.status,
+        )
+    );
+}
+
 export default function ImportFileSlot({
     budgetId,
     slot,
@@ -93,41 +112,109 @@ export default function ImportFileSlot({
     const currentUrl = usePage().url;
     const inputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [uploadQueue, setUploadQueue] = useState<UploadQueueEntry[]>([]);
+    const uploadQueueRef = useRef<UploadQueueEntry[]>([]);
+    const isUploadingRef = useRef(false);
+    const [currentUpload, setCurrentUpload] = useState<UploadQueueEntry | null>(
+        null,
+    );
+    const [failedUploads, setFailedUploads] = useState<FailedUpload[]>([]);
+    const [duplicateUploads, setDuplicateUploads] = useState<File[]>([]);
     const uploadForm = useForm<UploadData>({
         file: null,
         force_reanalysis: false,
     });
 
-    const submitFile = (file: File, forceReanalysis = false): void => {
-        if (!file.name.toLowerCase().endsWith('.xlsx')) {
-            uploadForm.setError(
-                'file',
-                'Selecciona un archivo con extensión .xlsx.',
-            );
+    const replaceUploadQueue = (queue: UploadQueueEntry[]): void => {
+        uploadQueueRef.current = queue;
+        setUploadQueue(queue);
+    };
 
+    function startNextUpload(): void {
+        if (isUploadingRef.current || uploadQueueRef.current.length === 0) {
             return;
         }
 
+        const remainingQueue = [...uploadQueueRef.current];
+        const nextUpload = remainingQueue.shift();
+
+        if (!nextUpload) {
+            return;
+        }
+
+        isUploadingRef.current = true;
+        replaceUploadQueue(remainingQueue);
+        setCurrentUpload(nextUpload);
+        uploadForm.clearErrors();
+        uploadForm.setData({
+            file: nextUpload.file,
+            force_reanalysis: nextUpload.forceReanalysis,
+        });
+        uploadForm.transform(() => ({
+            file: nextUpload.file,
+            force_reanalysis: nextUpload.forceReanalysis,
+        }));
+        uploadForm.submit(OwnRevenueImportFileController.store(budgetId), {
+            forceFormData: true,
+            preserveScroll: true,
+            onError: (errors) => {
+                const message =
+                    errors.file ?? 'No fue posible cargar el archivo.';
+                setFailedUploads((failures) => [
+                    ...failures,
+                    { file: nextUpload.file, message },
+                ]);
+
+                if (message.includes('ya fue cargado')) {
+                    setDuplicateUploads((files) => [...files, nextUpload.file]);
+                }
+            },
+            onFinish: () => {
+                uploadForm.reset();
+                isUploadingRef.current = false;
+                setCurrentUpload(null);
+                startNextUpload();
+            },
+        });
+    }
+
+    const enqueueFiles = (filesToQueue: File[]): void => {
+        const accepted: UploadQueueEntry[] = [];
+        const rejected: FailedUpload[] = [];
+
+        filesToQueue.forEach((file) => {
+            if (file.name.toLowerCase().endsWith('.xlsx')) {
+                accepted.push({ file, forceReanalysis: false });
+            } else {
+                rejected.push({
+                    file,
+                    message: 'El archivo no tiene extensión .xlsx.',
+                });
+            }
+        });
+
+        setFailedUploads((failures) => [...failures, ...rejected]);
+        replaceUploadQueue([...uploadQueueRef.current, ...accepted]);
+        startNextUpload();
+    };
+
+    const retryDuplicate = (duplicateUpload: File): void => {
         if (
-            forceReanalysis &&
             !window.confirm(
-                'Este archivo podría estar duplicado. ¿Deseas cargar una nueva versión y volver a analizarlo?',
+                'Este archivo ya fue cargado. ¿Deseas crear una nueva versión y volver a analizarlo?',
             )
         ) {
             return;
         }
 
-        uploadForm.setData({ file, force_reanalysis: forceReanalysis });
-        uploadForm.clearErrors();
-        uploadForm.transform(() => ({
-            file,
-            force_reanalysis: forceReanalysis,
-        }));
-        uploadForm.submit(OwnRevenueImportFileController.store(budgetId), {
-            forceFormData: true,
-            preserveScroll: true,
-            onSuccess: () => uploadForm.reset(),
-        });
+        replaceUploadQueue([
+            { file: duplicateUpload, forceReanalysis: true },
+            ...uploadQueueRef.current,
+        ]);
+        setDuplicateUploads((files) =>
+            files.filter((file) => file !== duplicateUpload),
+        );
+        startNextUpload();
     };
 
     const assignFormat = (
@@ -159,11 +246,9 @@ export default function ImportFileSlot({
                                 : `${slot.versions_total} ${slot.versions_total === 1 ? 'versión' : 'versiones'}`}
                         </CardDescription>
                     </div>
-                    {slot.versions.some((file) => file.confirmed) ? (
+                    {slot.has_confirmed ? (
                         <Badge className="bg-emerald-600">Confirmado</Badge>
-                    ) : slot.versions.some(
-                          (file) => file.status === 'parser_pending',
-                      ) ? (
+                    ) : slot.has_parser_pending ? (
                         <Badge variant="outline">Parser pendiente</Badge>
                     ) : (
                         <Badge variant="secondary">Pendiente</Badge>
@@ -176,14 +261,15 @@ export default function ImportFileSlot({
                         <input
                             ref={inputRef}
                             type="file"
+                            multiple
                             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             className="sr-only"
                             aria-label={`Seleccionar XLSX para ${slot.label}`}
                             onChange={(event) => {
-                                const file = event.target.files?.[0];
-
-                                if (file) {
-                                    submitFile(file);
+                                if (event.target.files) {
+                                    enqueueFiles(
+                                        Array.from(event.target.files),
+                                    );
                                 }
 
                                 event.target.value = '';
@@ -201,17 +287,15 @@ export default function ImportFileSlot({
                             onDrop={(event) => {
                                 event.preventDefault();
                                 setIsDragging(false);
-                                const file = event.dataTransfer.files[0];
-
-                                if (file) {
-                                    submitFile(file);
-                                }
+                                enqueueFiles(
+                                    Array.from(event.dataTransfer.files),
+                                );
                             }}
-                            disabled={uploadForm.processing}
+                            disabled={currentUpload !== null}
                             className={`grid min-h-28 place-items-center rounded-lg border border-dashed p-4 text-center transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none ${isDragging ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'} disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                             <span className="grid justify-items-center gap-1 text-sm">
-                                {uploadForm.processing ? (
+                                {currentUpload ? (
                                     <LoaderCircle className="size-5 animate-spin" />
                                 ) : (
                                     <Upload className="size-5" />
@@ -225,10 +309,21 @@ export default function ImportFileSlot({
                                 </span>
                             </span>
                         </button>
-                        {uploadForm.data.file && uploadForm.processing && (
+                        {currentUpload && (
                             <p className="truncate text-xs text-muted-foreground">
-                                {uploadForm.data.file.name} ·{' '}
-                                {formatBytes(uploadForm.data.file.size)}
+                                Cargando {currentUpload.file.name} ·{' '}
+                                {formatBytes(currentUpload.file.size)}
+                            </p>
+                        )}
+                        {(uploadQueue.length > 0 || currentUpload) && (
+                            <p
+                                className="text-xs text-muted-foreground"
+                                aria-live="polite"
+                            >
+                                {currentUpload
+                                    ? '1 archivo en proceso'
+                                    : 'Preparando carga'}{' '}
+                                · {uploadQueue.length} en cola
                             </p>
                         )}
                         {uploadForm.progress && (
@@ -247,19 +342,28 @@ export default function ImportFileSlot({
                             </div>
                         )}
                         <InputError message={uploadForm.errors.file} />
-                        {uploadForm.errors.file?.includes('ya fue cargado') && (
+                        {duplicateUploads.map((file) => (
                             <Button
+                                key={`${file.name}-${file.size}-${file.lastModified}`}
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                    if (uploadForm.data.file) {
-                                        submitFile(uploadForm.data.file, true);
-                                    }
-                                }}
+                                onClick={() => retryDuplicate(file)}
                             >
-                                Forzar nuevo análisis
+                                Forzar nuevo análisis de {file.name}
                             </Button>
+                        ))}
+                        {failedUploads.length > 0 && (
+                            <ul
+                                className="grid gap-1 text-xs text-destructive"
+                                aria-label="Archivos con error"
+                            >
+                                {failedUploads.map((failure, index) => (
+                                    <li key={`${failure.file.name}-${index}`}>
+                                        {failure.file.name}: {failure.message}
+                                    </li>
+                                ))}
+                            </ul>
                         )}
                     </div>
                 )}
@@ -373,37 +477,40 @@ export default function ImportFileSlot({
                                                 Analizar ABPRE
                                             </Button>
                                         )}
-                                    {permissions.manage && !file.confirmed && (
-                                        <select
-                                            aria-label={`Corregir tipo de ${file.name}`}
-                                            value={file.format ?? ''}
-                                            onChange={(event) =>
-                                                assignFormat(
-                                                    file,
-                                                    event.target
-                                                        .value as OwnRevenueImportFormat,
-                                                )
-                                            }
-                                            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                                        >
-                                            <option value="" disabled>
-                                                Corregir tipo
-                                            </option>
-                                            <option value="abpre">ABPRE</option>
-                                            <option value="work_sheet">
-                                                Hoja de trabajo
-                                            </option>
-                                            <option value="technical_sheet">
-                                                Ficha técnica
-                                            </option>
-                                            <option value="fuel">
-                                                Combustible
-                                            </option>
-                                            <option value="travel_expenses">
-                                                Viáticos
-                                            </option>
-                                        </select>
-                                    )}
+                                    {permissions.manage &&
+                                        canCorrectFormat(file) && (
+                                            <select
+                                                aria-label={`Corregir tipo de ${file.name}`}
+                                                value={file.format ?? ''}
+                                                onChange={(event) =>
+                                                    assignFormat(
+                                                        file,
+                                                        event.target
+                                                            .value as OwnRevenueImportFormat,
+                                                    )
+                                                }
+                                                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                                            >
+                                                <option value="" disabled>
+                                                    Corregir tipo
+                                                </option>
+                                                <option value="abpre">
+                                                    ABPRE
+                                                </option>
+                                                <option value="work_sheet">
+                                                    Hoja de trabajo
+                                                </option>
+                                                <option value="technical_sheet">
+                                                    Ficha técnica
+                                                </option>
+                                                <option value="fuel">
+                                                    Combustible
+                                                </option>
+                                                <option value="travel_expenses">
+                                                    Viáticos
+                                                </option>
+                                            </select>
+                                        )}
                                     {permissions.manage && canDiscard(file) && (
                                         <Button
                                             type="button"
@@ -445,51 +552,50 @@ export default function ImportFileSlot({
                         className="flex items-center justify-between gap-2"
                         aria-label={`Versiones de ${slot.label}`}
                     >
-                        <Button
-                            asChild
-                            size="sm"
-                            variant="outline"
-                            disabled={slot.versions_current_page === 1}
-                        >
-                            <Link
-                                href={show(budgetId, {
-                                    query: queryWith(
-                                        currentUrl,
-                                        `${slot.format}_versions_page`,
-                                        Math.max(
-                                            1,
+                        {slot.versions_current_page > 1 ? (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={show(budgetId, {
+                                        query: queryWith(
+                                            currentUrl,
+                                            `${slot.format}_versions_page`,
                                             slot.versions_current_page - 1,
                                         ),
-                                    ),
-                                })}
-                                preserveScroll
-                            >
+                                    })}
+                                    preserveScroll
+                                >
+                                    Anterior
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="outline" disabled>
                                 Anterior
-                            </Link>
-                        </Button>
+                            </Button>
+                        )}
                         <span className="text-xs text-muted-foreground">
                             Página {slot.versions_current_page} de{' '}
                             {slot.versions_last_page}
                         </span>
-                        <Button
-                            asChild
-                            size="sm"
-                            variant="outline"
-                            disabled={!slot.versions_has_more}
-                        >
-                            <Link
-                                href={show(budgetId, {
-                                    query: queryWith(
-                                        currentUrl,
-                                        `${slot.format}_versions_page`,
-                                        slot.versions_current_page + 1,
-                                    ),
-                                })}
-                                preserveScroll
-                            >
+                        {slot.versions_has_more ? (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={show(budgetId, {
+                                        query: queryWith(
+                                            currentUrl,
+                                            `${slot.format}_versions_page`,
+                                            slot.versions_current_page + 1,
+                                        ),
+                                    })}
+                                    preserveScroll
+                                >
+                                    Siguiente
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="outline" disabled>
                                 Siguiente
-                            </Link>
-                        </Button>
+                            </Button>
+                        )}
                     </nav>
                 )}
             </CardContent>

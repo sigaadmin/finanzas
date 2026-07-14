@@ -40,15 +40,15 @@ export default function OwnRevenueImportShow({
     unassigned_files: unassignedFiles,
     unassigned_files_meta: unassignedMeta,
     selected_file: selectedFile,
+    preview_file: previewFile,
     preview,
+    decision_warnings: decisionWarnings,
     permissions,
 }: OwnRevenueImportWorkspaceProps) {
     const currentUrl = usePage().url;
-    const confirmedCount = slots.filter((slot) =>
-        slot.versions.some((file) => file.confirmed),
-    ).length;
-    const parserPendingCount = slots.filter((slot) =>
-        slot.versions.some((file) => file.status === 'parser_pending'),
+    const confirmedCount = slots.filter((slot) => slot.has_confirmed).length;
+    const parserPendingCount = slots.filter(
+        (slot) => slot.has_parser_pending,
     ).length;
     const missingCount = slots.filter(
         (slot) => slot.versions_total === 0,
@@ -269,55 +269,68 @@ export default function OwnRevenueImportShow({
                                     className="flex items-center justify-between gap-2"
                                     aria-label="Páginas de archivos sin clasificar"
                                 >
-                                    <Button
-                                        asChild
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={
-                                            unassignedMeta.current_page === 1
-                                        }
-                                    >
-                                        <Link
-                                            href={showImports(budget.id, {
-                                                query: queryFor(
-                                                    currentUrl,
-                                                    'unassigned_page',
-                                                    Math.max(
-                                                        1,
+                                    {unassignedMeta.current_page > 1 ? (
+                                        <Button
+                                            asChild
+                                            size="sm"
+                                            variant="outline"
+                                        >
+                                            <Link
+                                                href={showImports(budget.id, {
+                                                    query: queryFor(
+                                                        currentUrl,
+                                                        'unassigned_page',
                                                         unassignedMeta.current_page -
                                                             1,
                                                     ),
-                                                ),
-                                            })}
-                                            preserveScroll
+                                                })}
+                                                preserveScroll
+                                            >
+                                                Anterior
+                                            </Link>
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled
                                         >
                                             Anterior
-                                        </Link>
-                                    </Button>
+                                        </Button>
+                                    )}
                                     <span className="text-xs text-muted-foreground">
                                         Página {unassignedMeta.current_page} de{' '}
                                         {unassignedMeta.last_page}
                                     </span>
-                                    <Button
-                                        asChild
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={!unassignedMeta.has_more}
-                                    >
-                                        <Link
-                                            href={showImports(budget.id, {
-                                                query: queryFor(
-                                                    currentUrl,
-                                                    'unassigned_page',
-                                                    unassignedMeta.current_page +
-                                                        1,
-                                                ),
-                                            })}
-                                            preserveScroll
+                                    {unassignedMeta.has_more ? (
+                                        <Button
+                                            asChild
+                                            size="sm"
+                                            variant="outline"
+                                        >
+                                            <Link
+                                                href={showImports(budget.id, {
+                                                    query: queryFor(
+                                                        currentUrl,
+                                                        'unassigned_page',
+                                                        unassignedMeta.current_page +
+                                                            1,
+                                                    ),
+                                                })}
+                                                preserveScroll
+                                            >
+                                                Siguiente
+                                            </Link>
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled
                                         >
                                             Siguiente
-                                        </Link>
-                                    </Button>
+                                        </Button>
+                                    )}
                                 </nav>
                             )}
                         </CardContent>
@@ -330,9 +343,11 @@ export default function OwnRevenueImportShow({
                         selectedFile={selectedFile}
                     />
                     <AbprePreview
-                        key={selectedFile?.id ?? 'no-file'}
+                        key={previewFile?.id ?? 'no-file'}
                         budgetId={budget.id}
                         preview={preview}
+                        previewFile={previewFile}
+                        decisionWarnings={decisionWarnings}
                         selectedFile={selectedFile}
                         permissions={permissions}
                     />

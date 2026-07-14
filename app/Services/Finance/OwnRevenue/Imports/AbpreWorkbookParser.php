@@ -181,7 +181,20 @@ class AbpreWorkbookParser
             $key = json_encode(array_values($groupValues), JSON_THROW_ON_ERROR);
 
             if (! isset($groups[$key])) {
-                $groups[$key] = [...$groupValues, 'months' => array_fill(1, 12, '0'), 'source_rows' => []];
+                $groups[$key] = [
+                    ...$groupValues,
+                    'source_regions' => [],
+                    'months' => array_fill(1, 12, '0'),
+                    'source_rows' => [],
+                ];
+            }
+
+            $sourceRegion = [
+                'code' => $region,
+                'name' => trim($values['nombre de la region'] ?? ''),
+            ];
+            if (! in_array($sourceRegion, $groups[$key]['source_regions'], true)) {
+                $groups[$key]['source_regions'][] = $sourceRegion;
             }
 
             foreach ($months as $month => $cents) {
@@ -217,6 +230,7 @@ class AbpreWorkbookParser
             officialActivityName: $group['official_activity_name'],
             regionCode: $group['region_code'],
             regionName: $group['region_name'],
+            sourceRegions: $group['source_regions'],
             specificExpenseConceptCode: $group['specific_expense_concept_code'],
             specificItemCode: $group['specific_item_code'],
             months: $group['months'],

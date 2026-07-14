@@ -4,7 +4,7 @@ namespace App\Data\Finance\OwnRevenue\Imports;
 
 final readonly class AbpreLineData
 {
-    /** @param array<int, string> $months @param list<int> $sourceRows */
+    /** @param list<array{code:string,name:string}> $sourceRegions @param array<int, string> $months @param list<int> $sourceRows */
     public function __construct(
         public string $responsibleUnitCode,
         public string $responsibleUnitName,
@@ -16,6 +16,7 @@ final readonly class AbpreLineData
         public string $officialActivityName,
         public string $regionCode,
         public string $regionName,
+        public array $sourceRegions,
         public ?string $specificExpenseConceptCode,
         public string $specificItemCode,
         public array $months,

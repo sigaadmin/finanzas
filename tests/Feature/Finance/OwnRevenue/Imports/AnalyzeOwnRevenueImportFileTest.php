@@ -27,6 +27,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia as Assert;
 
 require_once __DIR__.'/../../../../Fixtures/Finance/OwnRevenue/Imports/OwnRevenueXlsxFixtureFactory.php';
 require_once __DIR__.'/../../../../Unit/Finance/OwnRevenue/Imports/AbpreWorkbookParserTest.php';
@@ -72,6 +73,18 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
         ->and($file->rows()->count())->toBeGreaterThan(0)
         ->and($file->issues()->where('severity', 'error')->count())->toBeGreaterThan(0)
         ->and(OwnRevenueAbpreLine::query()->count())->toBe(0);
+
+    $this->withoutVite();
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('preview.data.0.sourceRegions', [
+                ['code' => '04-001', 'name' => 'OTRA REGIÓN'],
+                ['code' => '03-002', 'name' => 'REGIÓN DOS'],
+            ])
+            ->where('preview.data.0.regionCode', '02-001')
+            ->where('preview.data.0.regionName', 'Felipe Carrillo Puerto'));
 
     $rowCount = $file->rows()->count();
     app(AnalyzeOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
@@ -325,9 +338,9 @@ test('stale analysis attempts cannot overwrite concurrent file state', function 
             ->and($issue->fresh()?->code)->toBe('seed.issue')
             ->and($decision->fresh())->not->toBeNull();
     } elseif ($mutation === 'format') {
-        expect($file->status)->toBe(OwnRevenueImportFileStatus::ParserPending)
-            ->and($file->analysis_token)->toBeNull()
-            ->and($file->format)->toBe(OwnRevenueImportFormat::Fuel)
+        expect($file->status)->toBe(OwnRevenueImportFileStatus::Analyzing)
+            ->and(Str::isUuid($file->analysis_token))->toBeTrue()
+            ->and($file->format)->toBe(OwnRevenueImportFormat::Abpre)
             ->and($row->fresh())->not->toBeNull()
             ->and($issue->fresh()?->code)->toBe('seed.issue')
             ->and($decision->fresh())->not->toBeNull();

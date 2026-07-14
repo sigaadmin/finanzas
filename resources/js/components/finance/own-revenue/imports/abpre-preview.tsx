@@ -1,6 +1,5 @@
 import { Link, useForm, usePage, useRemember } from '@inertiajs/react';
 import { CheckCircle2 } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
 import OwnRevenueAbpreConfirmationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueAbpreConfirmationController';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -18,13 +17,24 @@ import type {
     LengthAwarePaginator,
     OwnRevenueAbprePreviewRow,
     OwnRevenueImportDecision,
+    OwnRevenueImportIssue,
     OwnRevenueImportPermissions,
+    OwnRevenueImportFileStatus,
     OwnRevenueSelectedImportFile,
 } from '@/types/finance-own-revenue-imports';
 
 type Props = {
     budgetId: number;
     preview: LengthAwarePaginator<OwnRevenueAbprePreviewRow>;
+    previewFile: {
+        id: number;
+        name: string;
+        version: number;
+        status: OwnRevenueImportFileStatus;
+    } | null;
+    decisionWarnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
+        has_more: boolean;
+    };
     selectedFile: OwnRevenueSelectedImportFile | null;
     permissions: OwnRevenueImportPermissions;
 };
@@ -44,13 +54,6 @@ const months = [
     ['12', 'Dic'],
 ] as const;
 
-const requiredDecisionCodes = new Set([
-    'year.mismatch',
-    'region.normalized',
-    'abpre.annual_mismatch',
-    'abpre.missing_justification',
-]);
-
 export function formatCents(rawCents: string): string {
     const negative = rawCents.startsWith('-');
     const digits = (negative ? rawCents.slice(1) : rawCents)
@@ -63,9 +66,13 @@ export function formatCents(rawCents: string): string {
     return `${negative ? '-' : ''}$${whole}.${fraction}`;
 }
 
-function queryFor(currentUrl: string, page: number): Record<string, string> {
+function queryFor(
+    currentUrl: string,
+    name: 'preview_page' | 'decisions_page',
+    page: number,
+): Record<string, string> {
     const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
-    query.set('preview_page', String(page));
+    query.set(name, String(page));
 
     return Object.fromEntries(query.entries());
 }
@@ -73,55 +80,54 @@ function queryFor(currentUrl: string, page: number): Record<string, string> {
 export default function AbprePreview({
     budgetId,
     preview,
+    previewFile,
+    decisionWarnings,
     selectedFile,
     permissions,
 }: Props) {
     const currentUrl = usePage().url;
-    const requiredIssues = useMemo(
-        () =>
-            selectedFile?.issues.data.filter(
-                (issue) =>
-                    issue.severity === 'warning' &&
-                    requiredDecisionCodes.has(issue.code),
-            ) ?? [],
-        [selectedFile],
-    );
     const [decisions, setDecisions] = useRemember<OwnRevenueImportDecision[]>(
         [],
-        `own-revenue-abpre-decisions-${selectedFile?.id ?? 'none'}`,
+        `own-revenue-abpre-decisions-${previewFile?.id ?? 'none'}`,
     );
     const form = useForm<{ decisions: OwnRevenueImportDecision[] }>({
         decisions: [],
     });
     const canConfirm =
         permissions.confirm &&
-        selectedFile?.format === 'abpre' &&
-        selectedFile.status === 'ready';
+        previewFile?.status === 'ready' &&
+        selectedFile?.id === previewFile.id;
+    const resolvedDecisionCount = decisions.length;
+    const decisionsComplete = resolvedDecisionCount === decisionWarnings.total;
 
-    useEffect(() => {
+    const chooseDecision = (
+        issueId: number,
+        resolution: OwnRevenueImportDecision['resolution'],
+    ): void => {
         setDecisions((currentDecisions) => {
-            const missingIssues = requiredIssues.filter(
-                (issue) =>
-                    !currentDecisions.some(
-                        (decision) => decision.issue_id === issue.id,
-                    ),
+            const existing = currentDecisions.find(
+                (decision) => decision.issue_id === issueId,
             );
 
-            if (missingIssues.length === 0) {
-                return currentDecisions;
+            if (existing) {
+                return currentDecisions.map((decision) =>
+                    decision.issue_id === issueId
+                        ? { ...decision, resolution }
+                        : decision,
+                );
             }
 
             return [
                 ...currentDecisions,
-                ...missingIssues.map((issue) => ({
-                    issue_id: issue.id,
-                    resolution: 'manual' as const,
+                {
+                    issue_id: issueId,
+                    resolution,
                     resolved_value: null,
                     justification: null,
-                })),
+                },
             ];
         });
-    }, [requiredIssues, setDecisions]);
+    };
 
     const updateDecision = (
         issueId: number,
@@ -137,7 +143,7 @@ export default function AbprePreview({
     };
 
     const confirmImport = (): void => {
-        if (!selectedFile || !canConfirm) {
+        if (!previewFile || !canConfirm || !decisionsComplete) {
             return;
         }
 
@@ -153,7 +159,7 @@ export default function AbprePreview({
         form.submit(
             OwnRevenueAbpreConfirmationController({
                 budget: budgetId,
-                importFile: selectedFile.id,
+                importFile: previewFile.id,
             }),
             { preserveScroll: true },
         );
@@ -164,6 +170,9 @@ export default function AbprePreview({
             <CardHeader>
                 <CardTitle>Vista previa ABPRE</CardTitle>
                 <CardDescription>
+                    {previewFile
+                        ? `${previewFile.name} · versión ${previewFile.version}. `
+                        : ''}
                     Importes exactos del análisis del servidor. Se muestran{' '}
                     {preview.total} líneas.
                 </CardDescription>
@@ -218,10 +227,19 @@ export default function AbprePreview({
                                             {row.officialActivityCode ?? '—'}
                                         </td>
                                         <td className="px-3 py-2">
-                                            {row.regionCode ?? '—'}
+                                            {row.sourceRegions?.length
+                                                ? row.sourceRegions
+                                                      .map(
+                                                          (region) =>
+                                                              `${region.code} · ${region.name}`,
+                                                      )
+                                                      .join(', ')
+                                                : '—'}
                                         </td>
                                         <td className="px-3 py-2">
-                                            {row.regionName ?? '—'}
+                                            {row.regionCode && row.regionName
+                                                ? `${row.regionCode} · ${row.regionName}`
+                                                : '—'}
                                         </td>
                                         {months.map(([key, label]) => (
                                             <td
@@ -248,54 +266,68 @@ export default function AbprePreview({
                         className="flex items-center justify-between gap-2"
                         aria-label="Páginas de vista previa ABPRE"
                     >
-                        <Button
-                            asChild
-                            size="sm"
-                            variant="outline"
-                            disabled={preview.current_page === 1}
-                        >
-                            <Link
-                                href={show(budgetId, {
-                                    query: queryFor(
-                                        currentUrl,
-                                        Math.max(1, preview.current_page - 1),
-                                    ),
-                                })}
-                                preserveScroll
-                            >
+                        {preview.current_page > 1 ? (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={show(budgetId, {
+                                        query: queryFor(
+                                            currentUrl,
+                                            'preview_page',
+                                            preview.current_page - 1,
+                                        ),
+                                    })}
+                                    preserveScroll
+                                    preserveState
+                                >
+                                    Anterior
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="outline" disabled>
                                 Anterior
-                            </Link>
-                        </Button>
+                            </Button>
+                        )}
                         <span className="text-xs text-muted-foreground">
                             Página {preview.current_page} de {preview.last_page}
                         </span>
-                        <Button
-                            asChild
-                            size="sm"
-                            variant="outline"
-                            disabled={!preview.next_page_url}
-                        >
-                            <Link
-                                href={show(budgetId, {
-                                    query: queryFor(
-                                        currentUrl,
-                                        preview.current_page + 1,
-                                    ),
-                                })}
-                                preserveScroll
-                            >
+                        {preview.next_page_url ? (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={show(budgetId, {
+                                        query: queryFor(
+                                            currentUrl,
+                                            'preview_page',
+                                            preview.current_page + 1,
+                                        ),
+                                    })}
+                                    preserveScroll
+                                    preserveState
+                                >
+                                    Siguiente
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="outline" disabled>
                                 Siguiente
-                            </Link>
-                        </Button>
+                            </Button>
+                        )}
                     </nav>
                 )}
 
-                {canConfirm && requiredIssues.length > 0 && (
+                {canConfirm && decisionWarnings.total > 0 && (
                     <fieldset className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-800 dark:bg-amber-950/30">
                         <legend className="px-1 text-sm font-semibold">
                             Decisiones requeridas
                         </legend>
-                        {requiredIssues.map((issue) => {
+                        <p
+                            className="text-sm text-muted-foreground"
+                            aria-live="polite"
+                        >
+                            {resolvedDecisionCount} de {decisionWarnings.total}{' '}
+                            advertencias resueltas. Cada decisión requiere una
+                            selección explícita.
+                        </p>
+                        {decisionWarnings.data.map((issue) => {
                             const decision = decisions.find(
                                 (item) => item.issue_id === issue.id,
                             );
@@ -323,17 +355,20 @@ export default function AbprePreview({
                                             <select
                                                 id={`resolution-${issue.id}`}
                                                 value={
-                                                    decision?.resolution ??
-                                                    'manual'
+                                                    decision?.resolution ?? ''
                                                 }
                                                 onChange={(event) =>
-                                                    updateDecision(issue.id, {
-                                                        resolution: event.target
+                                                    chooseDecision(
+                                                        issue.id,
+                                                        event.target
                                                             .value as OwnRevenueImportDecision['resolution'],
-                                                    })
+                                                    )
                                                 }
                                                 className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                                             >
+                                                <option value="" disabled>
+                                                    Selecciona una resolución
+                                                </option>
                                                 <option value="manual">
                                                     Captura manual
                                                 </option>
@@ -364,6 +399,7 @@ export default function AbprePreview({
                                                                 .value || null,
                                                     })
                                                 }
+                                                disabled={!decision}
                                             />
                                         </div>
                                         <div className="grid gap-2">
@@ -385,12 +421,76 @@ export default function AbprePreview({
                                                                 .value || null,
                                                     })
                                                 }
+                                                disabled={!decision}
                                             />
                                         </div>
                                     </div>
                                 </div>
                             );
                         })}
+                        {decisionWarnings.last_page > 1 && (
+                            <nav
+                                className="flex items-center justify-between gap-2"
+                                aria-label="Páginas de decisiones requeridas"
+                            >
+                                {decisionWarnings.current_page > 1 ? (
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link
+                                            href={show(budgetId, {
+                                                query: queryFor(
+                                                    currentUrl,
+                                                    'decisions_page',
+                                                    decisionWarnings.current_page -
+                                                        1,
+                                                ),
+                                            })}
+                                            preserveScroll
+                                            preserveState
+                                        >
+                                            Anterior
+                                        </Link>
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled
+                                    >
+                                        Anterior
+                                    </Button>
+                                )}
+                                <span className="text-xs text-muted-foreground">
+                                    Página {decisionWarnings.current_page} de{' '}
+                                    {decisionWarnings.last_page}
+                                </span>
+                                {decisionWarnings.has_more ? (
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link
+                                            href={show(budgetId, {
+                                                query: queryFor(
+                                                    currentUrl,
+                                                    'decisions_page',
+                                                    decisionWarnings.current_page +
+                                                        1,
+                                                ),
+                                            })}
+                                            preserveScroll
+                                            preserveState
+                                        >
+                                            Siguiente
+                                        </Link>
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled
+                                    >
+                                        Siguiente
+                                    </Button>
+                                )}
+                            </nav>
+                        )}
                     </fieldset>
                 )}
 
@@ -400,7 +500,7 @@ export default function AbprePreview({
                         <Button
                             type="button"
                             onClick={confirmImport}
-                            disabled={form.processing}
+                            disabled={form.processing || !decisionsComplete}
                         >
                             <CheckCircle2 className="size-4" />
                             {form.processing

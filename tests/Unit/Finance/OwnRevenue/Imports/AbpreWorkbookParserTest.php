@@ -27,7 +27,7 @@ function abpreParserFixture(): string
             2 => ['A' => 'Proyecto de Presupuesto 2026'],
             8 => $headers,
             9 => [...$institution, 'L' => '21101', ...$zeros, 'P' => '1022', 'Y' => '1000'],
-            10 => ['K' => '2100', 'L' => '21101', ...$zeros, 'P' => '28', 'Y' => '28'],
+            10 => ['I' => '03-002', 'J' => 'REGIÓN DOS', 'K' => '2100', 'L' => '21101', ...$zeros, 'P' => '28', 'Y' => '28'],
             11 => [...$institution, 'A' => '9999', 'L' => '21101', ...$zeros, 'P' => '5', 'Y' => '5'],
             12 => [...$institution, 'I' => '02-001', 'L' => '99999', ...$zeros, 'P' => '10', 'Y' => '10'],
             13 => [...$institution, 'I' => '02-001', 'L' => '21101', ...$zeros, 'P' => 'importe inválido', 'Y' => '0'],
@@ -52,6 +52,11 @@ test('ABPRE parser forward fills groups regions and converts pesos to exact cent
         ->and($analysis->lines[0]->responsibleUnitCode)->toBe('2330')
         ->and($analysis->lines[0]->specificItemCode)->toBe('21101')
         ->and($analysis->lines[0]->regionCode)->toBe('02-001')
+        ->and($analysis->lines[0]->regionName)->toBe('Felipe Carrillo Puerto')
+        ->and($analysis->lines[0]->sourceRegions)->toBe([
+            ['code' => '04-001', 'name' => 'OTRA REGIÓN'],
+            ['code' => '03-002', 'name' => 'REGIÓN DOS'],
+        ])
         ->and($analysis->lines[0]->months[4])->toBe('105000')
         ->and($analysis->lines[0]->annualAmountCents)->toBe('105000')
         ->and($analysis->lines[0]->sourceRows)->toBe([9, 10])

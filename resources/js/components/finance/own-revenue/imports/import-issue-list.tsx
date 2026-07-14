@@ -129,52 +129,52 @@ export default function ImportIssueList({ budgetId, selectedFile }: Props) {
                         className="flex items-center justify-between gap-2"
                         aria-label="Páginas de incidencias"
                     >
-                        <Button
-                            asChild
-                            size="sm"
-                            variant="outline"
-                            disabled={selectedFile.issues.current_page === 1}
-                        >
-                            <Link
-                                href={show(budgetId, {
-                                    query: queryFor(
-                                        currentUrl,
-                                        selectedFile.id,
-                                        Math.max(
-                                            1,
+                        {selectedFile.issues.current_page > 1 ? (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={show(budgetId, {
+                                        query: queryFor(
+                                            currentUrl,
+                                            selectedFile.id,
                                             selectedFile.issues.current_page -
                                                 1,
                                         ),
-                                    ),
-                                })}
-                                preserveScroll
-                            >
+                                    })}
+                                    preserveScroll
+                                >
+                                    Anterior
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="outline" disabled>
                                 Anterior
-                            </Link>
-                        </Button>
+                            </Button>
+                        )}
                         <span className="text-xs text-muted-foreground">
                             Página {selectedFile.issues.current_page} de{' '}
                             {selectedFile.issues.last_page}
                         </span>
-                        <Button
-                            asChild
-                            size="sm"
-                            variant="outline"
-                            disabled={!selectedFile.issues.has_more}
-                        >
-                            <Link
-                                href={show(budgetId, {
-                                    query: queryFor(
-                                        currentUrl,
-                                        selectedFile.id,
-                                        selectedFile.issues.current_page + 1,
-                                    ),
-                                })}
-                                preserveScroll
-                            >
+                        {selectedFile.issues.has_more ? (
+                            <Button asChild size="sm" variant="outline">
+                                <Link
+                                    href={show(budgetId, {
+                                        query: queryFor(
+                                            currentUrl,
+                                            selectedFile.id,
+                                            selectedFile.issues.current_page +
+                                                1,
+                                        ),
+                                    })}
+                                    preserveScroll
+                                >
+                                    Siguiente
+                                </Link>
+                            </Button>
+                        ) : (
+                            <Button size="sm" variant="outline" disabled>
                                 Siguiente
-                            </Link>
-                        </Button>
+                            </Button>
+                        )}
                     </nav>
                 )}
             </CardContent>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Finance;
 
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportSessionStatus;
@@ -21,9 +22,18 @@ use Inertia\Response;
 
 class OwnRevenueImportController extends Controller
 {
+    private const DECISIONS_PER_PAGE = 25;
+
     private const ISSUES_PER_PAGE = 50;
 
     private const VERSIONS_PER_PAGE = 10;
+
+    private const REQUIRED_WARNING_DECISIONS = [
+        'year.mismatch',
+        'region.normalized',
+        'abpre.annual_mismatch',
+        'abpre.missing_justification',
+    ];
 
     private const SAFE_ISSUE_CONTEXT_FIELDS = [
         'detected_year',
@@ -42,14 +52,17 @@ class OwnRevenueImportController extends Controller
         Gate::authorize('viewImports', $budget);
 
         $session = $this->currentSession($budget);
-        $abpreFile = $this->fileSummaryQuery($budget)
+        $latestAbpreFile = $this->fileSummaryQuery($budget)
             ->where('format', OwnRevenueImportFormat::Abpre)
             ->orderByDesc('version_number')
             ->orderByDesc('id')
             ->first();
         $selectedFile = $request->integer('import_file_id') > 0
             ? $this->fileSummaryQuery($budget)->find($request->integer('import_file_id'))
-            : $abpreFile;
+            : $latestAbpreFile;
+        $previewFile = $selectedFile?->format === OwnRevenueImportFormat::Abpre
+            ? $selectedFile
+            : $latestAbpreFile;
 
         return Inertia::render('finance/own-revenue/imports/show', [
             'budget' => $this->budgetData($budget),
@@ -61,7 +74,14 @@ class OwnRevenueImportController extends Controller
                 ...$this->fileData($selectedFile),
                 'issues' => $this->issuesData($selectedFile),
             ],
-            'preview' => $this->previewData($abpreFile),
+            'preview_file' => $previewFile === null ? null : [
+                'id' => $previewFile->id,
+                'name' => $previewFile->original_name,
+                'version' => $previewFile->version_number,
+                'status' => $previewFile->status->value,
+            ],
+            'preview' => $this->previewData($previewFile),
+            'decision_warnings' => $this->decisionWarningsData($previewFile),
             'permissions' => [
                 'upload' => Gate::allows('manageImports', $budget),
                 'manage' => Gate::allows('manageImports', $budget),
@@ -91,6 +111,7 @@ class OwnRevenueImportController extends Controller
     /** @return array<string, mixed> */
     private function slotData(OwnRevenueBudget $budget, OwnRevenueImportFormat $format): array
     {
+        $history = $budget->importFiles()->where('format', $format);
         $versions = $this->fileSummaryQuery($budget)
             ->where('format', $format)
             ->orderByDesc('version_number')
@@ -110,6 +131,19 @@ class OwnRevenueImportController extends Controller
             'versions_current_page' => $versions->currentPage(),
             'versions_last_page' => $versions->lastPage(),
             'versions_has_more' => $versions->hasMorePages(),
+            'has_confirmed' => (clone $history)
+                ->where(function (Builder $query): void {
+                    $query->whereNotNull('confirmed_at')
+                        ->orWhere('status', OwnRevenueImportFileStatus::Confirmed);
+                })
+                ->exists(),
+            'has_parser_pending' => (clone $history)
+                ->where('status', OwnRevenueImportFileStatus::ParserPending)
+                ->exists(),
+            'latest_status' => (clone $history)
+                ->orderByDesc('version_number')
+                ->orderByDesc('id')
+                ->first(['status'])?->status->value,
         ];
     }
 
@@ -208,17 +242,7 @@ class OwnRevenueImportController extends Controller
             ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
             ->orderBy('id')
             ->paginate(self::ISSUES_PER_PAGE, ['*'], 'issues_page')
-            ->through(fn (OwnRevenueImportIssue $issue): array => [
-                'id' => $issue->id,
-                'severity' => $issue->severity->value,
-                'code' => $issue->code,
-                'field' => $issue->field,
-                'message' => $issue->message,
-                'context' => $this->exactMonetaryStrings(Arr::only(
-                    $issue->context ?? [],
-                    self::SAFE_ISSUE_CONTEXT_FIELDS,
-                )),
-            ]);
+            ->through(fn (OwnRevenueImportIssue $issue): array => $this->issueData($issue));
         $data = $issues->toArray();
         $data['has_more'] = $issues->hasMorePages();
 
@@ -226,10 +250,49 @@ class OwnRevenueImportController extends Controller
     }
 
     /** @return array<string, mixed> */
+    private function decisionWarningsData(?OwnRevenueImportFile $file): array
+    {
+        if ($file === null) {
+            $data = $this->emptyPaginator(self::DECISIONS_PER_PAGE);
+            $data['has_more'] = false;
+
+            return $data;
+        }
+
+        $warnings = $file->issues()
+            ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
+            ->where('severity', OwnRevenueImportIssueSeverity::Warning)
+            ->whereIn('code', self::REQUIRED_WARNING_DECISIONS)
+            ->orderBy('id')
+            ->paginate(self::DECISIONS_PER_PAGE, ['*'], 'decisions_page')
+            ->through(fn (OwnRevenueImportIssue $issue): array => $this->issueData($issue));
+        $data = $warnings->toArray();
+        $data['has_more'] = $warnings->hasMorePages();
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
+    private function issueData(OwnRevenueImportIssue $issue): array
+    {
+        return [
+            'id' => $issue->id,
+            'severity' => $issue->severity->value,
+            'code' => $issue->code,
+            'field' => $issue->field,
+            'message' => $issue->message,
+            'context' => $this->exactMonetaryStrings(Arr::only(
+                $issue->context ?? [],
+                self::SAFE_ISSUE_CONTEXT_FIELDS,
+            )),
+        ];
+    }
+
+    /** @return array<string, mixed> */
     private function previewData(?OwnRevenueImportFile $file): array
     {
         if ($file === null) {
-            return $this->emptyPaginator();
+            return $this->emptyPaginator(25);
         }
 
         return $file->rows()
@@ -245,9 +308,9 @@ class OwnRevenueImportController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function emptyPaginator(): array
+    private function emptyPaginator(int $perPage): array
     {
-        return (new LengthAwarePaginator([], 0, 25, 1))->toArray();
+        return (new LengthAwarePaginator([], 0, $perPage, 1))->toArray();
     }
 
     /** @param array<string|int, mixed> $values

@@ -196,6 +196,34 @@ test('format and confirmation requests enforce strict enum and nested decision v
         ->assertSessionDoesntHaveErrors('decisions');
 });
 
+test('format correction endpoint rejects immutable and in-flight states', function (OwnRevenueImportFileStatus $status) {
+    $manager = importManagementUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => $status,
+        'confirmed_at' => $status === OwnRevenueImportFileStatus::Replaced ? now() : null,
+    ]);
+
+    $this->actingAs($manager)
+        ->from(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->put(route('finance.own-revenue.budgets.imports.files.format.update', [$budget, $file]), [
+            'format' => OwnRevenueImportFormat::Fuel->value,
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertSessionHasErrors('format');
+
+    expect($file->fresh()->format)->toBe(OwnRevenueImportFormat::Abpre)
+        ->and($file->fresh()->status)->toBe($status);
+})->with([
+    OwnRevenueImportFileStatus::Discarded,
+    OwnRevenueImportFileStatus::Replaced,
+    OwnRevenueImportFileStatus::Analyzing,
+    OwnRevenueImportFileStatus::Confirmed,
+    OwnRevenueImportFileStatus::Ready,
+]);
+
 test('consultation roles may view and download but all mutations are forbidden', function (UserRole $role) {
     Storage::fake('local');
     $user = importManagementUser($role);
