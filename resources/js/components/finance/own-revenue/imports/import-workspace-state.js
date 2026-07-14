@@ -29,7 +29,7 @@ export function importFilePresentation({
         parser_pending: 'Listo para analizar',
         analyzing: 'Analizando',
         needs_correction: 'Requiere revisión',
-        ready: 'Listo para confirmar',
+        ready: 'Listo para revisar',
         confirmed: 'Confirmado',
         failed: 'No se pudo analizar',
     };

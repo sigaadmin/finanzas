@@ -58,6 +58,24 @@ test('work sheet preview badge reflects workflow state before permissions', () =
         }),
         'Analizando',
     );
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'replaced',
+            viewState: 'replaced',
+            canManage: true,
+            canConfirm: false,
+        }),
+        'Reemplazada',
+    );
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'discarded',
+            viewState: 'discarded',
+            canManage: true,
+            canConfirm: false,
+        }),
+        'Descartada',
+    );
 });
 
 test('confirmation controls require management access current eligibility and a revision', () => {
@@ -119,6 +137,14 @@ test('preview states use operational language', () => {
         'El ABPRE cambió; vuelve a analizar la Hoja de trabajo antes de tomar decisiones.',
     );
     assert.doesNotMatch(previewStateMessage('failed'), /parser|payload|token/i);
+    assert.equal(
+        previewStateMessage('replaced'),
+        'Esta versión fue reemplazada por una revisión posterior.',
+    );
+    assert.equal(
+        previewStateMessage('discarded'),
+        'Esta versión fue descartada y se conserva sólo para consulta.',
+    );
 });
 
 test('stale decision errors explain the next action without technical fields', () => {
@@ -208,4 +234,5 @@ test('work sheet table and decision buttons expose accessible labels', () => {
     assert.match(component, /<caption[^>]*className="sr-only"/);
     assert.match(component, /aria-label=\{`Aceptar diferencia/);
     assert.match(component, /aria-label=\{`No aceptar diferencia/);
+    assert.match(component, /\['confirmed', 'replaced', 'discarded'\]/);
 });

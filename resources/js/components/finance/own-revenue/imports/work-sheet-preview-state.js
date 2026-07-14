@@ -19,6 +19,9 @@ export function previewStateMessage(state) {
         empty: 'El análisis no encontró renglones que puedan mostrarse.',
         abpre_changed:
             'El ABPRE cambió; vuelve a analizar la Hoja de trabajo antes de tomar decisiones.',
+        replaced: 'Esta versión fue reemplazada por una revisión posterior.',
+        discarded:
+            'Esta versión fue descartada y se conserva sólo para consulta.',
     };
 
     return messages[state] ?? '';
@@ -49,6 +52,8 @@ export function workSheetPreviewBadge({
         empty: 'Sin información para confirmar',
         abpre_changed: 'Requiere nuevo análisis',
         ready: 'Pendiente de revisión',
+        replaced: 'Reemplazada',
+        discarded: 'Descartada',
     };
 
     return labels[viewState] ?? 'Pendiente de revisión';

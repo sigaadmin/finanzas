@@ -14,6 +14,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Imports\OwnRevenueImportViewData;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -218,6 +219,9 @@ test('work sheet preview exposes server confirmation eligibility and human reaso
 test('consultation roles see work sheet preview without mutation permission', function (UserRole $role) {
     $viewer = workSheetPreviewUser($role);
     [$budget, $file] = workSheetPreviewScenario();
+    $snapshot = Mockery::mock(CaptureOwnRevenueImportAnalysisSnapshot::class);
+    $snapshot->shouldNotReceive('handle');
+    app()->instance(CaptureOwnRevenueImportAnalysisSnapshot::class, $snapshot);
 
     $this->actingAs($viewer)
         ->get(route('finance.own-revenue.budgets.imports.files.preview', [
@@ -235,6 +239,36 @@ test('consultation roles see work sheet preview without mutation permission', fu
             ->missing('selected_file.storage_path')
             ->missing('selected_file.analysis_token'));
 })->with([UserRole::FinanceAssistant, UserRole::FinanceAuditor]);
+
+test('confirmation eligibility loads all required decisions in one query', function () {
+    [$budget, $file] = workSheetPreviewScenario();
+
+    foreach (range(2, 12) as $index) {
+        $issue = OwnRevenueImportIssue::factory()->create([
+            'own_revenue_import_file_id' => $file->id,
+            'severity' => OwnRevenueImportIssueSeverity::Warning,
+            'code' => 'work_sheet.abpre_mismatch',
+            'context' => ['requires_decision' => true],
+        ]);
+        OwnRevenueImportDecision::factory()->create([
+            'own_revenue_import_issue_id' => $issue->id,
+            'resolution' => 'accepted',
+            'resolved_value' => [
+                'accepted' => true,
+                'analysis_revision' => $file->analysis_revision,
+            ],
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    app(OwnRevenueImportViewData::class)
+        ->workSheetConfirmationState($file);
+    $decisionQueries = collect(DB::getQueryLog())
+        ->filter(fn (array $query): bool => str_contains($query['query'], 'own_revenue_import_decisions'));
+
+    expect($decisionQueries)->toHaveCount(1);
+});
 
 test('work sheet preview describes files that have not been analyzed or whose analysis failed', function () {
     $manager = workSheetPreviewUser(UserRole::FinanceManager);
@@ -263,6 +297,26 @@ test('work sheet preview describes files that have not been analyzed or whose an
             ->where('view_state', 'failed')
             ->has('preview.data', 0));
 });
+
+test('replaced and discarded work sheet previews remain historical terminal states', function (OwnRevenueImportFileStatus $status, string $state) {
+    $manager = workSheetPreviewUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::WorkSheet,
+        'status' => $status,
+        'analyzed_at' => now(),
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file]))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('view_state', $state)
+            ->where('can_confirm', false));
+})->with([
+    'replaced' => [OwnRevenueImportFileStatus::Replaced, 'replaced'],
+    'discarded' => [OwnRevenueImportFileStatus::Discarded, 'discarded'],
+]);
 
 test('an active first analysis is described as in progress', function () {
     $manager = workSheetPreviewUser(UserRole::FinanceManager);

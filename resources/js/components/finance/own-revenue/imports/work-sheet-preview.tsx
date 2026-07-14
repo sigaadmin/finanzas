@@ -267,7 +267,7 @@ export default function WorkSheetPreview({
                     {stateMessage}
                 </div>
             )}
-            {file.status !== 'confirmed' && (
+            {!['confirmed', 'replaced', 'discarded'].includes(file.status) && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base">

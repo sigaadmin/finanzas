@@ -5,6 +5,8 @@ export type WorkSheetPreviewState =
     | 'empty'
     | 'abpre_changed'
     | 'confirmed'
+    | 'replaced'
+    | 'discarded'
     | 'ready';
 
 export function formatCents(rawCents: string): string;

@@ -159,7 +159,7 @@ test('work sheet files expose analysis and preview actions with operational lang
             canReclassify: false,
         }),
         {
-            label: 'Listo para confirmar',
+            label: 'Listo para revisar',
             canAnalyze: false,
             canViewIssues: true,
             canViewPreview: true,

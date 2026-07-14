@@ -251,6 +251,8 @@ export type OwnRevenueWorkSheetPreviewProps = {
         | 'empty'
         | 'abpre_changed'
         | 'confirmed'
+        | 'replaced'
+        | 'discarded'
         | 'ready';
     decisions_enabled: boolean;
     can_confirm: boolean;

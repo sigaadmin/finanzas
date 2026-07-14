@@ -7,6 +7,7 @@ use App\Actions\Finance\OwnRevenue\Imports\CaptureOwnRevenueImportAnalysisSnapsh
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportDecision;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
@@ -313,6 +314,14 @@ class OwnRevenueImportViewData
             return 'confirmed';
         }
 
+        if ($file->status === OwnRevenueImportFileStatus::Replaced) {
+            return 'replaced';
+        }
+
+        if ($file->status === OwnRevenueImportFileStatus::Discarded) {
+            return 'discarded';
+        }
+
         if ($file->status === OwnRevenueImportFileStatus::Analyzing) {
             return 'analyzing';
         }
@@ -350,6 +359,14 @@ class OwnRevenueImportViewData
             ];
         }
 
+        if ($file->status === OwnRevenueImportFileStatus::Replaced) {
+            return ['can_confirm' => false, 'reasons' => ['Esta Hoja de trabajo fue reemplazada.']];
+        }
+
+        if ($file->status === OwnRevenueImportFileStatus::Discarded) {
+            return ['can_confirm' => false, 'reasons' => ['Esta Hoja de trabajo fue descartada.']];
+        }
+
         $reasons = [];
         if ($file->status === OwnRevenueImportFileStatus::Analyzing || $file->analysis_token !== null) {
             $reasons[] = 'El análisis del archivo todavía está en proceso.';
@@ -385,15 +402,20 @@ class OwnRevenueImportViewData
             $reasons[] = 'Los datos de referencia cambiaron; vuelve a analizar la Hoja de trabajo.';
         }
 
-        $hasPendingDecision = $file->issues()
+        $requiredWarnings = $file->issues()
             ->where('severity', OwnRevenueImportIssueSeverity::Warning)
             ->get()
-            ->contains(function (OwnRevenueImportIssue $issue) use ($file): bool {
-                if (($issue->context['requires_decision'] ?? false) !== true) {
-                    return false;
-                }
+            ->filter(fn (OwnRevenueImportIssue $issue): bool => ($issue->context['requires_decision'] ?? false) === true);
+        $latestDecisions = OwnRevenueImportDecision::query()
+            ->whereIn('own_revenue_import_issue_id', $requiredWarnings->modelKeys())
+            ->orderBy('id')
+            ->get()
+            ->groupBy('own_revenue_import_issue_id')
+            ->map->last();
+        $hasPendingDecision = $requiredWarnings
+            ->contains(function (OwnRevenueImportIssue $issue) use ($file, $latestDecisions): bool {
+                $decision = $latestDecisions->get($issue->id);
 
-                $decision = $issue->decisions()->latest('id')->first();
                 $resolvedValue = $decision?->resolved_value;
 
                 return $decision?->resolution !== 'accepted'

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Finance\OwnRevenue\Imports\AnalyzeOwnRevenueImportFile;
 use App\Actions\Finance\OwnRevenue\Imports\StartOwnRevenueImportSession;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
@@ -21,6 +22,43 @@ use Inertia\Testing\AssertableInertia as Assert;
 beforeEach(function () {
     $this->withoutVite();
 });
+
+test('analysis endpoint flashes a truthful result for failed work sheets and successful ABPRE files', function (
+    OwnRevenueImportFormat $format,
+    OwnRevenueImportFileStatus $status,
+    string $flashKey,
+    string $message,
+) {
+    $manager = importManagementUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => $format,
+        'status' => $status,
+    ]);
+    $analyzer = Mockery::mock(AnalyzeOwnRevenueImportFile::class);
+    $analyzer->shouldReceive('handle')->once()->andReturn($file);
+    app()->instance(AnalyzeOwnRevenueImportFile::class, $analyzer);
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.imports.files.analyze', [$budget, $file]))
+        ->assertRedirect(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertSessionHas("inertia.flash_data.{$flashKey}", $message)
+        ->assertSessionMissing('inertia.flash_data.'.($flashKey === 'error' ? 'success' : 'error'));
+})->with([
+    'failed work sheet' => [
+        OwnRevenueImportFormat::WorkSheet,
+        OwnRevenueImportFileStatus::Failed,
+        'error',
+        'No fue posible analizar el archivo. Revisa las incidencias e inténtalo nuevamente.',
+    ],
+    'successful ABPRE' => [
+        OwnRevenueImportFormat::Abpre,
+        OwnRevenueImportFileStatus::Ready,
+        'success',
+        'Archivo analizado correctamente.',
+    ],
+]);
 
 function importManagementUser(UserRole $role = UserRole::FinanceManager): User
 {

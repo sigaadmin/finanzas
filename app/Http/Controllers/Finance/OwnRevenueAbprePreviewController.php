@@ -27,11 +27,13 @@ class OwnRevenueAbprePreviewController extends Controller
         $workSheetState = $importFile->format === OwnRevenueImportFormat::WorkSheet
             ? $this->viewData->workSheetViewState($importFile)
             : null;
-        $workSheetConfirmation = $importFile->format === OwnRevenueImportFormat::WorkSheet
-            ? $this->viewData->workSheetConfirmationState($importFile)
-            : null;
         $canManage = Gate::allows('manageImports', $budget);
         $canConfirm = Gate::allows('confirmImports', $budget);
+        $workSheetConfirmation = $importFile->format === OwnRevenueImportFormat::WorkSheet
+            && $canManage
+            && $canConfirm
+            ? $this->viewData->workSheetConfirmationState($importFile)
+            : null;
         $previewData = $importFile->format === OwnRevenueImportFormat::WorkSheet
             ? [
                 'preview' => $this->viewData->workSheetPreview($importFile),
