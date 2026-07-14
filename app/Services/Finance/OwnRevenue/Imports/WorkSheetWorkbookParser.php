@@ -29,7 +29,7 @@ class WorkSheetWorkbookParser
     ) {}
 
     /**
-     * @param  array<string, int>  $activityMap
+     * @param  array<string, int|string>  $activityMap
      * @param  array<string, int>  $cogMap
      */
     public function parse(XlsxWorkbook $workbook, array $activityMap, array $cogMap): WorkSheetAnalysis
@@ -100,6 +100,7 @@ class WorkSheetWorkbookParser
                 continue;
             }
 
+            $resolvedActivityCode = $currentActivity['code'];
             if (! array_key_exists($currentActivity['code'], $activityMap)) {
                 $issues[] = new ImportIssueData(
                     OwnRevenueImportIssueSeverity::Error,
@@ -110,6 +111,8 @@ class WorkSheetWorkbookParser
                     $sheet->name,
                     $rowNumber,
                 );
+            } elseif (is_string($activityMap[$currentActivity['code']])) {
+                $resolvedActivityCode = $activityMap[$currentActivity['code']];
             }
 
             if (! array_key_exists($specificItemCode, $cogMap)) {
@@ -231,10 +234,10 @@ class WorkSheetWorkbookParser
                 );
             }
 
-            $key = $currentActivity['code'].'|'.$specificItemCode.'|'.self::REGION_CODE;
+            $key = $resolvedActivityCode.'|'.$specificItemCode.'|'.self::REGION_CODE;
             if (! isset($groups[$key])) {
                 $groups[$key] = [
-                    'activity_code' => $currentActivity['code'],
+                    'activity_code' => $resolvedActivityCode,
                     'activity_name' => $currentActivity['name'],
                     'item_name' => trim($values['insumo'] ?? ''),
                     'item_names' => [],
@@ -269,7 +272,7 @@ class WorkSheetWorkbookParser
                             self::MONTHS[$month],
                             'La suma mensual agrupada excede el importe máximo permitido.',
                             [
-                                'activity_code' => $currentActivity['code'],
+                                'activity_code' => $resolvedActivityCode,
                                 'specific_item_code' => $specificItemCode,
                                 'source_rows' => [...$groups[$key]['source_rows'], $rowNumber],
                             ],

@@ -127,6 +127,41 @@ test('work sheet analysis persists source and normalized staging with warnings w
     ]);
 });
 
+test('work sheet analysis maps the official activity prefix to the budget activity catalog', function () {
+    Storage::fake('local');
+    $manager = workSheetAnalysisManager();
+    $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
+    $budget = OwnRevenueBudget::factory()->create([
+        'fiscal_year' => $fiscalYear,
+        'official_activity_code' => 'A03',
+    ]);
+    $budget->activities()->create(['code' => 'A01', 'name' => 'Fomento de la investigación']);
+    $classification = workSheetAnalysisCog($fiscalYear);
+    confirmedAbpreForWorkSheetAnalysis($budget, $classification, 100);
+    $file = storedWorkSheetForAnalysis($budget, $manager, [
+        5 => [
+            'A' => 'A03-A01 - Actividades para el fomento de la Investigación',
+            'B' => 'Papelería',
+            'C' => '21101',
+            'D' => '02-001',
+            'E' => 'Felipe Carrillo Puerto',
+            'F' => '1',
+            ...workSheetMonths('1'),
+            'S' => '1',
+        ],
+    ]);
+
+    $result = app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+
+    expect($result->status)->toBe(OwnRevenueImportFileStatus::Ready)
+        ->and($result->issues()->where('code', 'activity.missing')->count())->toBe(0)
+        ->and($result->rows()->where('row_kind', 'work_sheet_normalized_line')->sole()->normalized_payload)
+        ->toMatchArray([
+            'activityCode' => 'A01',
+            'activityName' => 'Actividades para el fomento de la Investigación',
+        ]);
+});
+
 test('work sheet analysis resolves only activities from its budget and COG from its fiscal year', function () {
     Storage::fake('local');
     $manager = workSheetAnalysisManager();

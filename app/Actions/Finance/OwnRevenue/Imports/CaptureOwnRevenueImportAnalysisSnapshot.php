@@ -56,8 +56,33 @@ class CaptureOwnRevenueImportAnalysisSnapshot
         return new OwnRevenueImportAnalysisSnapshot(
             fingerprint: $this->canonicalJson->hash($source),
             budget: $budget->getAttributes(),
-            activityMap: collect($activities)->pluck('id', 'code')->map(fn (mixed $id): int => (int) $id)->all(),
+            activityMap: $this->activityMap($activities, $budget->official_activity_code),
             cogMap: collect($classifications)->pluck('id', 'specific_item_code')->map(fn (mixed $id): int => (int) $id)->all(),
         );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $activities
+     * @return array<string, string>
+     */
+    private function activityMap(array $activities, ?string $officialActivityCode): array
+    {
+        $map = [];
+        $officialActivityCode = trim((string) $officialActivityCode);
+
+        foreach ($activities as $activity) {
+            $code = trim((string) ($activity['code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+
+            $map[$code] = $code;
+
+            if ($officialActivityCode !== '') {
+                $map[$officialActivityCode.'-'.$code] ??= $code;
+            }
+        }
+
+        return $map;
     }
 }
