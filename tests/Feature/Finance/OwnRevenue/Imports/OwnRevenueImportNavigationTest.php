@@ -142,6 +142,135 @@ test('selected ABPRE owns both preview rows and required decision warnings', fun
             ->where('decision_warnings.total', 1));
 });
 
+test('dedicated ABPRE preview exposes safe paginated data with exact money strings', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create(['estimated_income_cents' => '9007199254740993']);
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'original_name' => 'ABPRE seguro.xlsx',
+        'version_number' => 3,
+    ]);
+
+    foreach (range(1, 26) as $index) {
+        OwnRevenueImportRow::factory()->create([
+            'own_revenue_import_file_id' => $file->id,
+            'row_kind' => 'abpre_line',
+            'row_number' => $index,
+            'normalized_payload' => [
+                'months' => ['january' => '9007199254740993'],
+                'annualAmountCents' => '9007199254740993',
+            ],
+        ]);
+
+        OwnRevenueImportIssue::factory()->create([
+            'own_revenue_import_file_id' => $file->id,
+            'severity' => 'warning',
+            'code' => 'year.mismatch',
+            'context' => [
+                'source_cents' => '9007199254740993',
+                'exception' => '/private/storage/ABPRE.xlsx',
+            ],
+        ]);
+    }
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $file,
+            'preview_page' => 2,
+            'decisions_page' => 2,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->component('finance/own-revenue/imports/preview', false)
+            ->where('budget.id', $budget->id)
+            ->where('budget.estimated_income_cents', '9007199254740993')
+            ->where('selected_file.id', $file->id)
+            ->where('selected_file.name', 'ABPRE seguro.xlsx')
+            ->where('selected_file.version', 3)
+            ->missing('selected_file.storage_disk')
+            ->missing('selected_file.storage_path')
+            ->missing('selected_file.sha256')
+            ->has('preview.data', 1)
+            ->where('preview.current_page', 2)
+            ->where('preview.per_page', 25)
+            ->where('preview.data.0.months.january', '9007199254740993')
+            ->where('preview.data.0.annualAmountCents', '9007199254740993')
+            ->has('decision_warnings.data', 1)
+            ->where('decision_warnings.current_page', 2)
+            ->where('decision_warnings.per_page', 25)
+            ->where('decision_warnings.data.0.context.source_cents', '9007199254740993')
+            ->missing('decision_warnings.data.0.context.exception')
+            ->where('permissions.manage', true)
+            ->where('permissions.confirm', true)
+            ->where('permissions.download', true));
+});
+
+test('dedicated ABPRE preview clamps stale paginator pages', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+    ]);
+    $row = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'row_kind' => 'abpre_line',
+    ]);
+    $warning = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'severity' => 'warning',
+        'code' => 'region.normalized',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $file,
+            'preview_page' => 99,
+            'decisions_page' => 99,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('preview.current_page', 1)
+            ->where('preview.data.0.id', $row->id)
+            ->where('decision_warnings.current_page', 1)
+            ->where('decision_warnings.data.0.id', $warning->id));
+});
+
+test('dedicated ABPRE preview enforces consultation authorization and aggregate boundaries', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $unauthorized = User::factory()->create();
+    $budget = OwnRevenueBudget::factory()->create();
+    $otherBudget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+    ]);
+    $nonAbpre = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Fuel,
+    ]);
+
+    $previewRoute = fn (OwnRevenueBudget $routeBudget, OwnRevenueImportFile $routeFile): string => route(
+        'finance.own-revenue.budgets.imports.files.preview',
+        ['budget' => $routeBudget, 'importFile' => $routeFile],
+    );
+
+    $this->actingAs($unauthorized)
+        ->get($previewRoute($budget, $file))
+        ->assertForbidden();
+
+    $this->actingAs($manager)
+        ->get($previewRoute($otherBudget, $file))
+        ->assertNotFound();
+
+    $this->actingAs($manager)
+        ->get($previewRoute($budget, $nonAbpre))
+        ->assertNotFound();
+});
+
 test('stale per-file pages clamp to the first page when selecting a shorter file', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
     $budget = OwnRevenueBudget::factory()->create();
@@ -370,6 +499,7 @@ test('frontend import workspace honors navigation route money and permission con
     $preview = file_get_contents(resource_path('js/components/finance/own-revenue/imports/abpre-preview.tsx'));
     $types = file_get_contents(resource_path('js/types/finance-own-revenue-imports.ts'));
     $controller = file_get_contents(app_path('Http/Controllers/Finance/OwnRevenueImportController.php'));
+    $viewData = file_get_contents(app_path('Services/Finance/OwnRevenue/Imports/OwnRevenueImportViewData.php'));
 
     expect($createPage)
         ->toContain("type Mode = 'blank' | 'copy' | 'import'")
@@ -418,7 +548,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('months: Record<string, string>')
         ->toContain('permissions: OwnRevenueImportPermissions');
 
-    expect($controller)
+    expect($controller.$viewData)
         ->toContain('year.mismatch')
         ->toContain('region.normalized')
         ->toContain('abpre.annual_mismatch')

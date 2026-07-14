@@ -6,6 +6,7 @@ use App\Http\Controllers\Finance\ChargeConceptOfficialLinkController;
 use App\Http\Controllers\Finance\ExpenseClassificationImportController;
 use App\Http\Controllers\Finance\OfficialFeeConceptController;
 use App\Http\Controllers\Finance\OwnRevenueAbpreConfirmationController;
+use App\Http\Controllers\Finance\OwnRevenueAbprePreviewController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
@@ -109,6 +110,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('own-revenue/budgets/{budget}/imports', [OwnRevenueImportController::class, 'show'])
             ->name('own-revenue.budgets.imports.show');
+
+        Route::get('own-revenue/budgets/{budget}/imports/files/{importFile}/preview', OwnRevenueAbprePreviewController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.preview');
 
         Route::post('own-revenue/budgets/{budget}/imports/files', [OwnRevenueImportFileController::class, 'store'])
             ->name('own-revenue.budgets.imports.files.store');
