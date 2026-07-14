@@ -198,7 +198,18 @@ class AnalyzeOwnRevenueImportFile
                 ]);
             }
 
-            $hasErrors = collect($analysis->issues)
+            if ($analysis->lines === []) {
+                $lockedFile->issues()->create([
+                    'own_revenue_import_row_id' => null,
+                    'severity' => OwnRevenueImportIssueSeverity::Error,
+                    'code' => 'abpre.no_importable_lines',
+                    'field' => null,
+                    'message' => 'El análisis no contiene líneas ABPRE importables.',
+                    'context' => [],
+                ]);
+            }
+
+            $hasErrors = $analysis->lines === [] || collect($analysis->issues)
                 ->contains(fn ($issue): bool => $issue->severity === OwnRevenueImportIssueSeverity::Error);
             $lockedFile->update([
                 'status' => $hasErrors ? OwnRevenueImportFileStatus::NeedsCorrection : OwnRevenueImportFileStatus::Ready,

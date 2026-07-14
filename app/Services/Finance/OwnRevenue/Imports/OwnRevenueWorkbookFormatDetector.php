@@ -18,9 +18,15 @@ class OwnRevenueWorkbookFormatDetector
             $bestMatches = [];
 
             foreach ($workbook->sheets() as $sheet) {
-                foreach ($sheet->rows() as $row) {
-                    $headers = collect($row->cells())
-                        ->map(fn (XlsxCell $cell): string => $this->normalize($cell->value ?? ''))
+                $rows = $sheet->rows();
+
+                foreach ($rows as $rowNumber => $row) {
+                    $followingRow = $rows[$rowNumber + 1] ?? null;
+                    $headers = collect(array_merge(
+                        array_values($row->cells()),
+                        array_values($followingRow?->cells() ?? []),
+                    ))
+                        ->map(fn (XlsxCell $cell): string => $this->canonicalHeader($cell->value ?? ''))
                         ->filter()
                         ->unique()
                         ->values()
@@ -99,7 +105,13 @@ class OwnRevenueWorkbookFormatDetector
         foreach ($workbook->sheets() as $sheet) {
             foreach ($sheet->rows() as $row) {
                 foreach ($row->cells() as $cell) {
-                    preg_match_all('/(?<!\d)(20\d{2})(?!\d)/', $cell->value ?? '', $matches);
+                    $value = $cell->value ?? '';
+
+                    if (! preg_match('/\b(ejercicio|presupuesto|fiscal|ano)\b/', $this->normalize($value))) {
+                        continue;
+                    }
+
+                    preg_match_all('/(?<!\d)(20\d{2})(?!\d)/', $value, $matches);
 
                     foreach ($matches[1] as $year) {
                         $years[(int) $year] = ($years[(int) $year] ?? 0) + 1;
@@ -123,5 +135,14 @@ class OwnRevenueWorkbookFormatDetector
         $value = preg_replace('/[^a-z0-9]+/', ' ', $value) ?? '';
 
         return trim(preg_replace('/\s+/', ' ', $value) ?? '');
+    }
+
+    private function canonicalHeader(string $value): string
+    {
+        return match ($normalized = $this->normalize($value)) {
+            'actividades unidad de presupuestacion' => 'actividad',
+            'insumos' => 'concepto',
+            default => $normalized,
+        };
     }
 }

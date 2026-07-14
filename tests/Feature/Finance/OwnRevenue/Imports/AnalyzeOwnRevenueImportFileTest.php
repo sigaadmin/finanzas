@@ -116,6 +116,40 @@ test('failed analysis clears attempt ownership', function () {
         ->and($result->issues()->sole()->code)->toBe('analysis.failed');
 });
 
+test('analysis with no importable ABPRE lines requires correction', function () {
+    Storage::fake('local');
+    $manager = analyzeImportUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $contents = 'workbook without importable lines';
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
+        'sha256' => hash('sha256', $contents),
+    ]);
+    Storage::disk('local')->put($file->storage_path, $contents);
+    $reader = Mockery::mock(XlsxWorkbookReader::class);
+    $reader->shouldReceive('read')->once()->andReturn(new XlsxWorkbook([]));
+    $parser = Mockery::mock(AbpreWorkbookParser::class);
+    $parser->shouldReceive('parse')->once()->andReturn(new AbpreAnalysis(
+        [],
+        [],
+        [new ImportIssueData(
+            OwnRevenueImportIssueSeverity::Warning,
+            'abpre.other_unit',
+            'responsible_unit_code',
+            'La fila corresponde a otra unidad responsable y no será importada.',
+        )],
+        [],
+    ));
+
+    $result = (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager);
+
+    expect($result->status)->toBe(OwnRevenueImportFileStatus::NeedsCorrection)
+        ->and($result->issues()->where('code', 'abpre.no_importable_lines')->sole()->severity)
+        ->toBe(OwnRevenueImportIssueSeverity::Error);
+});
+
 test('unavailable stored files fail validation without mutating import state', function () {
     Storage::fake('local');
     $manager = analyzeImportUser();

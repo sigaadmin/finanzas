@@ -61,3 +61,69 @@ it('does not choose a format when strong signatures are ambiguous', function () 
     expect($detection->format)->toBeNull()
         ->and($detection->evidence)->not->toBeEmpty();
 });
+
+it('detects a work sheet whose headers span two rows and use institutional labels', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'HOJA FINAL' => [
+            3 => [
+                'A' => 'ACTIVIDADES UNIDAD DE PRESUPUESTACIÓN',
+                'B' => 'INSUMOS',
+                'C' => 'PARTIDA',
+                'D' => 'REGIÓN',
+                'E' => 'NOMBRE DE LA REGIÓN',
+                'F' => 'PRESUPUESTO',
+                'G' => 'CALENDARIO',
+            ],
+            4 => [
+                'G' => 'ENERO', 'H' => 'FEBRERO', 'I' => 'MARZO', 'J' => 'ABRIL',
+                'K' => 'MAYO', 'L' => 'JUNIO', 'M' => 'JULIO', 'N' => 'AGOSTO',
+                'O' => 'SEPTIEMBRE', 'P' => 'OCTUBRE', 'Q' => 'NOVIEMBRE',
+                'R' => 'DICIEMBRE', 'S' => 'ANUAL',
+            ],
+        ],
+    ]);
+
+    $detection = (new OwnRevenueWorkbookFormatDetector)->detect((new XlsxWorkbookReader)->read($fixture));
+
+    expect($detection->format)->toBe(OwnRevenueImportFormat::WorkSheet)
+        ->and($detection->confidence)->toBe(100);
+});
+
+it('detects years from budget labels instead of repeated COG chapter codes', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'ABPRE' => [
+            2 => ['A' => 'Formato para el Presupuesto de Egresos 2026'],
+            3 => ['A' => 'Clave Unidad Responsable', 'B' => 'Partida', 'C' => 'Enero', 'D' => 'Febrero', 'E' => 'Marzo', 'F' => 'Abril', 'G' => 'Mayo', 'H' => 'Junio', 'I' => 'Julio', 'J' => 'Agosto', 'K' => 'Septiembre', 'L' => 'Octubre', 'M' => 'Noviembre', 'N' => 'Diciembre', 'O' => 'Anual'],
+            4 => ['A' => '2000'],
+            5 => ['A' => '2000'],
+            6 => ['A' => '2000'],
+        ],
+    ]);
+
+    $detection = (new OwnRevenueWorkbookFormatDetector)->detect((new XlsxWorkbookReader)->read($fixture));
+
+    expect($detection->detectedYear)->toBe(2026);
+});
+
+it('does not merge header fragments separated by blank physical rows', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'HOJA FINAL' => [
+            3 => [
+                'A' => 'ACTIVIDADES UNIDAD DE PRESUPUESTACIÓN',
+                'B' => 'INSUMOS',
+                'C' => 'PARTIDA',
+                'D' => 'REGIÓN',
+            ],
+            100 => [
+                'G' => 'ENERO', 'H' => 'FEBRERO', 'I' => 'MARZO', 'J' => 'ABRIL',
+                'K' => 'MAYO', 'L' => 'JUNIO', 'M' => 'JULIO', 'N' => 'AGOSTO',
+                'O' => 'SEPTIEMBRE', 'P' => 'OCTUBRE', 'Q' => 'NOVIEMBRE',
+                'R' => 'DICIEMBRE', 'S' => 'ANUAL',
+            ],
+        ],
+    ]);
+
+    $detection = (new OwnRevenueWorkbookFormatDetector)->detect((new XlsxWorkbookReader)->read($fixture));
+
+    expect($detection->format)->not->toBe(OwnRevenueImportFormat::WorkSheet);
+});
