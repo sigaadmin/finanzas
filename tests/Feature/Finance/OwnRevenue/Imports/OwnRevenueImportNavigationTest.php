@@ -100,6 +100,7 @@ test('selected ABPRE owns both preview rows and required decision warnings', fun
         'version_number' => 1,
         'status' => OwnRevenueImportFileStatus::Ready,
         'original_name' => 'ABPRE anterior.xlsx',
+        'analyzed_at' => '2026-07-13 12:34:56',
     ]);
     $newer = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
@@ -135,9 +136,108 @@ test('selected ABPRE owns both preview rows and required decision warnings', fun
             ->where('preview_file.id', $older->id)
             ->where('preview_file.name', 'ABPRE anterior.xlsx')
             ->where('preview_file.version', 1)
+            ->where('preview_file.analyzed_at', '2026-07-13T12:34:56.000000Z')
             ->where('preview.data.0.annualAmountCents', '100')
             ->where('decision_warnings.data.0.id', $warning->id)
             ->where('decision_warnings.total', 1));
+});
+
+test('stale per-file pages clamp to the first page when selecting a shorter file', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $longFile = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'version_number' => 1,
+    ]);
+    $shortFile = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'version_number' => 2,
+    ]);
+
+    foreach (range(1, 55) as $index) {
+        OwnRevenueImportIssue::factory()->create([
+            'own_revenue_import_file_id' => $longFile->id,
+            'severity' => 'warning',
+            'code' => 'year.mismatch',
+            'message' => "Incidencia larga {$index}",
+        ]);
+    }
+
+    foreach (range(1, 30) as $index) {
+        OwnRevenueImportRow::factory()->create([
+            'own_revenue_import_file_id' => $longFile->id,
+            'row_kind' => 'abpre_line',
+            'row_number' => $index,
+        ]);
+    }
+
+    $shortIssue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $shortFile->id,
+        'severity' => 'warning',
+        'code' => 'region.normalized',
+        'message' => 'Incidencia del archivo corto',
+    ]);
+    $shortRow = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $shortFile->id,
+        'row_kind' => 'abpre_line',
+        'row_number' => 1,
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', [
+            'budget' => $budget,
+            'import_file_id' => $shortFile->id,
+            'issues_page' => 2,
+            'preview_page' => 2,
+            'decisions_page' => 2,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('selected_file.id', $shortFile->id)
+            ->where('selected_file.issues.current_page', 1)
+            ->where('selected_file.issues.data.0.id', $shortIssue->id)
+            ->where('preview.current_page', 1)
+            ->where('preview.data.0.id', $shortRow->id)
+            ->where('decision_warnings.current_page', 1)
+            ->where('decision_warnings.data.0.id', $shortIssue->id));
+});
+
+test('unassigned audit history exposes whether each file may be classified', function () {
+    $manager = importNavigationUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $discarded = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => null,
+        'status' => OwnRevenueImportFileStatus::Discarded,
+        'original_name' => 'descartado.xlsx',
+    ]);
+    $eligible = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => null,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
+        'original_name' => 'clasificable.xlsx',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('unassigned_files.0.id', $eligible->id)
+            ->where('unassigned_files.0.can_reclassify', true)
+            ->where('unassigned_files.1.id', $discarded->id)
+            ->where('unassigned_files.1.can_reclassify', false));
+
+    $this->actingAs($manager)
+        ->put(route('finance.own-revenue.budgets.imports.files.format.update', [
+            'budget' => $budget,
+            'importFile' => $eligible,
+        ]), ['format' => OwnRevenueImportFormat::Fuel->value])
+        ->assertRedirect();
+
+    expect($eligible->fresh()->format)->toBe(OwnRevenueImportFormat::Fuel)
+        ->and($discarded->fresh()->format)->toBeNull();
 });
 
 test('required warning decisions have their own bounded paginator', function () {
@@ -299,8 +399,19 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('uploadQueue')
         ->toContain('filesToQueue')
         ->toContain('onFinish')
+        ->toContain("query.delete('issues_page')")
+        ->toContain("query.delete('preview_page')")
+        ->toContain("query.delete('decisions_page')")
+        ->toContain('file.can_reclassify')
         ->not->toContain('files[0]')
         ->and($workspace)
         ->toContain('slot.has_confirmed')
-        ->toContain('slot.has_parser_pending');
+        ->toContain('slot.has_parser_pending')
+        ->toContain('file.can_reclassify')
+        ->toContain('previewFile?.analyzed_at')
+        ->and($preview)
+        ->toContain('previewFile?.analyzed_at')
+        ->and($types)
+        ->toContain('can_reclassify: boolean')
+        ->toContain('analyzed_at: string | null');
 });

@@ -75,6 +75,19 @@ function queryWith(
     return Object.fromEntries(query.entries());
 }
 
+function fileSelectionQuery(
+    currentUrl: string,
+    fileId: number,
+): Record<string, string> {
+    const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
+    query.set('import_file_id', String(fileId));
+    query.delete('issues_page');
+    query.delete('preview_page');
+    query.delete('decisions_page');
+
+    return Object.fromEntries(query.entries());
+}
+
 function formatBytes(bytes: number): string {
     if (bytes < 1024) {
         return `${bytes} B`;
@@ -91,15 +104,6 @@ function canDiscard(file: OwnRevenueImportFile): boolean {
     return (
         !file.confirmed &&
         !['confirmed', 'replaced', 'discarded'].includes(file.status)
-    );
-}
-
-function canCorrectFormat(file: OwnRevenueImportFile): boolean {
-    return (
-        !file.confirmed &&
-        ['uploaded', 'needs_correction', 'failed', 'parser_pending'].includes(
-            file.status,
-        )
     );
 }
 
@@ -383,9 +387,8 @@ export default function ImportFileSlot({
                                     <div className="min-w-0">
                                         <Link
                                             href={show(budgetId, {
-                                                query: queryWith(
+                                                query: fileSelectionQuery(
                                                     currentUrl,
-                                                    'import_file_id',
                                                     file.id,
                                                 ),
                                             })}
@@ -478,7 +481,7 @@ export default function ImportFileSlot({
                                             </Button>
                                         )}
                                     {permissions.manage &&
-                                        canCorrectFormat(file) && (
+                                        file.can_reclassify && (
                                             <select
                                                 aria-label={`Corregir tipo de ${file.name}`}
                                                 value={file.format ?? ''}

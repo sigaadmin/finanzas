@@ -235,32 +235,33 @@ export default function OwnRevenueImportShow({
                                                 </a>
                                             </Button>
                                         )}
-                                        {permissions.manage && (
-                                            <select
-                                                aria-label={`Asignar tipo de ${file.name}`}
-                                                defaultValue=""
-                                                onChange={(event) =>
-                                                    assignUnclassified(
-                                                        file.id,
-                                                        event.target
-                                                            .value as OwnRevenueImportFormat,
-                                                    )
-                                                }
-                                                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                                            >
-                                                <option value="" disabled>
-                                                    Asignar formato
-                                                </option>
-                                                {slots.map((slot) => (
-                                                    <option
-                                                        key={slot.format}
-                                                        value={slot.format}
-                                                    >
-                                                        {slot.label}
+                                        {permissions.manage &&
+                                            file.can_reclassify && (
+                                                <select
+                                                    aria-label={`Asignar tipo de ${file.name}`}
+                                                    defaultValue=""
+                                                    onChange={(event) =>
+                                                        assignUnclassified(
+                                                            file.id,
+                                                            event.target
+                                                                .value as OwnRevenueImportFormat,
+                                                        )
+                                                    }
+                                                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                                                >
+                                                    <option value="" disabled>
+                                                        Asignar formato
                                                     </option>
-                                                ))}
-                                            </select>
-                                        )}
+                                                    {slots.map((slot) => (
+                                                        <option
+                                                            key={slot.format}
+                                                            value={slot.format}
+                                                        >
+                                                            {slot.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
                                     </div>
                                 </div>
                             ))}
@@ -343,7 +344,7 @@ export default function OwnRevenueImportShow({
                         selectedFile={selectedFile}
                     />
                     <AbprePreview
-                        key={previewFile?.id ?? 'no-file'}
+                        key={`${previewFile?.id ?? 'no-file'}-${previewFile?.analyzed_at ?? 'unanalyzed'}`}
                         budgetId={budget.id}
                         preview={preview}
                         previewFile={previewFile}

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Finance;
 
+use App\Actions\Finance\OwnRevenue\Imports\AssignOwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
@@ -13,6 +14,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
@@ -79,6 +81,7 @@ class OwnRevenueImportController extends Controller
                 'name' => $previewFile->original_name,
                 'version' => $previewFile->version_number,
                 'status' => $previewFile->status->value,
+                'analyzed_at' => $previewFile->analyzed_at?->toISOString(),
             ],
             'preview' => $this->previewData($previewFile),
             'decision_warnings' => $this->decisionWarningsData($previewFile),
@@ -112,15 +115,14 @@ class OwnRevenueImportController extends Controller
     private function slotData(OwnRevenueBudget $budget, OwnRevenueImportFormat $format): array
     {
         $history = $budget->importFiles()->where('format', $format);
-        $versions = $this->fileSummaryQuery($budget)
-            ->where('format', $format)
-            ->orderByDesc('version_number')
-            ->orderByDesc('id')
-            ->paginate(
-                self::VERSIONS_PER_PAGE,
-                ['*'],
-                "{$format->value}_versions_page",
-            );
+        $versions = $this->paginateClamped(
+            $this->fileSummaryQuery($budget)
+                ->where('format', $format)
+                ->orderByDesc('version_number')
+                ->orderByDesc('id'),
+            self::VERSIONS_PER_PAGE,
+            "{$format->value}_versions_page",
+        );
 
         return [
             'format' => $format->value,
@@ -150,10 +152,13 @@ class OwnRevenueImportController extends Controller
     /** @return array<string, mixed> */
     private function unassignedFilesData(OwnRevenueBudget $budget): array
     {
-        $files = $this->fileSummaryQuery($budget)
-            ->whereNull('format')
-            ->orderByDesc('id')
-            ->paginate(self::VERSIONS_PER_PAGE, ['*'], 'unassigned_page');
+        $files = $this->paginateClamped(
+            $this->fileSummaryQuery($budget)
+                ->whereNull('format')
+                ->orderByDesc('id'),
+            self::VERSIONS_PER_PAGE,
+            'unassigned_page',
+        );
 
         return [
             'unassigned_files' => $files->getCollection()
@@ -227,6 +232,7 @@ class OwnRevenueImportController extends Controller
             'analyzed_at' => $file->analyzed_at?->toISOString(),
             'confirmed' => $file->confirmed_at !== null,
             'confirmed_at' => $file->confirmed_at?->toISOString(),
+            'can_reclassify' => AssignOwnRevenueImportFormat::canReclassify($file),
             'issue_counts' => [
                 'error' => (int) ($file->error_issues_count ?? 0),
                 'warning' => (int) ($file->warning_issues_count ?? 0),
@@ -238,10 +244,13 @@ class OwnRevenueImportController extends Controller
     /** @return array<string, mixed> */
     private function issuesData(OwnRevenueImportFile $file): array
     {
-        $issues = $file->issues()
-            ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
-            ->orderBy('id')
-            ->paginate(self::ISSUES_PER_PAGE, ['*'], 'issues_page')
+        $issues = $this->paginateClamped(
+            $file->issues()
+                ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
+                ->orderBy('id'),
+            self::ISSUES_PER_PAGE,
+            'issues_page',
+        )
             ->through(fn (OwnRevenueImportIssue $issue): array => $this->issueData($issue));
         $data = $issues->toArray();
         $data['has_more'] = $issues->hasMorePages();
@@ -259,12 +268,15 @@ class OwnRevenueImportController extends Controller
             return $data;
         }
 
-        $warnings = $file->issues()
-            ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
-            ->where('severity', OwnRevenueImportIssueSeverity::Warning)
-            ->whereIn('code', self::REQUIRED_WARNING_DECISIONS)
-            ->orderBy('id')
-            ->paginate(self::DECISIONS_PER_PAGE, ['*'], 'decisions_page')
+        $warnings = $this->paginateClamped(
+            $file->issues()
+                ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
+                ->where('severity', OwnRevenueImportIssueSeverity::Warning)
+                ->whereIn('code', self::REQUIRED_WARNING_DECISIONS)
+                ->orderBy('id'),
+            self::DECISIONS_PER_PAGE,
+            'decisions_page',
+        )
             ->through(fn (OwnRevenueImportIssue $issue): array => $this->issueData($issue));
         $data = $warnings->toArray();
         $data['has_more'] = $warnings->hasMorePages();
@@ -295,16 +307,44 @@ class OwnRevenueImportController extends Controller
             return $this->emptyPaginator(25);
         }
 
-        return $file->rows()
-            ->where('row_kind', 'abpre_line')
-            ->orderBy('row_number')
-            ->paginate(25, ['id', 'row_number', 'normalized_payload'], 'preview_page')
+        return $this->paginateClamped(
+            $file->rows()
+                ->where('row_kind', 'abpre_line')
+                ->orderBy('row_number'),
+            25,
+            'preview_page',
+            ['id', 'row_number', 'normalized_payload'],
+        )
             ->through(fn (OwnRevenueImportRow $row): array => [
                 'id' => $row->id,
                 'row_number' => $row->row_number,
                 ...$this->exactMonetaryStrings($row->normalized_payload ?? []),
             ])
             ->toArray();
+    }
+
+    /**
+     * @param  Builder<*>|Relation  $query
+     * @param  list<string>  $columns
+     */
+    private function paginateClamped(
+        Builder|Relation $query,
+        int $perPage,
+        string $pageName,
+        array $columns = ['*'],
+    ): LengthAwarePaginator {
+        $paginator = $query->paginate($perPage, $columns, $pageName);
+
+        if ($paginator->currentPage() > $paginator->lastPage()) {
+            return $query->paginate(
+                $perPage,
+                $columns,
+                $pageName,
+                $paginator->lastPage(),
+            );
+        }
+
+        return $paginator;
     }
 
     /** @return array<string, mixed> */

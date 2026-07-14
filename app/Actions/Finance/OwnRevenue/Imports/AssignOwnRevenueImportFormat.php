@@ -20,6 +20,12 @@ class AssignOwnRevenueImportFormat
         OwnRevenueImportFileStatus::ParserPending,
     ];
 
+    public static function canReclassify(OwnRevenueImportFile $file): bool
+    {
+        return in_array($file->status, self::ALLOWED_STATUSES, true)
+            && $file->confirmed_at === null;
+    }
+
     public function handle(
         OwnRevenueImportFile $file,
         User $user,
@@ -31,8 +37,7 @@ class AssignOwnRevenueImportFormat
             OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
 
-            if (! in_array($lockedFile->status, self::ALLOWED_STATUSES, true)
-                || $lockedFile->confirmed_at !== null) {
+            if (! self::canReclassify($lockedFile)) {
                 throw ValidationException::withMessages([
                     'format' => 'El estado actual del archivo no permite corregir su formato.',
                 ]);

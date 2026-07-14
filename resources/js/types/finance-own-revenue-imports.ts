@@ -66,6 +66,7 @@ export type OwnRevenueImportFile = {
     analyzed_at: string | null;
     confirmed: boolean;
     confirmed_at: string | null;
+    can_reclassify: boolean;
     issue_counts: OwnRevenueImportIssueCounts;
 };
 
@@ -174,6 +175,7 @@ export type OwnRevenueImportWorkspaceProps = {
         name: string;
         version: number;
         status: OwnRevenueImportFileStatus;
+        analyzed_at: string | null;
     } | null;
     preview: LengthAwarePaginator<OwnRevenueAbprePreviewRow>;
     decision_warnings: LengthAwarePaginator<OwnRevenueImportIssue> & {

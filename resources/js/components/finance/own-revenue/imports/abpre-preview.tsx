@@ -31,6 +31,7 @@ type Props = {
         name: string;
         version: number;
         status: OwnRevenueImportFileStatus;
+        analyzed_at: string | null;
     } | null;
     decisionWarnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
         has_more: boolean;
@@ -88,7 +89,7 @@ export default function AbprePreview({
     const currentUrl = usePage().url;
     const [decisions, setDecisions] = useRemember<OwnRevenueImportDecision[]>(
         [],
-        `own-revenue-abpre-decisions-${previewFile?.id ?? 'none'}`,
+        `own-revenue-abpre-decisions-${previewFile?.id ?? 'none'}-${previewFile?.analyzed_at ?? 'unanalyzed'}`,
     );
     const form = useForm<{ decisions: OwnRevenueImportDecision[] }>({
         decisions: [],
