@@ -5,6 +5,9 @@ namespace App\Models\Finance\OwnRevenue;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\User;
 use Database\Factories\Finance\OwnRevenue\OwnRevenueBudgetFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -105,5 +108,23 @@ class OwnRevenueBudget extends Model
     public function signatories(): HasMany
     {
         return $this->hasMany(OwnRevenueSignatory::class);
+    }
+
+    /** @return HasMany<OwnRevenueImportSession, $this> */
+    public function importSessions(): HasMany
+    {
+        return $this->hasMany(OwnRevenueImportSession::class);
+    }
+
+    /** @return HasMany<OwnRevenueImportFile, $this> */
+    public function importFiles(): HasMany
+    {
+        return $this->hasMany(OwnRevenueImportFile::class);
+    }
+
+    /** @return HasMany<OwnRevenueAbpreLine, $this> */
+    public function abpreLines(): HasMany
+    {
+        return $this->hasMany(OwnRevenueAbpreLine::class);
     }
 }
