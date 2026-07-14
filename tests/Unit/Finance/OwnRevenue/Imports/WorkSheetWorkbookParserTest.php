@@ -25,7 +25,7 @@ function workSheetMonths(string $january = '0', string $february = '0'): array
     ];
 }
 
-/** @param array<int, array<string, string>> $dataRows */
+/** @param array<int, array<string, string|array{value?: string|null, formula?: string, type?: string}>> $dataRows */
 function workSheetParserFixture(array $dataRows, int $firstHeaderRow = 3): string
 {
     return OwnRevenueXlsxFixtureFactory::create([
@@ -59,7 +59,13 @@ function workSheetParserServices(): array
 
 test('work sheet parser locates shifted two-row headers and inherits the activity', function () {
     $fixture = workSheetParserFixture([
-        12 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => '10', ...workSheetMonths('10'), 'S' => '10'],
+        12 => [
+            'A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101',
+            'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => '10.10',
+            ...workSheetMonths(),
+            'G' => ['value' => '10.10', 'formula' => 'SUM(A1:A2)', 'type' => 'numeric'],
+            'S' => '10.10',
+        ],
         13 => ['B' => 'Papelería', 'C' => '21102', 'D' => '02-001', 'E' => 'FELIPE CARRILLO PUERTO', 'F' => '20', ...workSheetMonths('20'), 'S' => '20'],
     ], 10);
     [$parser, $reader] = workSheetParserServices();
@@ -74,7 +80,27 @@ test('work sheet parser locates shifted two-row headers and inherits the activit
         ->and($analysis->lines[0]->activityCode)->toBe('A03-A01')
         ->and($analysis->lines[1]->activityCode)->toBe('A03-A01')
         ->and($analysis->sourceRows[0]['sheet_name'])->toBe('HOJA FINAL')
-        ->and($analysis->sourceRows[0]['source_payload']['partida']['coordinate'])->toBe('C12');
+        ->and($analysis->sourceRows[0]['source_payload']['partida'])->toMatchArray([
+            'coordinate' => 'C12',
+            'value' => '21101',
+            'formula' => null,
+        ])
+        ->and($analysis->sourceRows[0]['source_payload']['enero'])->toBe([
+            'coordinate' => 'G12',
+            'value' => '10.10',
+            'formula' => 'SUM(A1:A2)',
+        ])
+        ->and($analysis->sourceRows[0]['normalized_payload'])->toMatchArray([
+            'actividad' => 'A03-A01 - Investigación',
+            'partida' => '21101',
+            'region' => '02-001',
+            'nombre region' => 'Felipe Carrillo Puerto',
+            'months' => [
+                1 => '1010', 2 => '0', 3 => '0', 4 => '0', 5 => '0', 6 => '0',
+                7 => '0', 8 => '0', 9 => '0', 10 => '0', 11 => '0', 12 => '0',
+            ],
+            'annual_amount_cents' => '1010',
+        ]);
 });
 
 test('work sheet parser groups normalized regions and adds exact cents', function () {

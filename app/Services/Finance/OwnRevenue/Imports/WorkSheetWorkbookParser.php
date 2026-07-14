@@ -163,6 +163,10 @@ class WorkSheetWorkbookParser
             }
 
             $calculatedAnnual = $this->sum($months);
+            $sourceRowIndex = array_key_last($sourceRows);
+            $sourceRows[$sourceRowIndex]['normalized_payload']['months'] = $months;
+            $sourceRows[$sourceRowIndex]['normalized_payload']['annual_amount_cents'] = $calculatedAnnual;
+
             if ($sourceAnnual !== $calculatedAnnual) {
                 $issues[] = new ImportIssueData(
                     OwnRevenueImportIssueSeverity::Warning,
