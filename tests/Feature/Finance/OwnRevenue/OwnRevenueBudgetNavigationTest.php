@@ -137,9 +137,11 @@ test('annual frontend source protects draft editing copy mode and deterministic 
         ->and($settingsForm)
         ->toContain('form.errors.budget')
         ->toContain('clientKey')
+        ->toContain('createSignatoryClientKey()')
         ->toContain('clearErrors(')
         ->toContain('aria-describedby')
         ->not->toContain('key={index}')
+        ->not->toContain('crypto.randomUUID()')
         ->not->toContain('Number(`${whole}')
         ->not->toContain('parseInt(');
 });

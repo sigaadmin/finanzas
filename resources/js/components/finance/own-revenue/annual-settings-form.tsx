@@ -44,6 +44,13 @@ const statusLabels: Record<AnnualValueStatus, string> = {
 };
 
 const unsignedBigIntegerMax = '18446744073709551615';
+let signatoryClientKey = 0;
+
+function createSignatoryClientKey(): string {
+    signatoryClientKey += 1;
+
+    return `new-${signatoryClientKey}`;
+}
 
 export function pesosToCents(pesos: string): string | null {
     const normalized = pesos.trim();
@@ -176,7 +183,7 @@ export default function AnnualSettingsForm({
         form.setData('signatories', [
             ...form.data.signatories,
             {
-                clientKey: `new-${crypto.randomUUID()}`,
+                clientKey: createSignatoryClientKey(),
                 role_key: '',
                 name: '',
                 position: '',
