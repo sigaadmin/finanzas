@@ -28,6 +28,7 @@ test('analysis endpoint flashes a consumable toast for failed and successful ana
     OwnRevenueImportFileStatus $status,
     string $toastType,
     string $message,
+    bool $returnToPreview,
 ) {
     $manager = importManagementUser();
     $budget = OwnRevenueBudget::factory()->create();
@@ -40,9 +41,16 @@ test('analysis endpoint flashes a consumable toast for failed and successful ana
     $analyzer->shouldReceive('handle')->once()->andReturn($file);
     app()->instance(AnalyzeOwnRevenueImportFile::class, $analyzer);
 
+    $expectedRoute = $returnToPreview
+        ? route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file])
+        : route('finance.own-revenue.budgets.imports.show', $budget);
+
     $this->actingAs($manager)
-        ->post(route('finance.own-revenue.budgets.imports.files.analyze', [$budget, $file]))
-        ->assertRedirect(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->post(
+            route('finance.own-revenue.budgets.imports.files.analyze', [$budget, $file]),
+            ['return_to_preview' => $returnToPreview],
+        )
+        ->assertRedirect($expectedRoute)
         ->assertSessionHas('inertia.flash_data.toast', [
             'type' => $toastType,
             'message' => $message,
@@ -55,20 +63,42 @@ test('analysis endpoint flashes a consumable toast for failed and successful ana
         OwnRevenueImportFileStatus::Failed,
         'error',
         'No fue posible analizar el archivo. Revisa las incidencias e inténtalo nuevamente.',
+        false,
     ],
     'successful ABPRE' => [
         OwnRevenueImportFormat::Abpre,
         OwnRevenueImportFileStatus::Ready,
         'success',
         'Archivo analizado correctamente.',
+        true,
     ],
     'successful work sheet' => [
         OwnRevenueImportFormat::WorkSheet,
         OwnRevenueImportFileStatus::Ready,
         'success',
         'Archivo analizado correctamente.',
+        true,
     ],
 ]);
+
+test('analysis endpoint rejects an invalid preview return flag before analyzing', function () {
+    $manager = importManagementUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::TechnicalSheet,
+        'status' => OwnRevenueImportFileStatus::Ready,
+    ]);
+    $analyzer = Mockery::mock(AnalyzeOwnRevenueImportFile::class);
+    $analyzer->shouldNotReceive('handle');
+    app()->instance(AnalyzeOwnRevenueImportFile::class, $analyzer);
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.imports.files.analyze', [$budget, $file]), [
+            'return_to_preview' => 'not-a-boolean',
+        ])
+        ->assertSessionHasErrors('return_to_preview');
+});
 
 function importManagementUser(UserRole $role = UserRole::FinanceManager): User
 {
