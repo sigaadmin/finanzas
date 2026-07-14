@@ -90,6 +90,8 @@ La vista previa clasificará los resultados en:
 - Advertencias: año distinto, región corregida, total diferente al ABPRE, UMA o combustible pendiente de actualización, filas duplicadas o información incompleta.
 - Ajustes informativos: normalización de nombres, códigos, meses y espacios vacíos.
 
+La vista previa se abrirá mediante navegación interna en la misma pestaña. Todas las vistas conservarán una acción visible para volver a la pantalla de importaciones y al archivo seleccionado.
+
 Una versión con errores bloqueantes no podrá confirmarse. Las advertencias podrán aceptarse mediante una decisión explícita cuando no violen una regla presupuestaria.
 
 ## 7. Versionado y protección de ediciones manuales

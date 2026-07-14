@@ -549,18 +549,16 @@ export default function ImportFileSlot({
                                                 size="sm"
                                                 variant="outline"
                                             >
-                                                <a
+                                                <Link
                                                     href={
                                                         preview({
                                                             budget: budgetId,
                                                             importFile: file.id,
                                                         }).url
                                                     }
-                                                    target="_blank"
-                                                    rel="noopener"
                                                 >
                                                     Ver vista previa
-                                                </a>
+                                                </Link>
                                             </Button>
                                         )}
                                         {permissions.manage &&
