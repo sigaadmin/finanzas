@@ -9,6 +9,7 @@ import {
     importIssuePageQuery,
     importIssuePresentationKey,
     importFilePresentation,
+    importFileProgressLabel,
     importDecisionRememberKey,
     initialImportMutation,
     resolveFailedUpload,
@@ -16,6 +17,18 @@ import {
     startImportMutation,
     takeNextUpload,
 } from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.js';
+
+test('ready file progress distinguishes review from confirmation', () => {
+    assert.equal(
+        importFileProgressLabel('ready', 'work_sheet'),
+        'Listo para revisar',
+    );
+    assert.equal(
+        importFileProgressLabel('ready', 'abpre'),
+        'Listo para confirmar',
+    );
+    assert.equal(importFileProgressLabel('analyzing', 'work_sheet'), null);
+});
 
 test('issue details expose only explicitly labeled business context', () => {
     assert.deepEqual(

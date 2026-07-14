@@ -56,6 +56,16 @@ export function importFilePresentation({
     };
 }
 
+export function importFileProgressLabel(status, format) {
+    if (status !== 'ready') {
+        return null;
+    }
+
+    return format === 'work_sheet'
+        ? 'Listo para revisar'
+        : 'Listo para confirmar';
+}
+
 function queryFromUrl(currentUrl) {
     return new URLSearchParams(currentUrl.split('?')[1] ?? '');
 }

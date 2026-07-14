@@ -17,6 +17,7 @@ import {
     failImportMutation,
     finishImportMutation,
     importFilePresentation,
+    importFileProgressLabel,
     initialImportMutation,
     resolveFailedUpload,
     selectImportFileQuery,
@@ -460,10 +461,16 @@ export default function ImportFileSlot({
                                                 errores
                                             </span>
                                         )}
-                                        {file.status === 'ready' && (
+                                        {importFileProgressLabel(
+                                            file.status,
+                                            file.format,
+                                        ) && (
                                             <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
                                                 <CheckCircle2 className="size-3" />{' '}
-                                                Listo para confirmar
+                                                {importFileProgressLabel(
+                                                    file.status,
+                                                    file.format,
+                                                )}
                                             </span>
                                         )}
                                     </div>

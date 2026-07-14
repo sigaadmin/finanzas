@@ -39,6 +39,26 @@ export function importFilePresentation(input: {
     canViewPreview: boolean;
 };
 
+export function importFileProgressLabel(
+    status:
+        | 'uploaded'
+        | 'analyzing'
+        | 'needs_correction'
+        | 'ready'
+        | 'confirmed'
+        | 'replaced'
+        | 'discarded'
+        | 'failed'
+        | 'parser_pending',
+    format:
+        | 'abpre'
+        | 'work_sheet'
+        | 'technical_sheet'
+        | 'fuel'
+        | 'travel_expenses'
+        | null,
+): string | null;
+
 export function selectImportFileQuery(
     currentUrl: string,
     fileId: number,
