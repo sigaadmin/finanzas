@@ -18,14 +18,28 @@ class OwnRevenueAbprePreviewController extends Controller
     public function __invoke(OwnRevenueBudget $budget, OwnRevenueImportFile $importFile): Response
     {
         Gate::authorize('viewImports', $budget);
-        abort_unless($importFile->format === OwnRevenueImportFormat::Abpre, 404);
+        abort_unless(in_array($importFile->format, [
+            OwnRevenueImportFormat::Abpre,
+            OwnRevenueImportFormat::WorkSheet,
+        ], true), 404);
         $importFile->loadCount($this->viewData->issueCounts());
+
+        $previewData = $importFile->format === OwnRevenueImportFormat::WorkSheet
+            ? [
+                'preview' => $this->viewData->workSheetPreview($importFile),
+                'blocking_issues' => $this->viewData->workSheetIssues($importFile, true),
+                'review_issues' => $this->viewData->workSheetIssues($importFile, false),
+                'view_state' => $this->viewData->workSheetViewState($importFile),
+            ]
+            : [
+                'preview' => $this->viewData->preview($importFile),
+                'decision_warnings' => $this->viewData->decisionWarnings($importFile),
+            ];
 
         return Inertia::render('finance/own-revenue/imports/preview', [
             'budget' => $this->viewData->budget($budget),
             'selected_file' => $this->viewData->file($importFile),
-            'preview' => $this->viewData->preview($importFile),
-            'decision_warnings' => $this->viewData->decisionWarnings($importFile),
+            ...$previewData,
             'permissions' => [
                 'upload' => Gate::allows('manageImports', $budget),
                 'manage' => Gate::allows('manageImports', $budget),

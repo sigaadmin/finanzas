@@ -2,18 +2,28 @@ import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import AbprePreview from '@/components/finance/own-revenue/imports/abpre-preview';
 import { importFilePresentation } from '@/components/finance/own-revenue/imports/import-workspace-state';
+import WorkSheetPreview from '@/components/finance/own-revenue/imports/work-sheet-preview';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { show as showImports } from '@/routes/finance/own-revenue/budgets/imports';
-import type { OwnRevenueAbprePreviewProps } from '@/types/finance-own-revenue-imports';
+import type {
+    OwnRevenueAbprePreviewProps,
+    OwnRevenueWorkSheetPreviewProps,
+} from '@/types/finance-own-revenue-imports';
 
-export default function OwnRevenueAbprePreview({
+type Props = OwnRevenueAbprePreviewProps | OwnRevenueWorkSheetPreviewProps;
+
+export default function OwnRevenueImportPreview({
     budget,
     selected_file: selectedFile,
     preview,
-    decision_warnings: decisionWarnings,
     permissions,
-}: OwnRevenueAbprePreviewProps) {
+    ...props
+}: Props) {
+    const isWorkSheet = selectedFile.format === 'work_sheet';
+    const title = isWorkSheet
+        ? 'Revisión de Hoja de trabajo'
+        : 'Vista previa ABPRE';
     const status = importFilePresentation({
         status: selectedFile.status,
         format: selectedFile.format,
@@ -27,7 +37,7 @@ export default function OwnRevenueAbprePreview({
 
     return (
         <>
-            <Head title={`Vista previa ABPRE · ${selectedFile.name}`} />
+            <Head title={`${title} · ${selectedFile.name}`} />
             <main className="flex h-full flex-1 flex-col gap-5 p-4 md:p-6">
                 <header className="grid gap-3">
                     <Button asChild variant="ghost" size="sm" className="w-fit">
@@ -46,7 +56,7 @@ export default function OwnRevenueAbprePreview({
                                 Presupuesto {budget.fiscal_year}
                             </p>
                             <h1 className="mt-1 text-2xl font-semibold">
-                                Vista previa ABPRE
+                                {title}
                             </h1>
                             <p className="mt-1 text-sm break-words text-muted-foreground">
                                 {selectedFile.name} · versión{' '}
@@ -65,13 +75,69 @@ export default function OwnRevenueAbprePreview({
                     </div>
                 </header>
 
-                <AbprePreview
-                    budgetId={budget.id}
-                    file={selectedFile}
-                    preview={preview}
-                    decisionWarnings={decisionWarnings}
-                    permissions={permissions}
-                />
+                {isWorkSheet ? (
+                    <WorkSheetPreview
+                        budgetId={budget.id}
+                        file={selectedFile}
+                        preview={
+                            preview as OwnRevenueWorkSheetPreviewProps['preview']
+                        }
+                        blockingIssues={
+                            (
+                                props as Omit<
+                                    OwnRevenueWorkSheetPreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).blocking_issues
+                        }
+                        reviewIssues={
+                            (
+                                props as Omit<
+                                    OwnRevenueWorkSheetPreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).review_issues
+                        }
+                        viewState={
+                            (
+                                props as Omit<
+                                    OwnRevenueWorkSheetPreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).view_state
+                        }
+                        permissions={permissions}
+                    />
+                ) : (
+                    <AbprePreview
+                        budgetId={budget.id}
+                        file={selectedFile}
+                        preview={
+                            preview as OwnRevenueAbprePreviewProps['preview']
+                        }
+                        decisionWarnings={
+                            (
+                                props as Omit<
+                                    OwnRevenueAbprePreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).decision_warnings
+                        }
+                        permissions={permissions}
+                    />
+                )}
             </main>
         </>
     );

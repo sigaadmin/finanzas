@@ -64,6 +64,7 @@ export type OwnRevenueImportFile = {
     confidence: number | null;
     analyzed: boolean;
     analyzed_at: string | null;
+    analysis_revision: string | null;
     confirmed: boolean;
     confirmed_at: string | null;
     can_reclassify: boolean;
@@ -182,6 +183,47 @@ export type OwnRevenueAbprePreviewProps = {
     decision_warnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
         has_more: boolean;
     };
+    permissions: OwnRevenueImportPermissions;
+};
+
+export type OwnRevenueWorkSheetPreviewRow = {
+    id: number;
+    row_number: number;
+    activityCode: string;
+    activityName: string;
+    itemName: string;
+    specificItemCode: string;
+    regionCode: string;
+    regionName: string;
+    sourceRegions: Array<{ code: string; name: string }>;
+    months: Record<string, string>;
+    annualAmountCents: string;
+    abpreAmountCents: string;
+    differenceCents: string;
+};
+
+export type OwnRevenueWorkSheetIssue = {
+    id: number;
+    severity: 'error' | 'warning';
+    message: string;
+    item_code: string | null;
+    work_sheet_amount_cents: string | null;
+    abpre_amount_cents: string | null;
+    difference_cents: string | null;
+    requires_decision: boolean;
+    decision: {
+        status: 'accepted' | 'rejected';
+        justification: string | null;
+    } | null;
+};
+
+export type OwnRevenueWorkSheetPreviewProps = {
+    budget: OwnRevenueImportBudget;
+    selected_file: OwnRevenueImportFile;
+    preview: LengthAwarePaginator<OwnRevenueWorkSheetPreviewRow>;
+    blocking_issues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
+    review_issues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
+    view_state: 'not_analyzed' | 'analyzing' | 'failed' | 'empty' | 'ready';
     permissions: OwnRevenueImportPermissions;
 };
 
