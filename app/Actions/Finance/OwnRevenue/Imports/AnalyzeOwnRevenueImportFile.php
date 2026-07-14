@@ -29,6 +29,8 @@ class AnalyzeOwnRevenueImportFile
     {
         Gate::forUser($user)->authorize('manageImports', $file->budget);
 
+        $this->ensureMutable($file);
+
         if ($file->format !== OwnRevenueImportFormat::Abpre) {
             throw ValidationException::withMessages(['file' => 'Este analizador sólo admite el formato ABPRE.']);
         }
@@ -43,8 +45,9 @@ class AnalyzeOwnRevenueImportFile
 
             DB::transaction(function () use ($file): void {
                 OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
-                OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id)
-                    ->update(['status' => OwnRevenueImportFileStatus::Analyzing]);
+                $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
+                $this->ensureMutable($lockedFile);
+                $lockedFile->update(['status' => OwnRevenueImportFileStatus::Analyzing]);
             });
 
             $budget = $file->budget;
@@ -79,6 +82,16 @@ class AnalyzeOwnRevenueImportFile
 
                 return $lockedFile->refresh();
             });
+        }
+    }
+
+    private function ensureMutable(OwnRevenueImportFile $file): void
+    {
+        if ($file->status === OwnRevenueImportFileStatus::Confirmed
+            || $file->confirmed_at !== null) {
+            throw ValidationException::withMessages([
+                'file' => 'No se puede volver a analizar un archivo confirmado.',
+            ]);
         }
     }
 

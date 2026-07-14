@@ -6,6 +6,7 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportDecision;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
@@ -302,6 +303,98 @@ test('manager downloads privately and may discard only unconfirmed files', funct
         ->and($confirmed->fresh()->status)->toBe(OwnRevenueImportFileStatus::Confirmed)
         ->and($replacedConfirmed->fresh()->status)->toBe(OwnRevenueImportFileStatus::Replaced);
 });
+
+test('analyze preserves every confirmed import artifact and provenance record', function (OwnRevenueImportFileStatus $status) {
+    Storage::fake('local');
+    $manager = importManagementUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $contents = 'confirmed workbook evidence';
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'status' => $status,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'sha256' => hash('sha256', $contents),
+        'confirmed_by' => $manager->id,
+        'confirmed_at' => now(),
+    ]);
+    Storage::disk('local')->put($file->storage_path, $contents);
+    $row = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'normalized_payload' => ['annualAmountCents' => '12345'],
+    ]);
+    $issue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'own_revenue_import_row_id' => $row->id,
+    ]);
+    $decision = OwnRevenueImportDecision::factory()->create([
+        'own_revenue_import_issue_id' => $issue->id,
+        'own_revenue_import_row_id' => $row->id,
+        'resolved_by' => $manager->id,
+    ]);
+    $fileSnapshot = $file->getRawOriginal();
+    $rowSnapshot = $row->getRawOriginal();
+    $issueSnapshot = $issue->getRawOriginal();
+    $decisionSnapshot = $decision->getRawOriginal();
+
+    $this->actingAs($manager)
+        ->from(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->post(route('finance.own-revenue.budgets.imports.files.analyze', [$budget, $file]))
+        ->assertRedirect(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertSessionHasErrors('file');
+
+    expect($file->fresh()->getRawOriginal())->toEqual($fileSnapshot)
+        ->and($row->fresh()?->getRawOriginal())->toEqual($rowSnapshot)
+        ->and($issue->fresh()?->getRawOriginal())->toEqual($issueSnapshot)
+        ->and($decision->fresh()?->getRawOriginal())->toEqual($decisionSnapshot);
+})->with([
+    'current confirmed version' => OwnRevenueImportFileStatus::Confirmed,
+    'historical replaced version' => OwnRevenueImportFileStatus::Replaced,
+]);
+
+test('format assignment preserves every confirmed import artifact and provenance record', function (OwnRevenueImportFileStatus $status) {
+    $manager = importManagementUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'status' => $status,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'confirmed_by' => $manager->id,
+        'confirmed_at' => now(),
+    ]);
+    $row = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'normalized_payload' => ['annualAmountCents' => '12345'],
+    ]);
+    $issue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'own_revenue_import_row_id' => $row->id,
+    ]);
+    $decision = OwnRevenueImportDecision::factory()->create([
+        'own_revenue_import_issue_id' => $issue->id,
+        'own_revenue_import_row_id' => $row->id,
+        'resolved_by' => $manager->id,
+    ]);
+    $fileSnapshot = $file->getRawOriginal();
+    $rowSnapshot = $row->getRawOriginal();
+    $issueSnapshot = $issue->getRawOriginal();
+    $decisionSnapshot = $decision->getRawOriginal();
+
+    $this->actingAs($manager)
+        ->from(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->put(route('finance.own-revenue.budgets.imports.files.format.update', [$budget, $file]), [
+            'format' => OwnRevenueImportFormat::Fuel->value,
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.imports.show', $budget))
+        ->assertSessionHasErrors('format');
+
+    expect($file->fresh()->getRawOriginal())->toEqual($fileSnapshot)
+        ->and($row->fresh()?->getRawOriginal())->toEqual($rowSnapshot)
+        ->and($issue->fresh()?->getRawOriginal())->toEqual($issueSnapshot)
+        ->and($decision->fresh()?->getRawOriginal())->toEqual($decisionSnapshot);
+})->with([
+    'current confirmed version' => OwnRevenueImportFileStatus::Confirmed,
+    'historical replaced version' => OwnRevenueImportFileStatus::Replaced,
+]);
 
 test('workspace returns five ordered slots safe file summaries issue counts and exact string preview amounts', function () {
     $manager = importManagementUser();

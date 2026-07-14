@@ -24,7 +24,8 @@ class AssignOwnRevenueImportFormat
             OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
 
-            if ($lockedFile->status === OwnRevenueImportFileStatus::Confirmed) {
+            if ($lockedFile->status === OwnRevenueImportFileStatus::Confirmed
+                || $lockedFile->confirmed_at !== null) {
                 throw ValidationException::withMessages([
                     'format' => 'No se puede reclasificar un archivo confirmado.',
                 ]);
