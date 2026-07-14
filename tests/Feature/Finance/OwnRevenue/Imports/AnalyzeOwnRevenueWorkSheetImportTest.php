@@ -2,6 +2,7 @@
 
 use App\Actions\Finance\OwnRevenue\Imports\AnalyzeOwnRevenueImportFile;
 use App\Data\Finance\OwnRevenue\Imports\WorkSheetAnalysis;
+use App\Data\Finance\OwnRevenue\Imports\WorkSheetLineData;
 use App\Data\Finance\OwnRevenue\Imports\XlsxWorkbook;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
@@ -257,6 +258,123 @@ test('a failed work sheet reanalysis preserves valid staging decisions and one o
         ->and($decision->fresh())->toBeNull()
         ->and($successfulResult->issues()->where('code', 'analysis.failed')->count())->toBe(0)
         ->and($successfulResult->rows()->where('row_kind', 'work_sheet_normalized_line')->count())->toBe(1);
+});
+
+test('a same-second budget change during parsing preserves prior staging and revision', function () {
+    $this->freezeTime();
+    Storage::fake('local');
+    $manager = workSheetAnalysisManager();
+    $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
+    $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
+    $classification = workSheetAnalysisCog($fiscalYear);
+    confirmedAbpreForWorkSheetAnalysis($budget, $classification, 100);
+    $contents = 'concurrent-budget-change';
+    $revision = (string) Str::uuid();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::WorkSheet,
+        'status' => OwnRevenueImportFileStatus::Ready,
+        'sha256' => hash('sha256', $contents),
+        'analysis_revision' => $revision,
+        'budget_updated_at_at_analysis' => $budget->updated_at,
+        'analyzed_at' => now(),
+    ]);
+    Storage::disk('local')->put($file->storage_path, $contents);
+    $priorRow = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'row_kind' => 'work_sheet_normalized_line',
+    ]);
+    $priorIssue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'severity' => OwnRevenueImportIssueSeverity::Warning,
+        'code' => 'work_sheet.prior_warning',
+    ]);
+    $priorDecision = OwnRevenueImportDecision::factory()->create([
+        'own_revenue_import_issue_id' => $priorIssue->id,
+        'resolved_by' => $manager->id,
+    ]);
+    $initialUpdatedAt = $budget->updated_at;
+    $reader = Mockery::mock(XlsxWorkbookReader::class);
+    $reader->shouldReceive('read')->once()->andReturn(new XlsxWorkbook([]));
+    $parser = Mockery::mock(WorkSheetWorkbookParser::class);
+    $parser->shouldReceive('parse')->once()->andReturnUsing(function () use ($budget): WorkSheetAnalysis {
+        OwnRevenueBudget::query()->whereKey($budget)->update([
+            'responsible_unit_name' => 'Unidad modificada durante el análisis',
+        ]);
+
+        return new WorkSheetAnalysis([
+            new WorkSheetLineData(
+                activityCode: 'A03-A01',
+                activityName: 'Investigación',
+                itemName: 'Papelería',
+                specificItemCode: '21101',
+                regionCode: '02-001',
+                regionName: 'Felipe Carrillo Puerto',
+                sourceRegions: [['code' => '02-001', 'name' => 'Felipe Carrillo Puerto']],
+                months: [1 => '100', 2 => '0', 3 => '0', 4 => '0', 5 => '0', 6 => '0', 7 => '0', 8 => '0', 9 => '0', 10 => '0', 11 => '0', 12 => '0'],
+                annualAmountCents: '100',
+                sourceRows: [5],
+            ),
+        ], [], []);
+    });
+
+    $result = (new AnalyzeOwnRevenueImportFile($reader, new AbpreWorkbookParser, $parser))
+        ->handle($file, $manager);
+
+    expect($budget->fresh()->updated_at?->equalTo($initialUpdatedAt))->toBeTrue()
+        ->and($result->status)->toBe(OwnRevenueImportFileStatus::Failed)
+        ->and($result->analysis_token)->toBeNull()
+        ->and($result->analysis_revision)->toBe($revision)
+        ->and($priorRow->fresh())->not->toBeNull()
+        ->and($result->rows()->count())->toBe(1)
+        ->and($priorIssue->fresh())->not->toBeNull()
+        ->and($priorDecision->fresh())->not->toBeNull()
+        ->and($result->issues()->where('code', 'analysis.source_changed')->count())->toBe(1);
+});
+
+test('an ABPRE amount change during parsing invalidates the captured reconciliation snapshot', function () {
+    $this->freezeTime();
+    Storage::fake('local');
+    $manager = workSheetAnalysisManager();
+    $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
+    $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
+    $classification = workSheetAnalysisCog($fiscalYear);
+    $abpre = confirmedAbpreForWorkSheetAnalysis($budget, $classification, 100);
+    $abpreLine = $abpre->abpreLines()->sole();
+    $contents = 'concurrent-abpre-change';
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::WorkSheet,
+        'status' => OwnRevenueImportFileStatus::ParserPending,
+        'sha256' => hash('sha256', $contents),
+    ]);
+    Storage::disk('local')->put($file->storage_path, $contents);
+    $reader = Mockery::mock(XlsxWorkbookReader::class);
+    $reader->shouldReceive('read')->once()->andReturn(new XlsxWorkbook([]));
+    $parser = Mockery::mock(WorkSheetWorkbookParser::class);
+    $parser->shouldReceive('parse')->once()->andReturnUsing(function () use ($abpreLine): WorkSheetAnalysis {
+        OwnRevenueAbpreLine::query()->whereKey($abpreLine)->update(['annual_amount_cents' => 101]);
+
+        return new WorkSheetAnalysis([
+            new WorkSheetLineData(
+                activityCode: 'A03-A01', activityName: 'Investigación', itemName: 'Papelería',
+                specificItemCode: '21101', regionCode: '02-001', regionName: 'Felipe Carrillo Puerto',
+                sourceRegions: [['code' => '02-001', 'name' => 'Felipe Carrillo Puerto']],
+                months: [1 => '100', 2 => '0', 3 => '0', 4 => '0', 5 => '0', 6 => '0', 7 => '0', 8 => '0', 9 => '0', 10 => '0', 11 => '0', 12 => '0'],
+                annualAmountCents: '100', sourceRows: [5],
+            ),
+        ], [], []);
+    });
+
+    $result = (new AnalyzeOwnRevenueImportFile($reader, new AbpreWorkbookParser, $parser))
+        ->handle($file, $manager);
+
+    expect($result->status)->toBe(OwnRevenueImportFileStatus::Failed)
+        ->and($result->analysis_revision)->toBeNull()
+        ->and($result->rows()->where('row_kind', 'work_sheet_normalized_line')->count())->toBe(0)
+        ->and($result->issues()->where('code', 'analysis.source_changed')->count())->toBe(1);
 });
 
 test('a stale work sheet attempt cannot replace newer staging or file ownership', function () {

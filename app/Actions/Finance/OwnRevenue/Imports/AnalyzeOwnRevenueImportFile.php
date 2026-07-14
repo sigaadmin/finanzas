@@ -3,11 +3,12 @@
 namespace App\Actions\Finance\OwnRevenue\Imports;
 
 use App\Data\Finance\OwnRevenue\Imports\AbpreAnalysis;
+use App\Data\Finance\OwnRevenue\Imports\OwnRevenueImportAnalysisSnapshot;
 use App\Data\Finance\OwnRevenue\Imports\WorkSheetAnalysis;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
-use App\Models\Finance\ExpenseClassification;
+use App\Exceptions\Finance\OwnRevenue\Imports\ImportAnalysisSourceChanged;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
@@ -28,6 +29,7 @@ class AnalyzeOwnRevenueImportFile
         private readonly AbpreWorkbookParser $parser,
         private readonly WorkSheetWorkbookParser $workSheetParser,
         private readonly ReconcileOwnRevenueWorkSheetWithAbpre $reconcileWorkSheet = new ReconcileOwnRevenueWorkSheetWithAbpre,
+        private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot = new CaptureOwnRevenueImportAnalysisSnapshot,
     ) {}
 
     public function handle(OwnRevenueImportFile $file, User $user): OwnRevenueImportFile
@@ -57,73 +59,67 @@ class AnalyzeOwnRevenueImportFile
 
         $analysisToken = (string) Str::uuid();
 
-        $format = DB::transaction(function () use ($file, $analysisToken): OwnRevenueImportFormat {
-            OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
+        $attempt = DB::transaction(function () use ($file, $analysisToken): array {
+            $lockedBudget = OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
             $this->ensureAnalyzable($lockedFile);
+            $snapshot = $this->captureSnapshot->handle($lockedBudget);
             $lockedFile->update([
                 'status' => OwnRevenueImportFileStatus::Analyzing,
                 'analysis_token' => $analysisToken,
             ]);
 
-            return $lockedFile->format;
+            return ['format' => $lockedFile->format, 'snapshot' => $snapshot];
         });
+        $format = $attempt['format'];
+        $snapshot = $attempt['snapshot'];
 
         try {
-            $budget = $file->budget;
-            $cogMap = ExpenseClassification::query()
-                ->where('fiscal_year', $budget->fiscal_year)
-                ->pluck('id', 'specific_item_code')
-                ->map(fn (mixed $id): int => (int) $id)
-                ->all();
             $workbook = $this->reader->read($path);
             $analysis = match ($format) {
                 OwnRevenueImportFormat::Abpre => $this->parser->parse(
                     $workbook,
-                    ['fiscal_year' => $budget->fiscal_year, 'responsible_unit_code' => $budget->responsible_unit_code],
-                    $cogMap,
+                    [
+                        'fiscal_year' => (int) $snapshot->budget['fiscal_year'],
+                        'responsible_unit_code' => (string) $snapshot->budget['responsible_unit_code'],
+                    ],
+                    $snapshot->cogMap,
                 ),
                 OwnRevenueImportFormat::WorkSheet => $this->workSheetParser->parse(
                     $workbook,
-                    $budget->activities()
-                        ->pluck('id', 'code')
-                        ->map(fn (mixed $id): int => (int) $id)
-                        ->all(),
-                    $cogMap,
+                    $snapshot->activityMap,
+                    $snapshot->cogMap,
                 ),
                 default => throw ValidationException::withMessages([
                     'file' => 'Este analizador sólo admite los formatos ABPRE y Hoja de trabajo.',
                 ]),
             };
 
-            return $this->persist($file, $budget, $analysis, $analysisToken, $format);
+            return $this->persist($file, $analysis, $analysisToken, $format, $snapshot);
         } catch (Throwable $exception) {
+            if ($exception instanceof ImportAnalysisSourceChanged) {
+                return $this->failAttempt(
+                    $file,
+                    $analysisToken,
+                    $format,
+                    'analysis.source_changed',
+                    'El presupuesto o sus catálogos cambiaron durante el análisis; vuelva a analizar el archivo.',
+                    [],
+                );
+            }
+
             if ($exception instanceof ValidationException) {
                 throw $exception;
             }
 
-            return DB::transaction(function () use ($file, $exception, $analysisToken, $format): OwnRevenueImportFile {
-                $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
-                $this->ensureActiveAttempt($lockedFile, $analysisToken, $format);
-                $lockedFile->issues()->updateOrCreate(
-                    [
-                        'own_revenue_import_row_id' => null,
-                        'code' => 'analysis.failed',
-                    ],
-                    [
-                        'severity' => OwnRevenueImportIssueSeverity::Error,
-                        'field' => null,
-                        'message' => 'No fue posible analizar el archivo XLSX.',
-                        'context' => ['exception' => $exception->getMessage()],
-                    ],
-                );
-                $lockedFile->update([
-                    'status' => OwnRevenueImportFileStatus::Failed,
-                    'analysis_token' => null,
-                ]);
-
-                return $lockedFile->refresh();
-            });
+            return $this->failAttempt(
+                $file,
+                $analysisToken,
+                $format,
+                'analysis.failed',
+                'No fue posible analizar el archivo XLSX.',
+                ['exception' => $exception->getMessage()],
+            );
         }
     }
 
@@ -168,15 +164,19 @@ class AnalyzeOwnRevenueImportFile
 
     private function persist(
         OwnRevenueImportFile $file,
-        OwnRevenueBudget $budget,
         AbpreAnalysis|WorkSheetAnalysis $analysis,
         string $analysisToken,
         OwnRevenueImportFormat $format,
+        OwnRevenueImportAnalysisSnapshot $snapshot,
     ): OwnRevenueImportFile {
-        return DB::transaction(function () use ($file, $budget, $analysis, $analysisToken, $format): OwnRevenueImportFile {
-            OwnRevenueBudget::query()->lockForUpdate()->findOrFail($budget->id);
+        return DB::transaction(function () use ($file, $analysis, $analysisToken, $format, $snapshot): OwnRevenueImportFile {
+            $lockedBudget = OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
             $this->ensureActiveAttempt($lockedFile, $analysisToken, $format);
+            $currentSnapshot = $this->captureSnapshot->handle($lockedBudget);
+            if (! hash_equals($snapshot->fingerprint, $currentSnapshot->fingerprint)) {
+                throw new ImportAnalysisSourceChanged;
+            }
             $lockedFile->issues()->delete();
             $lockedFile->rows()->delete();
             $rows = [];
@@ -233,7 +233,7 @@ class AnalyzeOwnRevenueImportFile
             }
 
             if ($analysis instanceof WorkSheetAnalysis) {
-                foreach ($this->reconcileWorkSheet->handle($budget, $analysis) as $issue) {
+                foreach ($this->reconcileWorkSheet->handle($lockedBudget, $analysis) as $issue) {
                     $lockedFile->issues()->create([
                         'own_revenue_import_row_id' => null,
                         'severity' => $issue->severity,
@@ -266,11 +266,41 @@ class AnalyzeOwnRevenueImportFile
                 'status' => $hasErrors ? OwnRevenueImportFileStatus::NeedsCorrection : OwnRevenueImportFileStatus::Ready,
                 'analysis_token' => null,
                 'analysis_revision' => (string) Str::uuid(),
-                'budget_updated_at_at_analysis' => $budget->updated_at,
+                'budget_updated_at_at_analysis' => $lockedBudget->updated_at,
                 'analyzed_at' => now(),
             ]);
 
             return $lockedFile->refresh();
         }, attempts: 3);
+    }
+
+    /** @param array<string, mixed> $context */
+    private function failAttempt(
+        OwnRevenueImportFile $file,
+        string $analysisToken,
+        OwnRevenueImportFormat $format,
+        string $code,
+        string $message,
+        array $context,
+    ): OwnRevenueImportFile {
+        return DB::transaction(function () use ($file, $analysisToken, $format, $code, $message, $context): OwnRevenueImportFile {
+            $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
+            $this->ensureActiveAttempt($lockedFile, $analysisToken, $format);
+            $lockedFile->issues()->updateOrCreate(
+                ['own_revenue_import_row_id' => null, 'code' => $code],
+                [
+                    'severity' => OwnRevenueImportIssueSeverity::Error,
+                    'field' => null,
+                    'message' => $message,
+                    'context' => $context,
+                ],
+            );
+            $lockedFile->update([
+                'status' => OwnRevenueImportFileStatus::Failed,
+                'analysis_token' => null,
+            ]);
+
+            return $lockedFile->refresh();
+        });
     }
 }
