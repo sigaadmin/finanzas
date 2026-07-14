@@ -6,6 +6,8 @@ use App\Actions\Finance\OwnRevenue\CopyOwnRevenueBudget;
 use App\Actions\Finance\OwnRevenue\Imports\StartOwnRevenueImportSession;
 use App\Actions\Finance\OwnRevenue\InitializeOwnRevenueBudget;
 use App\Actions\Finance\OwnRevenue\UpdateOwnRevenueBudgetSettings;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\OwnRevenue\StoreOwnRevenueBudgetRequest;
 use App\Http\Requests\Finance\OwnRevenue\UpdateOwnRevenueBudgetRequest;
@@ -113,10 +115,12 @@ class OwnRevenueBudgetController extends Controller
 
         return Inertia::render('finance/own-revenue/budgets/show', [
             'budget' => $this->showBudgetData($budget),
+            'import_summary' => $this->importSummaryData($budget),
             'permissions' => [
                 'updateSettings' => Gate::allows('updateSettings', $budget),
                 'copy' => Gate::allows('copy', $budget),
                 'confirmCog' => Gate::allows('confirmCog', $budget),
+                'viewImports' => Gate::allows('viewImports', $budget),
             ],
         ]);
     }
@@ -194,6 +198,30 @@ class OwnRevenueBudgetController extends Controller
             ],
             'created_at' => $budget->created_at?->toISOString(),
             'updated_at' => $budget->updated_at?->toISOString(),
+        ];
+    }
+
+    /** @return array{confirmed: int, missing: int, parser_pending: int} */
+    private function importSummaryData(OwnRevenueBudget $budget): array
+    {
+        $files = $budget->importFiles()
+            ->select(['format', 'status'])
+            ->whereNotNull('format')
+            ->where('status', '!=', OwnRevenueImportFileStatus::Discarded)
+            ->get();
+
+        return [
+            'confirmed' => $files
+                ->where('status', OwnRevenueImportFileStatus::Confirmed)
+                ->pluck('format')
+                ->unique()
+                ->count(),
+            'missing' => count(OwnRevenueImportFormat::cases()) - $files->pluck('format')->unique()->count(),
+            'parser_pending' => $files
+                ->where('status', OwnRevenueImportFileStatus::ParserPending)
+                ->pluck('format')
+                ->unique()
+                ->count(),
         ];
     }
 }

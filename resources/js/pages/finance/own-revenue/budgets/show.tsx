@@ -4,6 +4,7 @@ import {
     CheckCircle2,
     Copy,
     Database,
+    FileSpreadsheet,
     Fuel,
     MapPin,
     Scale,
@@ -24,6 +25,7 @@ import {
 } from '@/components/ui/card';
 import { create, index } from '@/routes/finance/own-revenue/budgets';
 import { confirm as confirmCog } from '@/routes/finance/own-revenue/budgets/cog';
+import imports from '@/routes/finance/own-revenue/budgets/imports';
 import type {
     AnnualValueStatus,
     CogCatalogStatus,
@@ -35,6 +37,11 @@ import type {
 type Props = {
     budget: OwnRevenueBudgetDetail;
     permissions: OwnRevenueDetailPermissions;
+    import_summary: {
+        confirmed: number;
+        missing: number;
+        parser_pending: number;
+    };
 };
 
 type CogConfirmationFormData = {
@@ -128,7 +135,11 @@ function displayDate(value: string | null): string {
     }).format(date);
 }
 
-export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
+export default function OwnRevenueBudgetShow({
+    budget,
+    permissions,
+    import_summary: importSummary,
+}: Props) {
     const cogForm = useForm<CogConfirmationFormData>({});
     const settings = budget.settings;
     const canConfirmCog =
@@ -285,6 +296,45 @@ export default function OwnRevenueBudgetShow({ budget, permissions }: Props) {
                         </CardContent>
                     </Card>
                 </section>
+
+                {permissions.viewImports && (
+                    <Card>
+                        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <FileSpreadsheet className="size-5" />
+                                    Importaciones XLSX
+                                </CardTitle>
+                                <CardDescription>
+                                    Estado de los cinco formatos documentales
+                                    del ejercicio.
+                                </CardDescription>
+                            </div>
+                            <Button asChild variant="outline">
+                                <Link href={imports.show(budget.id)}>
+                                    Abrir espacio de importación
+                                </Link>
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="grid gap-3 sm:grid-cols-3">
+                            <ImportSummaryItem
+                                label="Confirmados"
+                                value={importSummary.confirmed}
+                                className="border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+                            />
+                            <ImportSummaryItem
+                                label="Faltantes"
+                                value={importSummary.missing}
+                                className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
+                            />
+                            <ImportSummaryItem
+                                label="Parser pendiente"
+                                value={importSummary.parser_pending}
+                                className="bg-muted/50"
+                            />
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Card>
                     <CardHeader>
@@ -576,6 +626,23 @@ function SummaryCard({ icon: Icon, title, value, detail }: SummaryCardProps) {
                 </div>
             </CardContent>
         </Card>
+    );
+}
+
+function ImportSummaryItem({
+    label,
+    value,
+    className,
+}: {
+    label: string;
+    value: number;
+    className: string;
+}) {
+    return (
+        <div className={`rounded-lg border p-3 ${className}`}>
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-1 text-xl font-semibold">{value} de 5</p>
+        </div>
     );
 }
 
