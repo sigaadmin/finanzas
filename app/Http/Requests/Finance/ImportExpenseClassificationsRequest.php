@@ -13,7 +13,7 @@ class ImportExpenseClassificationsRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()?->can('operate-finance') ?? false;
+        return $this->user()?->can('manage-expense-classifications') ?? false;
     }
 
     /**

@@ -38,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(fn (User $user): ?bool => $user->isOwner() ? true : null);
 
         Gate::define('operate-finance', fn ($user): bool => $user->canOperateFinance());
+        Gate::define('manage-expense-classifications', fn (User $user): bool => $user->canManageExpenseClassifications());
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),

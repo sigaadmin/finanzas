@@ -318,10 +318,12 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                 </CardTitle>
                                 <CardDescription>
                                     La copia conserva la fotografía
-                                    institucional y replica COG, ingresos y
-                                    porcentaje de recorte. Antes de usarla debes
-                                    revisar UMA, combustible, COG, ingreso
-                                    estimado y recorte del nuevo año.
+                                    institucional, las actividades y los
+                                    firmantes. El ingreso estimado y el
+                                    porcentaje de recorte no se copian: debes
+                                    capturarlos y revisarlos para el nuevo año.
+                                    UMA, combustible y COG requieren revisión
+                                    antes de usar el presupuesto.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>

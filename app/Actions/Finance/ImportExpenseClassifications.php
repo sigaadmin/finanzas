@@ -5,16 +5,20 @@ namespace App\Actions\Finance;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\User;
 use App\Services\Finance\CogCatalogSpreadsheetParser;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class ImportExpenseClassifications
 {
     public function __construct(private readonly CogCatalogSpreadsheetParser $parser) {}
 
-    public function handle(int $fiscalYear, string $path): int
+    public function handle(User $user, int $fiscalYear, string $path): int
     {
+        Gate::forUser($user)->authorize('manage-expense-classifications');
+
         $rows = $this->parser->parse($path);
 
         return DB::transaction(function () use ($fiscalYear, $rows): int {

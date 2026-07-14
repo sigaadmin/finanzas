@@ -117,6 +117,17 @@ test('create page source consumes a valid inertia url source budget without wind
         ->not->toContain('window.location');
 });
 
+test('copy guidance accurately distinguishes copied and reset annual data', function () {
+    $createPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/create.tsx'));
+    $normalizedCreatePage = preg_replace('/\s+/', ' ', $createPage);
+
+    expect($normalizedCreatePage)
+        ->toContain('conserva la fotografía institucional, las actividades y los firmantes')
+        ->toContain('El ingreso estimado y el porcentaje de recorte no se copian')
+        ->toContain('UMA, combustible y COG requieren revisión')
+        ->not->toContain('replica COG, ingresos y porcentaje de recorte');
+});
+
 test('annual frontend source protects draft editing copy mode and deterministic dates', function () {
     $createPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/create.tsx'));
     $showPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/show.tsx'));

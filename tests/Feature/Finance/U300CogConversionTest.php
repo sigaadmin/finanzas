@@ -158,7 +158,7 @@ test('finance operator can import the COG catalog and assign classifications wit
     $xlsxPath = tempnam(sys_get_temp_dir(), 'cog').'.xlsx';
     createMinimalCogXlsxForFeature($xlsxPath);
 
-    $imported = app(ImportExpenseClassifications::class)->handle(2026, $xlsxPath);
+    $imported = app(ImportExpenseClassifications::class)->handle($user, 2026, $xlsxPath);
 
     expect($imported)->toBe(1);
 

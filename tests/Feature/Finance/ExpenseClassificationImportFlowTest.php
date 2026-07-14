@@ -8,6 +8,7 @@ use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\CogCatalogSpreadsheetParser;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -19,7 +20,7 @@ beforeEach(function () {
     $this->withoutVite();
 });
 
-function expenseClassificationImportUser(): User
+function expenseClassificationImportUser(UserRole $role = UserRole::FinanceManager): User
 {
     $user = User::factory()->create([
         'email' => fake()->unique()->userName().'@crenfcp.edu.mx',
@@ -27,7 +28,7 @@ function expenseClassificationImportUser(): User
 
     AuthorizedAccess::create([
         'email' => $user->email,
-        'role' => UserRole::FinanceManager,
+        'role' => $role,
         'is_active' => true,
     ]);
 
@@ -71,9 +72,9 @@ function parsedExpenseClassificationRow(array $overrides = []): array
     ], $overrides);
 }
 
-test('finance operator can import expense classifications from an XLSX file', function () {
+test('administrative finance roles can import expense classifications from an XLSX file', function (UserRole $role) {
     Storage::fake('local');
-    $user = expenseClassificationImportUser();
+    $user = expenseClassificationImportUser($role);
 
     $this->actingAs($user)
         ->get(route('finance.expense-classifications.imports.create'))
@@ -95,7 +96,46 @@ test('finance operator can import expense classifications from an XLSX file', fu
         'specific_item_code' => '37501',
         'specific_item_name' => 'Viáticos en el país',
     ]);
-});
+})->with([
+    'owner' => UserRole::Owner,
+    'admin' => UserRole::Admin,
+    'finance manager' => UserRole::FinanceManager,
+]);
+
+test('read only finance roles cannot open or submit the expense classification import', function (UserRole $role) {
+    Storage::fake('local');
+    $user = expenseClassificationImportUser($role);
+
+    $this->actingAs($user)
+        ->get(route('finance.expense-classifications.imports.create'))
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->post(route('finance.expense-classifications.imports.store'), [
+            'fiscal_year' => 2026,
+            'catalog_file' => minimalCogUploadFile(),
+        ])
+        ->assertForbidden();
+
+    expect(ExpenseClassification::query()->count())->toBe(0);
+})->with([
+    'finance assistant' => UserRole::FinanceAssistant,
+    'finance auditor' => UserRole::FinanceAuditor,
+]);
+
+test('the import action rejects read only finance roles before parsing or mutating COG', function (UserRole $role) {
+    $user = expenseClassificationImportUser($role);
+    mock(CogCatalogSpreadsheetParser::class)
+        ->shouldNotReceive('parse');
+
+    expect(fn () => app(ImportExpenseClassifications::class)->handle($user, 2027, '/tmp/forbidden-cog.xlsx'))
+        ->toThrow(AuthorizationException::class);
+
+    expect(ExpenseClassification::query()->where('fiscal_year', 2027)->exists())->toBeFalse();
+})->with([
+    'finance assistant' => UserRole::FinanceAssistant,
+    'finance auditor' => UserRole::FinanceAuditor,
+]);
 
 test('a confirmed own revenue catalog blocks imports without changing rows or audit', function () {
     $confirmedBy = User::factory()->create();
@@ -123,7 +163,7 @@ test('a confirmed own revenue catalog blocks imports without changing rows or au
             ]),
         ]);
 
-    expect(fn () => app(ImportExpenseClassifications::class)->handle(2027, '/tmp/confirmed-cog.xlsx'))
+    expect(fn () => app(ImportExpenseClassifications::class)->handle(expenseClassificationImportUser(), 2027, '/tmp/confirmed-cog.xlsx'))
         ->toThrow(ValidationException::class, 'No se puede importar sobre un catálogo COG confirmado.');
 
     expect(ExpenseClassification::query()->where('fiscal_year', 2027)->count())->toBe(1)
@@ -146,7 +186,7 @@ test('imports remain allowed for a pending own revenue catalog or a year without
         ->once()
         ->andReturn([parsedExpenseClassificationRow()]);
 
-    $imported = app(ImportExpenseClassifications::class)->handle(2027, '/tmp/allowed-cog.xlsx');
+    $imported = app(ImportExpenseClassifications::class)->handle(expenseClassificationImportUser(), 2027, '/tmp/allowed-cog.xlsx');
 
     expect($imported)->toBe(1)
         ->and(ExpenseClassification::query()->where('fiscal_year', 2027)->count())->toBe(1)

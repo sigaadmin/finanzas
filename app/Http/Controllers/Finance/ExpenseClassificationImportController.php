@@ -6,6 +6,7 @@ use App\Actions\Finance\ImportExpenseClassifications;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\ImportExpenseClassificationsRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -14,6 +15,8 @@ class ExpenseClassificationImportController extends Controller
 {
     public function create(): Response
     {
+        Gate::authorize('manage-expense-classifications');
+
         return Inertia::render('finance/expense-classifications/imports/create');
     }
 
@@ -25,6 +28,7 @@ class ExpenseClassificationImportController extends Controller
         $path = $file->store('finance/expense-classifications/imports');
 
         $imported = $importClassifications->handle(
+            user: $request->user(),
             fiscalYear: (int) $request->validated('fiscal_year'),
             path: Storage::disk('local')->path($path),
         );
