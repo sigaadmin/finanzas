@@ -4,6 +4,7 @@ export type WorkSheetPreviewState =
     | 'failed'
     | 'empty'
     | 'abpre_changed'
+    | 'confirmed'
     | 'ready';
 
 export function formatCents(rawCents: string): string;
@@ -16,6 +17,14 @@ export function canManageWorkSheetDecision(options: {
     decisionsEnabled: boolean;
     requiresDecision: boolean;
 }): boolean;
+export function canConfirmWorkSheet(options: {
+    canManage: boolean;
+    canConfirm: boolean;
+    analysisRevision: string | null;
+}): boolean;
+export function workSheetConfirmationFeedback(
+    errors: Partial<Record<string, string>>,
+): string;
 export function previewPageQuery(
     currentUrl: string,
     pageName: 'preview_page' | 'blocking_page' | 'review_page',

@@ -27,6 +27,11 @@ class OwnRevenueAbprePreviewController extends Controller
         $workSheetState = $importFile->format === OwnRevenueImportFormat::WorkSheet
             ? $this->viewData->workSheetViewState($importFile)
             : null;
+        $workSheetConfirmation = $importFile->format === OwnRevenueImportFormat::WorkSheet
+            ? $this->viewData->workSheetConfirmationState($importFile)
+            : null;
+        $canManage = Gate::allows('manageImports', $budget);
+        $canConfirm = Gate::allows('confirmImports', $budget);
         $previewData = $importFile->format === OwnRevenueImportFormat::WorkSheet
             ? [
                 'preview' => $this->viewData->workSheetPreview($importFile),
@@ -34,8 +39,14 @@ class OwnRevenueAbprePreviewController extends Controller
                 'review_issues' => $this->viewData->workSheetIssues($importFile, false),
                 'view_state' => $workSheetState,
                 'decisions_enabled' => $workSheetState === 'ready'
-                    && Gate::allows('manageImports', $budget)
+                    && $canManage
                     && $this->viewData->workSheetDecisionsAreCurrent($importFile),
+                'can_confirm' => $canManage
+                    && $canConfirm
+                    && ($workSheetConfirmation['can_confirm'] ?? false),
+                'confirm_reasons' => $canManage && $canConfirm
+                    ? ($workSheetConfirmation['reasons'] ?? [])
+                    : ['Puedes consultar esta revisión, pero no confirmarla.'],
             ]
             : [
                 'preview' => $this->viewData->preview($importFile),
@@ -47,9 +58,9 @@ class OwnRevenueAbprePreviewController extends Controller
             'selected_file' => $this->viewData->file($importFile),
             ...$previewData,
             'permissions' => [
-                'upload' => Gate::allows('manageImports', $budget),
-                'manage' => Gate::allows('manageImports', $budget),
-                'confirm' => Gate::allows('confirmImports', $budget),
+                'upload' => $canManage,
+                'manage' => $canManage,
+                'confirm' => $canConfirm,
                 'download' => Gate::allows('viewImports', $budget),
             ],
         ]);

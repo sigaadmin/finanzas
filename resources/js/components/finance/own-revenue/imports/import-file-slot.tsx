@@ -264,7 +264,9 @@ export default function ImportFileSlot({
                         <Badge className="bg-emerald-600">Confirmado</Badge>
                     ) : slot.has_parser_pending ? (
                         <Badge variant="outline">
-                            Revisión automática aún no disponible
+                            {slot.format === 'work_sheet'
+                                ? 'Listo para analizar'
+                                : 'Revisión no disponible'}
                         </Badge>
                     ) : slot.is_missing && slot.versions_total > 0 ? (
                         <Badge variant="secondary">Sólo auditoría</Badge>
@@ -519,8 +521,16 @@ export default function ImportFileSlot({
                                                         );
                                                     }}
                                                 >
-                                                    <Search className="size-3" />{' '}
-                                                    Analizar
+                                                    {mutationFeedback.activeFileId ===
+                                                    file.id ? (
+                                                        <LoaderCircle className="size-3 animate-spin" />
+                                                    ) : (
+                                                        <Search className="size-3" />
+                                                    )}{' '}
+                                                    {mutationFeedback.activeFileId ===
+                                                    file.id
+                                                        ? 'Analizando…'
+                                                        : 'Analizar archivo'}
                                                 </Button>
                                             )}
                                         {presentation.canViewIssues && (
@@ -544,7 +554,7 @@ export default function ImportFileSlot({
                                                         }).url
                                                     }
                                                     target="_blank"
-                                                    rel="noreferrer"
+                                                    rel="noopener"
                                                 >
                                                     Ver vista previa
                                                 </a>

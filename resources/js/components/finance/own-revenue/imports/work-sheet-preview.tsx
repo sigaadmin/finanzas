@@ -1,13 +1,17 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
 import { AlertCircle, Check, CircleAlert, LoaderCircle, X } from 'lucide-react';
 import OwnRevenueImportDecisionController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportDecisionController';
+import OwnRevenueWorkSheetConfirmationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueWorkSheetConfirmationController';
 import {
+    canConfirmWorkSheet,
     canManageWorkSheetDecision,
     formatCents,
     previewPageQuery,
     previewStateMessage,
     workSheetDecisionFeedback,
+    workSheetConfirmationFeedback,
 } from '@/components/finance/own-revenue/imports/work-sheet-preview-state';
+import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,6 +40,8 @@ type Props = {
     reviewIssues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
     viewState: OwnRevenueWorkSheetPreviewProps['view_state'];
     decisionsEnabled: boolean;
+    canConfirm: boolean;
+    confirmReasons: string[];
     permissions: OwnRevenueImportPermissions;
 };
 
@@ -212,9 +218,44 @@ export default function WorkSheetPreview({
     reviewIssues,
     viewState,
     decisionsEnabled,
+    canConfirm,
+    confirmReasons,
     permissions,
 }: Props) {
     const stateMessage = previewStateMessage(viewState);
+    const confirmationForm = useForm({
+        analysis_revision: file.analysis_revision ?? '',
+    });
+    const showConfirmControl = canConfirmWorkSheet({
+        canManage: permissions.manage,
+        canConfirm,
+        analysisRevision: file.analysis_revision,
+    });
+    const confirmationFeedback = workSheetConfirmationFeedback(
+        confirmationForm.errors,
+    );
+
+    const confirmWorkSheet = (): void => {
+        if (!showConfirmControl) {
+            return;
+        }
+
+        if (
+            !window.confirm(
+                'Confirmar esta Hoja de trabajo guardará su calendarización y reemplazará la versión confirmada anterior. El ABPRE conservará el importe oficial. ¿Deseas continuar?',
+            )
+        ) {
+            return;
+        }
+
+        confirmationForm.submit(
+            OwnRevenueWorkSheetConfirmationController({
+                budget: budgetId,
+                importFile: file.id,
+            }),
+            { preserveScroll: true },
+        );
+    };
 
     return (
         <div className="grid gap-5">
@@ -225,6 +266,45 @@ export default function WorkSheetPreview({
                 >
                     {stateMessage}
                 </div>
+            )}
+            {file.status !== 'confirmed' && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base">
+                            Confirmación de la Hoja de trabajo
+                        </CardTitle>
+                        <CardDescription>
+                            La calendarización se guardará como una versión
+                            independiente. El ABPRE seguirá siendo la fuente del
+                            importe oficial.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                        {confirmReasons.length > 0 && (
+                            <ul className="grid list-disc gap-1 pl-5 text-sm text-muted-foreground">
+                                {confirmReasons.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                ))}
+                            </ul>
+                        )}
+                        {showConfirmControl && (
+                            <Button
+                                type="button"
+                                className="w-fit"
+                                onClick={confirmWorkSheet}
+                                disabled={confirmationForm.processing}
+                            >
+                                {confirmationForm.processing ? (
+                                    <LoaderCircle className="size-4 animate-spin" />
+                                ) : (
+                                    <Check className="size-4" />
+                                )}
+                                Confirmar Hoja de trabajo
+                            </Button>
+                        )}
+                        <InputError message={confirmationFeedback} />
+                    </CardContent>
+                </Card>
             )}
             <section className="grid gap-3 sm:grid-cols-3" aria-label="Resumen">
                 <Card>

@@ -3,6 +3,7 @@
 namespace App\Services\Finance\OwnRevenue\Imports;
 
 use App\Actions\Finance\OwnRevenue\Imports\AssignOwnRevenueImportFormat;
+use App\Actions\Finance\OwnRevenue\Imports\CaptureOwnRevenueImportAnalysisSnapshot;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
@@ -26,6 +27,10 @@ class OwnRevenueImportViewData
     private const ISSUES_PER_PAGE = 50;
 
     private const PREVIEW_PER_PAGE = 25;
+
+    public function __construct(
+        private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot,
+    ) {}
 
     private const REQUIRED_WARNING_DECISIONS = [
         'year.mismatch',
@@ -273,6 +278,10 @@ class OwnRevenueImportViewData
 
     public function workSheetViewState(OwnRevenueImportFile $file): string
     {
+        if ($file->status === OwnRevenueImportFileStatus::Confirmed) {
+            return 'confirmed';
+        }
+
         if ($file->status === OwnRevenueImportFileStatus::Analyzing) {
             return 'analyzing';
         }
@@ -298,6 +307,78 @@ class OwnRevenueImportViewData
     public function workSheetDecisionsAreCurrent(OwnRevenueImportFile $file): bool
     {
         return $this->workSheetAbpreIsCurrent($file);
+    }
+
+    /** @return array{can_confirm: bool, reasons: list<string>} */
+    public function workSheetConfirmationState(OwnRevenueImportFile $file): array
+    {
+        if ($file->status === OwnRevenueImportFileStatus::Confirmed || $file->confirmed_at !== null) {
+            return [
+                'can_confirm' => false,
+                'reasons' => ['Esta Hoja de trabajo ya fue confirmada.'],
+            ];
+        }
+
+        $reasons = [];
+        if ($file->status === OwnRevenueImportFileStatus::Analyzing || $file->analysis_token !== null) {
+            $reasons[] = 'El análisis del archivo todavía está en proceso.';
+        } elseif ($file->status !== OwnRevenueImportFileStatus::Ready) {
+            $reasons[] = 'La Hoja de trabajo debe estar lista antes de confirmarla.';
+        }
+
+        if ($file->issues()->where('severity', OwnRevenueImportIssueSeverity::Error)->exists()) {
+            $reasons[] = 'Corrige los problemas señalados antes de confirmar.';
+        }
+
+        if (! $file->rows()->where('row_kind', 'work_sheet_normalized_line')->exists()) {
+            $reasons[] = 'El análisis no contiene renglones listos para confirmar.';
+        }
+
+        if ($file->analysis_revision === null) {
+            $reasons[] = 'Vuelve a analizar el archivo para obtener una revisión vigente.';
+        }
+
+        $budget = $file->budget()->first();
+        if ($budget === null
+            || $file->budget_updated_at_at_analysis === null
+            || ! $budget->updated_at->equalTo($file->budget_updated_at_at_analysis)) {
+            $reasons[] = 'El presupuesto cambió después del análisis; vuelve a analizar el archivo.';
+        }
+
+        if (! $this->workSheetAbpreIsCurrent($file)) {
+            $reasons[] = 'El ABPRE confirmado cambió; vuelve a analizar la Hoja de trabajo.';
+        }
+
+        if ($budget !== null && ($file->analysis_fingerprint === null
+            || ! hash_equals($file->analysis_fingerprint, $this->captureSnapshot->handle($budget)->fingerprint))) {
+            $reasons[] = 'Los datos de referencia cambiaron; vuelve a analizar la Hoja de trabajo.';
+        }
+
+        $hasPendingDecision = $file->issues()
+            ->where('severity', OwnRevenueImportIssueSeverity::Warning)
+            ->get()
+            ->contains(function (OwnRevenueImportIssue $issue) use ($file): bool {
+                if (($issue->context['requires_decision'] ?? false) !== true) {
+                    return false;
+                }
+
+                $decision = $issue->decisions()->latest('id')->first();
+                $resolvedValue = $decision?->resolved_value;
+
+                return $decision?->resolution !== 'accepted'
+                    || ($resolvedValue['accepted'] ?? false) !== true
+                    || ! is_string($resolvedValue['analysis_revision'] ?? null)
+                    || $file->analysis_revision === null
+                    || ! hash_equals($file->analysis_revision, $resolvedValue['analysis_revision']);
+            });
+        if ($hasPendingDecision) {
+            $reasons[] = 'Acepta las diferencias requeridas antes de confirmar.';
+        }
+
+        return [
+            'can_confirm' => $reasons === [],
+            'reasons' => array_values(array_unique($reasons)),
+        ];
     }
 
     /** @return array<string, mixed> */

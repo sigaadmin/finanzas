@@ -126,6 +126,28 @@ export default function OwnRevenueImportPreview({
                                 >
                             ).decisions_enabled
                         }
+                        canConfirm={
+                            (
+                                props as Omit<
+                                    OwnRevenueWorkSheetPreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).can_confirm
+                        }
+                        confirmReasons={
+                            (
+                                props as Omit<
+                                    OwnRevenueWorkSheetPreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).confirm_reasons
+                        }
                         permissions={permissions}
                     />
                 ) : (

@@ -580,7 +580,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('@/routes/finance/own-revenue/budgets/imports')
         ->and($slot)
         ->toContain('target="_blank"')
-        ->toContain('rel="noreferrer"')
+        ->toContain('rel="noopener"')
         ->and($preview)
         ->toContain('@/routes/finance/own-revenue/budgets/imports/files')
         ->not->toContain("import { show } from '@/routes/finance/own-revenue/budgets/imports'");
@@ -607,7 +607,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('ImportIssueList')
         ->toContain('Ver vista previa')
         ->toContain('@/routes/finance/own-revenue/budgets/imports/files')
-        ->toMatch('/<a\s+href=\{\s*preview\(\{[\s\S]*?\}\)\.url\s*\}\s+target="_blank"\s+rel="noreferrer"\s*>\s*Ver vista previa\s*<\/a>/')
+        ->toMatch('/<a\s+href=\{\s*preview\(\{[\s\S]*?\}\)\.url\s*\}\s+target="_blank"\s+rel="noopener"\s*>\s*Ver vista previa\s*<\/a>/')
         ->not->toContain('Parser pendiente')
         ->not->toContain('files[0]')
         ->and($frontendState)

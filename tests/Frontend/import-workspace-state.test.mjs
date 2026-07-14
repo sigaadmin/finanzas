@@ -23,7 +23,7 @@ test('file statuses use operational language and expose only available ABPRE act
         ready: 'Listo para revisar',
         confirmed: 'Confirmado',
         failed: 'No se pudo analizar',
-        parser_pending: 'Revisión automática aún no disponible',
+        parser_pending: 'Revisión no disponible',
         replaced: 'Reemplazado por otra versión',
         discarded: 'Descartado',
     };
@@ -88,11 +88,65 @@ test('file statuses use operational language and expose only available ABPRE act
             issueCount: 0,
         }),
         {
-            label: 'Revisión automática aún no disponible',
+            label: 'Revisión no disponible',
             canAnalyze: false,
             canViewIssues: false,
             canViewPreview: false,
         },
+    );
+});
+
+test('work sheet files expose analysis and preview actions with operational language', () => {
+    assert.deepEqual(
+        importFilePresentation({
+            status: 'parser_pending',
+            format: 'work_sheet',
+            analyzed: false,
+            issueCount: 0,
+            canReclassify: false,
+        }),
+        {
+            label: 'Listo para analizar',
+            canAnalyze: true,
+            canViewIssues: false,
+            canViewPreview: false,
+        },
+    );
+    assert.deepEqual(
+        importFilePresentation({
+            status: 'ready',
+            format: 'work_sheet',
+            analyzed: true,
+            issueCount: 1,
+            canReclassify: false,
+        }),
+        {
+            label: 'Listo para confirmar',
+            canAnalyze: false,
+            canViewIssues: true,
+            canViewPreview: true,
+        },
+    );
+    assert.equal(
+        importFilePresentation({
+            status: 'needs_correction',
+            format: 'work_sheet',
+            analyzed: true,
+            issueCount: 1,
+            canReclassify: false,
+        }).label,
+        'Requiere revisión',
+    );
+    assert.equal(
+        importFilePresentation({
+            status: 'parser_pending',
+            format: 'abpre',
+            analyzed: false,
+            issueCount: 0,
+            canReclassify: false,
+        }).canAnalyze,
+        false,
+        'ABPRE keeps its previous analysis action matrix',
     );
 });
 

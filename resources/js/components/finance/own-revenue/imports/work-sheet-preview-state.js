@@ -32,6 +32,14 @@ export function canManageWorkSheetDecision({
     return canManage && decisionsEnabled && requiresDecision;
 }
 
+export function canConfirmWorkSheet({
+    canManage,
+    canConfirm,
+    analysisRevision,
+}) {
+    return canManage && canConfirm && analysisRevision !== null;
+}
+
 export function previewPageQuery(currentUrl, pageName, page) {
     const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
     query.set(pageName, String(page));
@@ -49,4 +57,12 @@ export function workSheetDecisionFeedback(errors) {
     }
 
     return errors.decision ?? '';
+}
+
+export function workSheetConfirmationFeedback(errors) {
+    if (errors.analysis_revision) {
+        return 'La revisión cambió mientras confirmabas. Actualiza la página y revisa nuevamente la Hoja de trabajo.';
+    }
+
+    return errors.file ?? errors.decisions ?? '';
 }

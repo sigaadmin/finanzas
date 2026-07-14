@@ -10,7 +10,7 @@ const importFileStatusLabels = {
     ready: 'Listo para revisar',
     confirmed: 'Confirmado',
     failed: 'No se pudo analizar',
-    parser_pending: 'Revisión automática aún no disponible',
+    parser_pending: 'Revisión no disponible',
     replaced: 'Reemplazado por otra versión',
     discarded: 'Descartado',
 };
@@ -23,17 +23,36 @@ export function importFilePresentation({
     canReclassify,
 }) {
     const isAbpre = format === 'abpre';
+    const isWorkSheet = format === 'work_sheet';
+    const workSheetLabels = {
+        uploaded: 'Listo para analizar',
+        parser_pending: 'Listo para analizar',
+        analyzing: 'Analizando',
+        needs_correction: 'Requiere revisión',
+        ready: 'Listo para confirmar',
+        confirmed: 'Confirmado',
+        failed: 'No se pudo analizar',
+    };
 
     return {
         label:
             format === null && canReclassify
                 ? 'Pendiente de clasificar'
-                : importFileStatusLabels[status],
+                : isWorkSheet && workSheetLabels[status]
+                  ? workSheetLabels[status]
+                  : importFileStatusLabels[status],
         canAnalyze:
-            isAbpre &&
-            ['uploaded', 'needs_correction', 'failed'].includes(status),
+            (isAbpre &&
+                ['uploaded', 'needs_correction', 'failed'].includes(status)) ||
+            (isWorkSheet &&
+                [
+                    'uploaded',
+                    'parser_pending',
+                    'needs_correction',
+                    'failed',
+                ].includes(status)),
         canViewIssues: analyzed || issueCount > 0,
-        canViewPreview: isAbpre && analyzed,
+        canViewPreview: (isAbpre || isWorkSheet) && analyzed,
     };
 }
 

@@ -2,12 +2,49 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+    canConfirmWorkSheet,
     canManageWorkSheetDecision,
     formatCents,
     previewPageQuery,
     previewStateMessage,
+    workSheetConfirmationFeedback,
     workSheetDecisionFeedback,
 } from '../../resources/js/components/finance/own-revenue/imports/work-sheet-preview-state.js';
+
+test('confirmation controls require management access current eligibility and a revision', () => {
+    assert.equal(
+        canConfirmWorkSheet({
+            canManage: true,
+            canConfirm: true,
+            analysisRevision: '7f65c28d-a6ef-4c49-ae75-673bbec87bec',
+        }),
+        true,
+    );
+    assert.equal(
+        canConfirmWorkSheet({
+            canManage: false,
+            canConfirm: true,
+            analysisRevision: '7f65c28d-a6ef-4c49-ae75-673bbec87bec',
+        }),
+        false,
+    );
+    assert.equal(
+        canConfirmWorkSheet({
+            canManage: true,
+            canConfirm: false,
+            analysisRevision: '7f65c28d-a6ef-4c49-ae75-673bbec87bec',
+        }),
+        false,
+    );
+    assert.equal(
+        canConfirmWorkSheet({
+            canManage: true,
+            canConfirm: true,
+            analysisRevision: null,
+        }),
+        false,
+    );
+});
 
 test('work sheet amounts remain exact beyond JavaScript safe integers', () => {
     assert.equal(formatCents('9007199254740993'), '$90,071,992,547,409.93');
@@ -47,6 +84,19 @@ test('stale decision errors explain the next action without technical fields', (
             file: 'El presupuesto cambió.',
         }),
         'La información del presupuesto cambió. Vuelve a analizar el archivo antes de decidir.',
+    );
+});
+
+test('confirmation errors explain stale analysis and ordinary validation failures', () => {
+    assert.equal(
+        workSheetConfirmationFeedback({
+            analysis_revision: 'El análisis cambió.',
+        }),
+        'La revisión cambió mientras confirmabas. Actualiza la página y revisa nuevamente la Hoja de trabajo.',
+    );
+    assert.equal(
+        workSheetConfirmationFeedback({ file: 'No está lista.' }),
+        'No está lista.',
     );
 });
 

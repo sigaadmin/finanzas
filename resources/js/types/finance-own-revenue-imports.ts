@@ -229,8 +229,11 @@ export type OwnRevenueWorkSheetPreviewProps = {
         | 'failed'
         | 'empty'
         | 'abpre_changed'
+        | 'confirmed'
         | 'ready';
     decisions_enabled: boolean;
+    can_confirm: boolean;
+    confirm_reasons: string[];
     permissions: OwnRevenueImportPermissions;
 };
 

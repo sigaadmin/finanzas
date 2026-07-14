@@ -51,7 +51,7 @@ export default function OwnRevenueImportShow({
         (slot) => slot.has_confirmed || slot.latest_status === 'ready',
     ).length;
     const parserPendingCount = slots.filter(
-        (slot) => slot.has_parser_pending,
+        (slot) => slot.format !== 'work_sheet' && slot.has_parser_pending,
     ).length;
     const missingCount = slots.filter((slot) => slot.is_missing).length;
     const [mutationFeedback, setMutationFeedback] = useState(

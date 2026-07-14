@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Finance\OwnRevenue\Imports\CaptureOwnRevenueImportAnalysisSnapshot;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
@@ -152,6 +153,8 @@ test('work sheet preview exposes operational exact and reconciled props', functi
             ->where('selected_file.analysis_revision', $file->analysis_revision)
             ->where('view_state', 'ready')
             ->where('decisions_enabled', true)
+            ->where('can_confirm', false)
+            ->where('confirm_reasons.0', 'Corrige los problemas señalados antes de confirmar.')
             ->has('preview.data', 1)
             ->where('preview.data.0.activityCode', 'A03-A01')
             ->where('preview.data.0.itemName', 'Papelería para oficina')
@@ -182,6 +185,36 @@ test('work sheet preview exposes operational exact and reconciled props', functi
             ->where('permissions.manage', true));
 });
 
+test('work sheet preview exposes server confirmation eligibility and human reasons', function () {
+    $manager = workSheetPreviewUser(UserRole::FinanceManager);
+    [$budget, $file] = workSheetPreviewScenario();
+    $file->issues()->where('severity', OwnRevenueImportIssueSeverity::Error)->delete();
+    $file->forceFill([
+        'budget_updated_at_at_analysis' => $budget->updated_at,
+    ])->save();
+    $file->forceFill([
+        'analysis_fingerprint' => app(CaptureOwnRevenueImportAnalysisSnapshot::class)->handle($budget->fresh())->fingerprint,
+    ])->save();
+
+    $route = route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file]);
+
+    $this->actingAs($manager)->get($route)
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('can_confirm', true)
+            ->where('confirm_reasons', []));
+
+    $file->update([
+        'status' => OwnRevenueImportFileStatus::Confirmed,
+        'confirmed_at' => now(),
+    ]);
+
+    $this->actingAs($manager)->get($route)
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('view_state', 'confirmed')
+            ->where('can_confirm', false)
+            ->where('confirm_reasons.0', 'Esta Hoja de trabajo ya fue confirmada.'));
+});
+
 test('consultation roles see work sheet preview without mutation permission', function (UserRole $role) {
     $viewer = workSheetPreviewUser($role);
     [$budget, $file] = workSheetPreviewScenario();
@@ -194,6 +227,7 @@ test('consultation roles see work sheet preview without mutation permission', fu
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('permissions.manage', false)
+            ->where('can_confirm', false)
             ->where('decisions_enabled', false)
             ->where('permissions.confirm', false)
             ->where('permissions.download', true)
