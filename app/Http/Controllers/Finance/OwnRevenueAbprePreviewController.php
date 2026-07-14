@@ -31,6 +31,11 @@ class OwnRevenueAbprePreviewController extends Controller
             && $canConfirm
             ? $this->viewData->workSheetConfirmationState($importFile)
             : null;
+        $supportingConfirmation = ! in_array($importFile->format, [OwnRevenueImportFormat::Abpre, OwnRevenueImportFormat::WorkSheet], true)
+            && $canManage
+            && $canConfirm
+            ? $this->viewData->supportingConfirmationState($importFile)
+            : null;
         $previewData = match ($importFile->format) {
             OwnRevenueImportFormat::WorkSheet => [
                 'preview' => $this->viewData->workSheetPreview($importFile),
@@ -53,6 +58,11 @@ class OwnRevenueAbprePreviewController extends Controller
             ],
             default => [
                 'preview' => $this->viewData->supportingPreview($importFile),
+                'decision_warnings' => $this->viewData->decisionWarnings($importFile),
+                'can_confirm' => $canManage && $canConfirm && ($supportingConfirmation['can_confirm'] ?? false),
+                'confirm_reasons' => $canManage && $canConfirm
+                    ? ($supportingConfirmation['reasons'] ?? [])
+                    : ['Puedes consultar esta revisión, pero no confirmarla.'],
             ],
         };
 

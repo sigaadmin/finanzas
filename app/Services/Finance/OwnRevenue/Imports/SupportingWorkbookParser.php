@@ -24,12 +24,27 @@ class SupportingWorkbookParser
         XlsxWorkbook $workbook,
         OwnRevenueImportFormat $format,
         array $cogMap,
+        int $fiscalYear = 0,
+        ?int $detectedYear = null,
     ): SupportingFormatAnalysis {
         $profile = $this->profile($format);
         [$sheet, $headerRow, $headers] = $this->findHeader($workbook, $profile['headers']);
         $issues = [];
         $lines = [];
         $sourceRows = [];
+        if ($detectedYear !== null && $detectedYear !== $fiscalYear) {
+            $issues[] = new ImportIssueData(
+                OwnRevenueImportIssueSeverity::Warning,
+                'year.mismatch',
+                'fiscal_year',
+                "El archivo indica el ejercicio {$detectedYear}, pero el presupuesto corresponde a {$fiscalYear}.",
+                [
+                    'detected_year' => $detectedYear,
+                    'fiscal_year' => $fiscalYear,
+                    'requires_decision' => true,
+                ],
+            );
+        }
 
         foreach ($sheet->rows() as $rowNumber => $row) {
             if ($rowNumber <= $headerRow) {
@@ -283,6 +298,7 @@ class SupportingWorkbookParser
                     [
                         'source_region' => (string) $values['sourceRegionCode'],
                         'normalized_region' => self::REGION_CODE,
+                        'requires_decision' => true,
                     ],
                     $sheet->name,
                     $rowNumber,

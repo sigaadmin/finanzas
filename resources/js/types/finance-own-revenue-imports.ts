@@ -119,6 +119,10 @@ export type OwnRevenueImportIssue = {
     field?: string | null;
     message: string;
     context: OwnRevenueImportIssueContext;
+    decision?: {
+        status: 'accepted' | 'rejected';
+        justification: string | null;
+    } | null;
 };
 
 export type OwnRevenueImportModalIssue = Pick<
@@ -272,6 +276,11 @@ export type OwnRevenueSupportingPreviewProps = {
         format: 'technical_sheet' | 'fuel' | 'travel_expenses';
     };
     preview: LengthAwarePaginator<OwnRevenueSupportingPreviewRow>;
+    decision_warnings: LengthAwarePaginator<OwnRevenueImportIssue> & {
+        has_more: boolean;
+    };
+    can_confirm: boolean;
+    confirm_reasons: string[];
     permissions: OwnRevenueImportPermissions;
 };
 

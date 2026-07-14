@@ -2,6 +2,7 @@
 
 namespace App\Models\Finance\OwnRevenue\Imports;
 
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use Database\Factories\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeedFactory;
@@ -12,7 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'own_revenue_budget_id', 'own_revenue_import_file_id', 'own_revenue_activity_id', 'source_row_id',
-    'specific_item_code', 'sequence', 'quantity', 'unit', 'description', 'region_code', 'region_name',
+    'expense_classification_id', 'specific_item_code', 'specific_item_name', 'chapter_code', 'chapter_name',
+    'sequence', 'quantity', 'unit', 'description', 'region_code', 'region_name',
     'amount_cents', 'budget_month', 'sort_order',
 ])]
 class OwnRevenueTechnicalSheetNeed extends Model
@@ -44,5 +46,11 @@ class OwnRevenueTechnicalSheetNeed extends Model
     public function sourceRow(): BelongsTo
     {
         return $this->belongsTo(OwnRevenueImportRow::class, 'source_row_id');
+    }
+
+    /** @return BelongsTo<ExpenseClassification, $this> */
+    public function expenseClassification(): BelongsTo
+    {
+        return $this->belongsTo(ExpenseClassification::class);
     }
 }

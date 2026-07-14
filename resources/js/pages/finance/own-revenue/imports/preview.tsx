@@ -156,6 +156,18 @@ export default function OwnRevenueImportPreview({
                         preview={
                             preview as OwnRevenueSupportingPreviewProps['preview']
                         }
+                        decision_warnings={
+                            (props as OwnRevenueSupportingPreviewProps)
+                                .decision_warnings
+                        }
+                        can_confirm={
+                            (props as OwnRevenueSupportingPreviewProps)
+                                .can_confirm
+                        }
+                        confirm_reasons={
+                            (props as OwnRevenueSupportingPreviewProps)
+                                .confirm_reasons
+                        }
                         permissions={permissions}
                     />
                 )}

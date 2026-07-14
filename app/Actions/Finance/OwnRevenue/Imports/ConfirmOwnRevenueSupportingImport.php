@@ -6,6 +6,7 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Exceptions\Finance\OwnRevenue\Imports\StoredImportFileUnavailable;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
@@ -45,7 +46,7 @@ class ConfirmOwnRevenueSupportingImport
 
             Gate::forUser($user)->authorize('confirmImports', $budget);
             $this->validateFile($lockedFile, $budget, $analysisRevision);
-            $this->validateIssues($lockedFile);
+            $this->validateIssues($lockedFile, $budget);
 
             $rows = $lockedFile->rows()
                 ->where('row_kind', $lockedFile->format->value.'_normalized_line')
@@ -98,7 +99,7 @@ class ConfirmOwnRevenueSupportingImport
             throw ValidationException::withMessages(['file' => 'El presupuesto cambió después del análisis; vuelva a analizar el archivo.']);
         }
         $fingerprint = $this->captureSnapshot->handle($budget)->fingerprint;
-        if ($file->analysis_fingerprint !== null && ! hash_equals($file->analysis_fingerprint, $fingerprint)) {
+        if ($file->analysis_fingerprint === null || ! hash_equals($file->analysis_fingerprint, $fingerprint)) {
             throw ValidationException::withMessages(['file' => 'Los datos de referencia cambiaron; vuelva a analizar el archivo.']);
         }
         try {
@@ -111,10 +112,37 @@ class ConfirmOwnRevenueSupportingImport
         }
     }
 
-    private function validateIssues(OwnRevenueImportFile $file): void
+    private function validateIssues(OwnRevenueImportFile $file, OwnRevenueBudget $budget): void
     {
         if ($file->issues()->where('severity', OwnRevenueImportIssueSeverity::Error)->exists()) {
             throw ValidationException::withMessages(['file' => 'El análisis todavía contiene errores que deben corregirse.']);
+        }
+
+        if ($file->detected_year !== null
+            && $file->detected_year !== $budget->fiscal_year
+            && ! $file->issues()->where('code', 'year.mismatch')->exists()) {
+            throw ValidationException::withMessages(['file' => 'La revisión del ejercicio no está vigente; vuelva a analizar el archivo.']);
+        }
+
+        $revision = $file->analysis_revision;
+        $pendingDecision = $file->issues()
+            ->where('severity', OwnRevenueImportIssueSeverity::Warning)
+            ->get()
+            ->filter(fn ($issue): bool => in_array($issue->code, ['year.mismatch', 'region.normalized'], true)
+                || ($issue->context['requires_decision'] ?? false) === true)
+            ->contains(function ($issue) use ($revision): bool {
+                $decision = $issue->decisions()->latest('id')->first();
+                $resolved = $decision?->resolved_value;
+
+                return $decision?->resolution !== 'accepted'
+                    || ($resolved['accepted'] ?? false) !== true
+                    || ! is_string($resolved['analysis_revision'] ?? null)
+                    || $revision === null
+                    || ! hash_equals($revision, $resolved['analysis_revision']);
+            });
+
+        if ($pendingDecision) {
+            throw ValidationException::withMessages(['file' => 'Revise y acepte las advertencias requeridas antes de confirmar.']);
         }
     }
 
@@ -141,18 +169,7 @@ class ConfirmOwnRevenueSupportingImport
             'sort_order' => $row->row_number,
         ];
         match ($file->format) {
-            OwnRevenueImportFormat::TechnicalSheet => OwnRevenueTechnicalSheetNeed::query()->create([
-                ...$base,
-                'specific_item_code' => $this->string($payload, 'specificItemCode'),
-                'sequence' => $this->optionalString($payload, 'sequence'),
-                'quantity' => $this->string($payload, 'quantity'),
-                'unit' => $this->string($payload, 'unit'),
-                'description' => $this->string($payload, 'description'),
-                'region_code' => '02-001',
-                'region_name' => 'Felipe Carrillo Puerto',
-                'amount_cents' => $this->amount($payload, 'amountCents'),
-                'budget_month' => $this->month($payload, 'budgetMonth'),
-            ]),
+            OwnRevenueImportFormat::TechnicalSheet => $this->createTechnicalSheetNeed($base, $budget, $payload),
             OwnRevenueImportFormat::Fuel => OwnRevenueFuelPlan::query()->create([
                 ...$base,
                 'commission_date_label' => $this->optionalString($payload, 'commissionDateLabel'),
@@ -189,6 +206,36 @@ class ConfirmOwnRevenueSupportingImport
             ]),
             default => throw ValidationException::withMessages(['file' => 'El formato no puede confirmarse por esta operación.']),
         };
+    }
+
+    /** @param array<string, mixed> $base @param array<string, mixed> $payload */
+    private function createTechnicalSheetNeed(array $base, OwnRevenueBudget $budget, array $payload): OwnRevenueTechnicalSheetNeed
+    {
+        $specificItemCode = $this->string($payload, 'specificItemCode');
+        $classification = ExpenseClassification::query()
+            ->where('fiscal_year', $budget->fiscal_year)
+            ->where('specific_item_code', $specificItemCode)
+            ->first();
+        if ($classification === null) {
+            throw ValidationException::withMessages(['file' => 'La partida ya no existe en el COG del ejercicio; vuelva a analizar el archivo.']);
+        }
+
+        return OwnRevenueTechnicalSheetNeed::query()->create([
+            ...$base,
+            'expense_classification_id' => $classification->id,
+            'specific_item_code' => $specificItemCode,
+            'specific_item_name' => $classification->specific_item_name,
+            'chapter_code' => $classification->chapter_code,
+            'chapter_name' => $classification->chapter_name,
+            'sequence' => $this->optionalString($payload, 'sequence'),
+            'quantity' => $this->string($payload, 'quantity'),
+            'unit' => $this->string($payload, 'unit'),
+            'description' => $this->string($payload, 'description'),
+            'region_code' => '02-001',
+            'region_name' => 'Felipe Carrillo Puerto',
+            'amount_cents' => $this->amount($payload, 'amountCents'),
+            'budget_month' => $this->month($payload, 'budgetMonth'),
+        ]);
     }
 
     /** @param array<string, mixed> $payload */

@@ -175,7 +175,10 @@ class OwnRevenueImportViewData
         $warnings = $this->paginateClamped(
             $file->issues()
                 ->select(['id', 'own_revenue_import_file_id', 'own_revenue_import_row_id', 'severity', 'code', 'field', 'message', 'context'])
-                ->with('row:id,sheet_name,row_number')
+                ->with([
+                    'row:id,sheet_name,row_number',
+                    'decisions' => fn ($query) => $query->latest('id'),
+                ])
                 ->where('severity', OwnRevenueImportIssueSeverity::Warning)
                 ->whereIn('code', self::REQUIRED_WARNING_DECISIONS)
                 ->orderBy('id'),
@@ -196,6 +199,53 @@ class OwnRevenueImportViewData
         $data['has_more'] = false;
 
         return $data;
+    }
+
+    /** @return array{can_confirm: bool, reasons: list<string>} */
+    public function supportingConfirmationState(OwnRevenueImportFile $file): array
+    {
+        $reasons = [];
+        if ($file->status !== OwnRevenueImportFileStatus::Ready || $file->analysis_token !== null) {
+            $reasons[] = 'El archivo debe estar listo antes de confirmarlo.';
+        }
+        if ($file->issues()->where('severity', OwnRevenueImportIssueSeverity::Error)->exists()) {
+            $reasons[] = 'Corrige los problemas señalados antes de confirmar.';
+        }
+        if ($file->analysis_revision === null) {
+            $reasons[] = 'Vuelve a analizar el archivo para obtener una revisión vigente.';
+        }
+
+        $budget = $file->budget()->first();
+        if ($budget === null
+            || $file->budget_updated_at_at_analysis === null
+            || ! $budget->updated_at->equalTo($file->budget_updated_at_at_analysis)) {
+            $reasons[] = 'El presupuesto cambió después del análisis; vuelve a analizar el archivo.';
+        }
+        if ($budget !== null && ($file->analysis_fingerprint === null
+            || ! hash_equals($file->analysis_fingerprint, $this->captureSnapshot->handle($budget)->fingerprint))) {
+            $reasons[] = 'Los datos de referencia cambiaron; vuelve a analizar el archivo.';
+        }
+
+        $requiredWarnings = $file->issues()
+            ->where('severity', OwnRevenueImportIssueSeverity::Warning)
+            ->get()
+            ->filter(fn (OwnRevenueImportIssue $issue): bool => in_array($issue->code, ['year.mismatch', 'region.normalized'], true)
+                || ($issue->context['requires_decision'] ?? false) === true);
+        $hasPendingDecision = $requiredWarnings->contains(function (OwnRevenueImportIssue $issue) use ($file): bool {
+            $decision = $issue->decisions()->latest('id')->first();
+            $resolved = $decision?->resolved_value;
+
+            return $decision?->resolution !== 'accepted'
+                || ($resolved['accepted'] ?? false) !== true
+                || ! is_string($resolved['analysis_revision'] ?? null)
+                || $file->analysis_revision === null
+                || ! hash_equals($file->analysis_revision, $resolved['analysis_revision']);
+        });
+        if ($hasPendingDecision) {
+            $reasons[] = 'Revisa y acepta las advertencias requeridas antes de confirmar.';
+        }
+
+        return ['can_confirm' => $reasons === [], 'reasons' => array_values(array_unique($reasons))];
     }
 
     /** @return array<string, mixed> */
@@ -481,6 +531,10 @@ class OwnRevenueImportViewData
             'field' => $issue->field,
             'message' => $issue->message,
             'context' => $this->exactMonetaryStrings($context),
+            'decision' => ($decision = $issue->decisions->first()) === null ? null : [
+                'status' => $decision->resolution,
+                'justification' => $decision->justification,
+            ],
         ];
     }
 

@@ -1,9 +1,11 @@
 <?php
 
+use App\Actions\Finance\OwnRevenue\Imports\CaptureOwnRevenueImportAnalysisSnapshot;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
@@ -11,6 +13,7 @@ use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 
 function supportingConfirmationUser(): User
 {
@@ -24,6 +27,19 @@ function supportingConfirmationUser(): User
 function readySupportingFile(User $manager, OwnRevenueImportFormat $format): array
 {
     $budget = OwnRevenueBudget::factory()->create();
+    ExpenseClassification::query()->create([
+        'fiscal_year' => $budget->fiscal_year,
+        'chapter_code' => '2000',
+        'chapter_name' => 'Materiales y suministros',
+        'concept_code' => '2100',
+        'concept_name' => 'Materiales de administración',
+        'generic_item_code' => '21100',
+        'generic_item_name' => 'Materiales, útiles y equipos menores de oficina',
+        'specific_item_code' => '21101',
+        'specific_item_name' => 'Materiales de oficina',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
     $contents = 'supporting-'.$format->value;
     $revision = (string) Str::uuid();
     $file = OwnRevenueImportFile::factory()->create([
@@ -31,6 +47,7 @@ function readySupportingFile(User $manager, OwnRevenueImportFormat $format): arr
         'uploaded_by' => $manager->id,
         'format' => $format,
         'detected_format' => $format,
+        'detected_year' => $budget->fiscal_year,
         'status' => OwnRevenueImportFileStatus::Ready,
         'analysis_revision' => $revision,
         'budget_updated_at_at_analysis' => $budget->updated_at,
@@ -76,9 +93,111 @@ function readySupportingFile(User $manager, OwnRevenueImportFormat $format): arr
         'source_payload' => ['source_rows' => [9]],
         'normalized_payload' => $payload,
     ]);
+    $file->forceFill([
+        'analysis_fingerprint' => app(CaptureOwnRevenueImportAnalysisSnapshot::class)->handle($budget->fresh())->fingerprint,
+    ])->save();
 
     return ['file' => $file->fresh(), 'source_row_id' => $source->id, 'payload' => $payload];
 }
+
+test('a supporting file without an analysis fingerprint cannot be confirmed', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::Fuel);
+    $file->forceFill(['analysis_fingerprint' => null])->save();
+
+    $this->actingAs($manager)
+        ->from(route('finance.own-revenue.budgets.imports.files.preview', [$file->budget, $file]))
+        ->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [$file->budget, $file]), [
+            'analysis_revision' => $file->analysis_revision,
+        ])
+        ->assertSessionHasErrors('file');
+
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Ready);
+});
+
+test('a supporting file with a stale analysis fingerprint cannot be confirmed', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::Fuel);
+    $file->forceFill(['analysis_fingerprint' => str_repeat('0', 64)])->save();
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [$file->budget, $file]), [
+            'analysis_revision' => $file->analysis_revision,
+        ])
+        ->assertSessionHasErrors('file');
+
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Ready);
+});
+
+test('a detected fiscal year mismatch must be present in the current analysis', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::TravelExpenses);
+    $file->forceFill(['detected_year' => $file->budget->fiscal_year - 1])->save();
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [$file->budget, $file]), [
+            'analysis_revision' => $file->analysis_revision,
+        ])
+        ->assertSessionHasErrors('file');
+
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Ready);
+});
+
+test('a supporting warning requires a current accepted decision', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::Fuel);
+    $issue = $file->issues()->create([
+        'severity' => 'warning',
+        'code' => 'year.mismatch',
+        'field' => 'fiscal_year',
+        'message' => 'El ejercicio detectado no coincide.',
+        'context' => [
+            'detected_year' => $file->budget->fiscal_year - 1,
+            'fiscal_year' => $file->budget->fiscal_year,
+            'requires_decision' => true,
+        ],
+    ]);
+
+    $confirmRoute = route('finance.own-revenue.budgets.imports.files.supporting.confirm', [$file->budget, $file]);
+    $this->withoutVite();
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$file->budget, $file]))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('can_confirm', false)
+            ->where('decision_warnings.data.0.id', $issue->id)
+            ->where('decision_warnings.data.0.decision', null));
+
+    $this->actingAs($manager)->post($confirmRoute, [
+        'analysis_revision' => $file->analysis_revision,
+    ])->assertSessionHasErrors('file');
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.imports.files.issues.decision.store', [
+        $file->budget, $file, $issue,
+    ]), [
+        'analysis_revision' => $file->analysis_revision,
+        'decision' => 'accepted',
+        'justification' => 'Se verificó el ejercicio correcto.',
+    ])->assertSessionHasNoErrors();
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$file->budget, $file]))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('can_confirm', true)
+            ->where('decision_warnings.data.0.decision.status', 'accepted'));
+
+    $this->actingAs($manager)->post($confirmRoute, [
+        'analysis_revision' => $file->analysis_revision,
+    ])->assertSessionHasNoErrors();
+
+    $decision = $issue->decisions()->sole();
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Confirmed)
+        ->and($decision->resolved_by)->toBe($manager->id)
+        ->and($decision->resolved_at)->not->toBeNull();
+});
 
 dataset('supporting confirmation formats', [
     'ficha técnica' => [OwnRevenueImportFormat::TechnicalSheet, 'own_revenue_technical_sheet_needs', ['specific_item_code' => '21101', 'amount_cents' => 12500]],
@@ -109,6 +228,14 @@ test('a ready supporting file can be confirmed without inventing an activity', f
         'source_row_id' => $sourceRowId,
         ...$expected,
     ]);
+    if ($format === OwnRevenueImportFormat::TechnicalSheet) {
+        $this->assertDatabaseHas($table, [
+            'own_revenue_import_file_id' => $file->id,
+            'specific_item_name' => 'Materiales de oficina',
+            'chapter_code' => '2000',
+            'chapter_name' => 'Materiales y suministros',
+        ]);
+    }
     $line = DB::table($table)->where('own_revenue_import_file_id', $file->id)->first();
     expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Confirmed)
         ->and($line->own_revenue_activity_id)->toBeNull()

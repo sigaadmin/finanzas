@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Finance\OwnRevenue\Imports\CaptureOwnRevenueImportAnalysisSnapshot;
 use App\Actions\Finance\OwnRevenue\Imports\StoreOwnRevenueImportDecision;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
@@ -77,8 +78,11 @@ function pendingAbpreMismatchDecision(): array
             'requires_decision' => true,
         ],
     ]);
+    $file->forceFill([
+        'analysis_fingerprint' => app(CaptureOwnRevenueImportAnalysisSnapshot::class)->handle($budget->fresh())->fingerprint,
+    ])->save();
 
-    return [$budget, $file, $issue];
+    return [$budget, $file->fresh(), $issue];
 }
 
 function importDecisionRoute(OwnRevenueBudget $budget, OwnRevenueImportFile $file, OwnRevenueImportIssue $issue): string

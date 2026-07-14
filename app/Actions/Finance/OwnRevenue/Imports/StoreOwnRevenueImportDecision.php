@@ -15,6 +15,14 @@ use Illuminate\Validation\ValidationException;
 
 class StoreOwnRevenueImportDecision
 {
+    private const ALLOWED_WARNING_CODES = [
+        'work_sheet.abpre_mismatch',
+        'year.mismatch',
+        'region.normalized',
+    ];
+
+    public function __construct(private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot) {}
+
     public function handle(
         OwnRevenueImportFile $file,
         OwnRevenueImportIssue $issue,
@@ -37,11 +45,17 @@ class StoreOwnRevenueImportDecision
             if ($lockedFile->budget_updated_at_at_analysis === null
                 || ! $lockedBudget->updated_at->equalTo($lockedFile->budget_updated_at_at_analysis)) {
                 throw ValidationException::withMessages([
-                    'file' => 'El presupuesto cambió después del análisis; vuelva a analizar la Hoja de trabajo.',
+                    'file' => 'El presupuesto cambió después del análisis; vuelva a analizar el archivo.',
                 ]);
             }
-
             $this->validateCurrentAnalysis($lockedFile, $lockedIssue, $analysisRevision);
+            $fingerprint = $this->captureSnapshot->handle($lockedBudget)->fingerprint;
+            if ($lockedFile->analysis_fingerprint === null
+                || ! hash_equals($lockedFile->analysis_fingerprint, $fingerprint)) {
+                throw ValidationException::withMessages([
+                    'file' => 'Los datos de referencia cambiaron; vuelva a analizar el archivo.',
+                ]);
+            }
             $lockedIssue->decisions()->delete();
             $lockedIssue->decisions()->create([
                 'own_revenue_import_row_id' => $lockedIssue->own_revenue_import_row_id,
@@ -72,8 +86,7 @@ class StoreOwnRevenueImportDecision
         ], true);
         $currentRevision = $file->analysis_revision;
 
-        if ($file->format !== OwnRevenueImportFormat::WorkSheet
-            || ! $validStatus
+        if (! $validStatus
             || $file->analysis_token !== null
             || $currentRevision === null
             || ! hash_equals($currentRevision, $analysisRevision)) {
@@ -83,11 +96,14 @@ class StoreOwnRevenueImportDecision
         }
 
         if ($issue->severity !== OwnRevenueImportIssueSeverity::Warning
-            || $issue->code !== 'work_sheet.abpre_mismatch'
-            || ($issue->context['requires_decision'] ?? false) !== true) {
+            || ! in_array($issue->code, self::ALLOWED_WARNING_CODES, true)) {
             throw ValidationException::withMessages([
                 'decision' => 'Esta incidencia no admite una decisión explícita.',
             ]);
+        }
+
+        if ($issue->code !== 'work_sheet.abpre_mismatch') {
+            return;
         }
 
         $currentAbpreId = OwnRevenueImportFile::query()

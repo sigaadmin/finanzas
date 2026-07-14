@@ -108,8 +108,16 @@ test('technical sheet reports unknown items and region normalization', function 
         (new XlsxWorkbookReader)->read($fixture),
         OwnRevenueImportFormat::TechnicalSheet,
         ['21101' => 1],
+        2026,
+        2025,
     );
 
     expect(array_column($analysis->issues, 'code'))
-        ->toContain('cog.missing_item', 'region.normalized');
+        ->toContain('cog.missing_item', 'region.normalized', 'year.mismatch')
+        ->and(collect($analysis->issues)->firstWhere('code', 'region.normalized')?->context['requires_decision'])->toBeTrue()
+        ->and(collect($analysis->issues)->firstWhere('code', 'year.mismatch')?->context)->toMatchArray([
+            'detected_year' => 2025,
+            'fiscal_year' => 2026,
+            'requires_decision' => true,
+        ]);
 });

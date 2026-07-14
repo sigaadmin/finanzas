@@ -1,5 +1,6 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
-import { Check, LoaderCircle } from 'lucide-react';
+import { Check, LoaderCircle, X } from 'lucide-react';
+import OwnRevenueImportDecisionController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportDecisionController';
 import OwnRevenueSupportingConfirmationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueSupportingConfirmationController';
 import {
     formatCents,
@@ -14,9 +15,11 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import { preview as showPreview } from '@/routes/finance/own-revenue/budgets/imports/files';
 import type {
     OwnRevenueImportFormat,
+    OwnRevenueImportIssue,
     OwnRevenueSupportingPreviewProps,
 } from '@/types/finance-own-revenue-imports';
 
@@ -99,10 +102,94 @@ function presentedValue(
     return String(value);
 }
 
+function WarningDecision({
+    budgetId,
+    fileId,
+    analysisRevision,
+    issue,
+}: {
+    budgetId: number;
+    fileId: number;
+    analysisRevision: string;
+    issue: OwnRevenueImportIssue;
+}) {
+    const form = useForm({
+        analysis_revision: analysisRevision,
+        decision: issue.decision?.status ?? '',
+        justification: issue.decision?.justification ?? '',
+    });
+    const submit = (decision: 'accepted' | 'rejected'): void => {
+        form.transform((data) => ({ ...data, decision }));
+        form.submit(
+            OwnRevenueImportDecisionController({
+                budget: budgetId,
+                importFile: fileId,
+                issue: issue.id,
+            }),
+            { preserveScroll: true },
+        );
+    };
+
+    return (
+        <div className="grid gap-3 rounded-md border bg-background p-3">
+            <div>
+                <p className="text-sm font-medium">{issue.message}</p>
+                {issue.context.row_number && (
+                    <p className="text-xs text-muted-foreground">
+                        Renglón {issue.context.row_number}
+                    </p>
+                )}
+            </div>
+            <div className="grid gap-2">
+                <Label htmlFor={`supporting-justification-${issue.id}`}>
+                    Nota de la decisión (opcional)
+                </Label>
+                <textarea
+                    id={`supporting-justification-${issue.id}`}
+                    value={form.data.justification}
+                    onChange={(event) =>
+                        form.setData('justification', event.target.value)
+                    }
+                    rows={2}
+                    maxLength={2000}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+            </div>
+            <div className="flex flex-wrap gap-2">
+                <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => submit('accepted')}
+                    disabled={form.processing}
+                >
+                    <Check className="size-4" />
+                    Aceptar
+                </Button>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => submit('rejected')}
+                    disabled={form.processing}
+                >
+                    <X className="size-4" />
+                    No aceptar
+                </Button>
+            </div>
+            <InputError
+                message={form.errors.decision ?? form.errors.analysis_revision}
+            />
+        </div>
+    );
+}
+
 export default function SupportingFormatPreview({
     budget,
     selected_file: file,
     preview,
+    decision_warnings: decisionWarnings,
+    can_confirm: canConfirm,
+    confirm_reasons: confirmReasons,
     permissions,
 }: OwnRevenueSupportingPreviewProps) {
     const currentUrl = usePage().url;
@@ -111,11 +198,6 @@ export default function SupportingFormatPreview({
         analysis_revision: file.analysis_revision ?? '',
         file: '',
     });
-    const canConfirm =
-        permissions.manage &&
-        permissions.confirm &&
-        file.status === 'ready' &&
-        Boolean(file.analysis_revision);
     const route = (page: number) =>
         showPreview(
             { budget: budget.id, importFile: file.id },
@@ -175,6 +257,55 @@ export default function SupportingFormatPreview({
                     </CardContent>
                 )}
             </Card>
+
+            {decisionWarnings.total > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Advertencias por revisar</CardTitle>
+                        <CardDescription>
+                            Registra una decisión para cada advertencia antes de
+                            confirmar el archivo.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                        {decisionWarnings.data.map((issue) =>
+                            permissions.manage && permissions.confirm ? (
+                                <WarningDecision
+                                    key={issue.id}
+                                    budgetId={budget.id}
+                                    fileId={file.id}
+                                    analysisRevision={
+                                        file.analysis_revision ?? ''
+                                    }
+                                    issue={issue}
+                                />
+                            ) : (
+                                <div
+                                    key={issue.id}
+                                    className="rounded-md border bg-background p-3 text-sm"
+                                >
+                                    {issue.message}
+                                </div>
+                            ),
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {!canConfirm && confirmReasons.length > 0 && (
+                <Card>
+                    <CardContent className="pt-6">
+                        <p className="text-sm font-medium">
+                            Antes de confirmar:
+                        </p>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                            {confirmReasons.map((reason) => (
+                                <li key={reason}>{reason}</li>
+                            ))}
+                        </ul>
+                    </CardContent>
+                </Card>
+            )}
 
             {preview.data.map((row) => (
                 <Card key={row.id}>

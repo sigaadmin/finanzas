@@ -74,10 +74,15 @@ class AnalyzeOwnRevenueImportFile
                 'analysis_token' => $analysisToken,
             ]);
 
-            return ['format' => $lockedFile->format, 'snapshot' => $snapshot];
+            return [
+                'format' => $lockedFile->format,
+                'snapshot' => $snapshot,
+                'detected_year' => $lockedFile->detected_year,
+            ];
         });
         $format = $attempt['format'];
         $snapshot = $attempt['snapshot'];
+        $detectedYear = $attempt['detected_year'];
 
         try {
             $workbook = $this->reader->read($path);
@@ -101,6 +106,8 @@ class AnalyzeOwnRevenueImportFile
                     $workbook,
                     $format,
                     $snapshot->cogMap,
+                    (int) $snapshot->budget['fiscal_year'],
+                    $detectedYear,
                 ),
             };
 
