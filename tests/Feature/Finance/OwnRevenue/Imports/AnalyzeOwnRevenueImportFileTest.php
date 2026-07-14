@@ -103,6 +103,69 @@ test('failed analysis clears attempt ownership', function () {
         ->and($result->issues()->sole()->code)->toBe('analysis.failed');
 });
 
+test('unavailable stored files fail validation without mutating import state', function () {
+    Storage::fake('local');
+    $manager = analyzeImportUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
+    ]);
+    $row = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+    ]);
+    $issue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'own_revenue_import_row_id' => $row->id,
+    ]);
+    $reader = Mockery::mock(XlsxWorkbookReader::class);
+    $reader->shouldNotReceive('read');
+    $parser = Mockery::mock(AbpreWorkbookParser::class);
+    $parser->shouldNotReceive('parse');
+    $rowSnapshot = $row->getRawOriginal();
+    $issueSnapshot = $issue->getRawOriginal();
+
+    try {
+        (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager);
+        $this->fail('Expected unavailable storage to fail validation.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toBe([
+            'file' => ['No fue posible acceder al archivo almacenado.'],
+        ]);
+    }
+
+    $file->refresh();
+    expect($file->status)->toBe(OwnRevenueImportFileStatus::Uploaded)
+        ->and($file->analysis_token)->toBeNull()
+        ->and($row->fresh()?->getRawOriginal())->toEqual($rowSnapshot)
+        ->and($issue->fresh()?->getRawOriginal())->toEqual($issueSnapshot);
+});
+
+test('stored file hash mismatches keep their explicit validation error', function () {
+    Storage::fake('local');
+    $manager = analyzeImportUser();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => OwnRevenueBudget::factory(),
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
+        'sha256' => hash('sha256', 'expected workbook'),
+    ]);
+    Storage::disk('local')->put($file->storage_path, 'different workbook');
+
+    try {
+        app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+        $this->fail('Expected a mismatched stored file hash to fail validation.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors())->toBe([
+            'file' => ['La huella del archivo almacenado no coincide.'],
+        ]);
+    }
+
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Uploaded)
+        ->and($file->fresh()->analysis_token)->toBeNull();
+});
+
 test('final analysis writes preserve a file confirmed after parsing started', function (string $outcome) {
     Storage::fake('local');
     $manager = analyzeImportUser();

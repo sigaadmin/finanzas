@@ -32,8 +32,21 @@ class AnalyzeOwnRevenueImportFile
 
         $this->ensureAnalyzable($file);
 
-        $path = Storage::disk($file->storage_disk)->path($file->storage_path);
-        $hash = hash_file('sha256', $path);
+        try {
+            $path = Storage::disk($file->storage_disk)->path($file->storage_path);
+            $hash = hash_file('sha256', $path);
+        } catch (Throwable) {
+            throw ValidationException::withMessages([
+                'file' => 'No fue posible acceder al archivo almacenado.',
+            ]);
+        }
+
+        if ($hash === false) {
+            throw ValidationException::withMessages([
+                'file' => 'No fue posible acceder al archivo almacenado.',
+            ]);
+        }
+
         if ($hash !== $file->sha256) {
             throw ValidationException::withMessages(['file' => 'La huella del archivo almacenado no coincide.']);
         }
