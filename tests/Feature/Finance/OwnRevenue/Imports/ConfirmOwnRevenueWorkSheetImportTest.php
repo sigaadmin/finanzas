@@ -18,9 +18,11 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
+use App\Services\Finance\OwnRevenue\Imports\LocalFileHashReader;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Mockery\MockInterface;
 
 function workSheetConfirmationUser(UserRole $role = UserRole::FinanceManager): User
 {
@@ -337,6 +339,35 @@ test('confirmation distinguishes a missing stored file from an altered SHA', fun
     'ausente' => ['missing', 'No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.'],
     'alterado' => ['altered', 'El archivo almacenado cambió; vuelva a cargar la Hoja de trabajo.'],
 ]);
+
+test('confirmation handles a read failure occurring after file availability checks', function () {
+    Storage::fake('local');
+    $manager = workSheetConfirmationUser();
+    ['file' => $file] = readyWorkSheetConfirmationFile($manager);
+    $this->mock(LocalFileHashReader::class, function (MockInterface $mock): void {
+        $mock->expects('sha256')->once()->andThrow(new ErrorException('El archivo dejó de estar disponible.'));
+    });
+
+    try {
+        app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision);
+        $this->fail('La confirmación debió rechazar el archivo que dejó de estar disponible.');
+    } catch (ValidationException $exception) {
+        expect($exception->errors()['file'][0])
+            ->toBe('No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.');
+    }
+});
+
+test('confirmation does not hide unrelated hashing failures', function () {
+    Storage::fake('local');
+    $manager = workSheetConfirmationUser();
+    ['file' => $file] = readyWorkSheetConfirmationFile($manager);
+    $this->mock(LocalFileHashReader::class, function (MockInterface $mock): void {
+        $mock->expects('sha256')->once()->andThrow(new LogicException('Fallo ajeno a la lectura.'));
+    });
+
+    expect(fn () => app(ConfirmOwnRevenueWorkSheetImport::class)->handle($file, $manager, $file->analysis_revision))
+        ->toThrow(LogicException::class, 'Fallo ajeno a la lectura.');
+});
 
 test('confirmation rejects missing normalized staging', function () {
     Storage::fake('local');

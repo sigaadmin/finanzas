@@ -5,6 +5,7 @@ namespace App\Actions\Finance\OwnRevenue\Imports;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
+use App\Exceptions\Finance\OwnRevenue\Imports\StoredImportFileUnavailable;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportDecision;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
@@ -16,13 +17,12 @@ use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
 use App\Services\Finance\OwnRevenue\Imports\PortableIntegerAmount;
+use App\Services\Finance\OwnRevenue\Imports\StoredImportFileHasher;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 class ConfirmOwnRevenueWorkSheetImport
 {
@@ -30,6 +30,7 @@ class ConfirmOwnRevenueWorkSheetImport
         private readonly CaptureOwnRevenueImportAnalysisSnapshot $captureSnapshot,
         private readonly CanonicalJson $canonicalJson,
         private readonly PortableIntegerAmount $amounts,
+        private readonly StoredImportFileHasher $fileHasher,
     ) {}
 
     public function handle(
@@ -150,18 +151,8 @@ class ConfirmOwnRevenueWorkSheetImport
         }
 
         try {
-            $path = Storage::disk($file->storage_disk)->path($file->storage_path);
-        } catch (Throwable) {
-            $path = null;
-        }
-        if ($path === null || ! is_file($path) || ! is_readable($path)) {
-            throw ValidationException::withMessages([
-                'file' => 'No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.',
-            ]);
-        }
-
-        $hash = hash_file('sha256', $path);
-        if ($hash === false) {
+            $hash = $this->fileHasher->sha256($file->storage_disk, $file->storage_path);
+        } catch (StoredImportFileUnavailable) {
             throw ValidationException::withMessages([
                 'file' => 'No fue posible acceder al archivo almacenado; vuelva a cargar la Hoja de trabajo.',
             ]);
