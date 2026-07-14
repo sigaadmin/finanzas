@@ -1,10 +1,12 @@
-import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import { ArrowLeft, LoaderCircle, Search, ShieldCheck } from 'lucide-react';
+import OwnRevenueImportAnalysisController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportAnalysisController';
 import AbprePreview from '@/components/finance/own-revenue/imports/abpre-preview';
 import { importFilePresentation } from '@/components/finance/own-revenue/imports/import-workspace-state';
 import SupportingFormatPreview from '@/components/finance/own-revenue/imports/supporting-format-preview';
 import WorkSheetPreview from '@/components/finance/own-revenue/imports/work-sheet-preview';
 import { workSheetPreviewBadge } from '@/components/finance/own-revenue/imports/work-sheet-preview-state';
+import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { show as showImports } from '@/routes/finance/own-revenue/budgets/imports';
@@ -46,6 +48,25 @@ export default function OwnRevenueImportPreview({
             selectedFile.issue_counts.info,
         canReclassify: selectedFile.can_reclassify,
     });
+    const analysisForm = useForm({
+        return_to_preview: true,
+        file: '',
+    });
+    const canAnalyze =
+        permissions.manage && status.canAnalyze && !selectedFile.confirmed;
+    const analyzeFile = (): void => {
+        if (!canAnalyze) {
+            return;
+        }
+
+        analysisForm.submit(
+            OwnRevenueImportAnalysisController({
+                budget: budget.id,
+                importFile: selectedFile.id,
+            }),
+            { preserveScroll: true },
+        );
+    };
     const workSheetProps = props as Omit<
         OwnRevenueWorkSheetPreviewProps,
         'budget' | 'selected_file' | 'preview' | 'permissions'
@@ -108,8 +129,33 @@ export default function OwnRevenueImportPreview({
                             ) : (
                                 <Badge variant="outline">{status.label}</Badge>
                             )}
+                            {canAnalyze && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={analyzeFile}
+                                    disabled={analysisForm.processing}
+                                >
+                                    {analysisForm.processing ? (
+                                        <LoaderCircle className="size-4 animate-spin" />
+                                    ) : (
+                                        <Search className="size-4" />
+                                    )}
+                                    {analysisForm.processing
+                                        ? 'Analizando…'
+                                        : selectedFile.analyzed
+                                          ? 'Volver a analizar'
+                                          : 'Analizar archivo'}
+                                </Button>
+                            )}
                         </div>
                     </div>
+                    <InputError
+                        message={
+                            analysisForm.errors.file ??
+                            analysisForm.errors.return_to_preview
+                        }
+                    />
                 </header>
 
                 {isWorkSheet ? (

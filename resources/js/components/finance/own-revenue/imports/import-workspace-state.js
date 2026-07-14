@@ -22,6 +22,13 @@ export function importFilePresentation({
     issueCount,
     canReclassify,
 }) {
+    const analyzableStatuses = [
+        'uploaded',
+        'parser_pending',
+        'needs_correction',
+        'ready',
+        'failed',
+    ];
     const isAbpre = format === 'abpre';
     const isSupportingFormat = [
         'work_sheet',
@@ -47,15 +54,8 @@ export function importFilePresentation({
                   ? supportingLabels[status]
                   : importFileStatusLabels[status],
         canAnalyze:
-            (isAbpre &&
-                ['uploaded', 'needs_correction', 'failed'].includes(status)) ||
-            (isSupportingFormat &&
-                [
-                    'uploaded',
-                    'parser_pending',
-                    'needs_correction',
-                    'failed',
-                ].includes(status)),
+            (isAbpre || isSupportingFormat) &&
+            analyzableStatuses.includes(status),
         canViewIssues: analyzed || issueCount > 0,
         canViewPreview: (isAbpre || isSupportingFormat) && analyzed,
     };

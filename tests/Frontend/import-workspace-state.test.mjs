@@ -34,6 +34,47 @@ test('ready file progress distinguishes review from confirmation', () => {
     assert.equal(importFileProgressLabel('analyzing', 'work_sheet'), null);
 });
 
+test('all five formats may be reanalyzed while mutable but not in terminal states', () => {
+    const formats = [
+        'abpre',
+        'work_sheet',
+        'technical_sheet',
+        'fuel',
+        'travel_expenses',
+    ];
+
+    for (const format of formats) {
+        assert.equal(
+            importFilePresentation({
+                status: 'ready',
+                format,
+                analyzed: true,
+                issueCount: 0,
+                canReclassify: false,
+            }).canAnalyze,
+            true,
+        );
+
+        for (const status of [
+            'analyzing',
+            'confirmed',
+            'replaced',
+            'discarded',
+        ]) {
+            assert.equal(
+                importFilePresentation({
+                    status,
+                    format,
+                    analyzed: true,
+                    issueCount: 0,
+                    canReclassify: false,
+                }).canAnalyze,
+                false,
+            );
+        }
+    }
+});
+
 test('issue details expose only explicitly labeled business context', () => {
     assert.deepEqual(
         importIssueContextDetails({
@@ -158,7 +199,7 @@ test('file statuses use operational language and expose only available ABPRE act
         }),
         {
             label: 'Listo para revisar',
-            canAnalyze: false,
+            canAnalyze: true,
             canViewIssues: true,
             canViewPreview: true,
         },
@@ -191,7 +232,7 @@ test('work sheet files expose analysis and preview actions with operational lang
         }),
         {
             label: 'Listo para revisar',
-            canAnalyze: false,
+            canAnalyze: true,
             canViewIssues: true,
             canViewPreview: true,
         },
@@ -214,8 +255,8 @@ test('work sheet files expose analysis and preview actions with operational lang
             issueCount: 0,
             canReclassify: false,
         }).canAnalyze,
-        false,
-        'ABPRE keeps its previous analysis action matrix',
+        true,
+        'ABPRE uses the same mutable analysis action matrix',
     );
 });
 
