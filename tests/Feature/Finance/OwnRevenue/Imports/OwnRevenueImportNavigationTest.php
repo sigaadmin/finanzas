@@ -300,11 +300,25 @@ test('dedicated ABPRE preview enforces consultation authorization and aggregate 
 test('stale issue pages clamp to the first page for the selected file', function () {
     $manager = importNavigationUser(UserRole::FinanceManager);
     $budget = OwnRevenueBudget::factory()->create();
+    $otherFile = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'version_number' => 1,
+    ]);
     $shortFile = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
         'format' => OwnRevenueImportFormat::Abpre,
         'version_number' => 2,
     ]);
+
+    foreach (range(1, 51) as $index) {
+        OwnRevenueImportIssue::factory()->create([
+            'own_revenue_import_file_id' => $otherFile->id,
+            'severity' => 'warning',
+            'code' => 'year.mismatch',
+            'message' => "Incidencia de otro archivo {$index}",
+        ]);
+    }
 
     $shortIssue = OwnRevenueImportIssue::factory()->create([
         'own_revenue_import_file_id' => $shortFile->id,
