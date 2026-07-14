@@ -41,6 +41,12 @@ class OwnRevenueImportViewData
     ];
 
     private const SAFE_ISSUE_CONTEXT_FIELDS = [
+        'activity_code',
+        'activity_name',
+        'activity',
+        'item_name',
+        'item_names',
+        'source_rows',
         'detected_year',
         'fiscal_year',
         'responsible_unit_code',
@@ -56,6 +62,29 @@ class OwnRevenueImportViewData
         'abpre_import_file_id',
         'work_sheet_source_rows',
         'abpre_line_ids',
+        'requires_decision',
+        'requires_reanalysis',
+    ];
+
+    private const MODAL_ISSUE_CONTEXT_FIELDS = [
+        'activity_code',
+        'activity_name',
+        'activity',
+        'item_name',
+        'item_names',
+        'source_rows',
+        'detected_year',
+        'fiscal_year',
+        'responsible_unit_code',
+        'specific_item_code',
+        'source_region',
+        'normalized_region',
+        'source_cents',
+        'calculated_cents',
+        'work_sheet_total_cents',
+        'abpre_total_cents',
+        'difference_cents',
+        'work_sheet_source_rows',
         'requires_decision',
         'requires_reanalysis',
     ];
@@ -126,12 +155,13 @@ class OwnRevenueImportViewData
     {
         $issues = $this->paginateClamped(
             $file->issues()
-                ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
+                ->select(['id', 'own_revenue_import_file_id', 'own_revenue_import_row_id', 'severity', 'code', 'field', 'message', 'context'])
+                ->with('row:id,sheet_name,row_number')
                 ->orderBy('id'),
             self::ISSUES_PER_PAGE,
             'issues_page',
         )
-            ->through(fn (OwnRevenueImportIssue $issue): array => $this->issue($issue));
+            ->through(fn (OwnRevenueImportIssue $issue): array => $this->modalIssue($issue));
         $data = $issues->toArray();
         $data['has_more'] = $issues->hasMorePages();
 
@@ -143,7 +173,8 @@ class OwnRevenueImportViewData
     {
         $warnings = $this->paginateClamped(
             $file->issues()
-                ->select(['id', 'own_revenue_import_file_id', 'severity', 'code', 'field', 'message', 'context'])
+                ->select(['id', 'own_revenue_import_file_id', 'own_revenue_import_row_id', 'severity', 'code', 'field', 'message', 'context'])
+                ->with('row:id,sheet_name,row_number')
                 ->where('severity', OwnRevenueImportIssueSeverity::Warning)
                 ->whereIn('code', self::REQUIRED_WARNING_DECISIONS)
                 ->orderBy('id'),
@@ -390,16 +421,48 @@ class OwnRevenueImportViewData
     /** @return array<string, mixed> */
     private function issue(OwnRevenueImportIssue $issue): array
     {
+        $context = Arr::only(
+            $issue->context ?? [],
+            self::SAFE_ISSUE_CONTEXT_FIELDS,
+        );
+        if ($issue->row !== null) {
+            $context = [
+                'sheet_name' => $issue->row->sheet_name,
+                'row_number' => $issue->row->row_number,
+                ...$context,
+            ];
+        }
+
         return [
             'id' => $issue->id,
             'severity' => $issue->severity->value,
             'code' => $issue->code,
             'field' => $issue->field,
             'message' => $issue->message,
-            'context' => $this->exactMonetaryStrings(Arr::only(
-                $issue->context ?? [],
-                self::SAFE_ISSUE_CONTEXT_FIELDS,
-            )),
+            'context' => $this->exactMonetaryStrings($context),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function modalIssue(OwnRevenueImportIssue $issue): array
+    {
+        $context = Arr::only(
+            $issue->context ?? [],
+            self::MODAL_ISSUE_CONTEXT_FIELDS,
+        );
+        if ($issue->row !== null) {
+            $context = [
+                'sheet_name' => $issue->row->sheet_name,
+                'row_number' => $issue->row->row_number,
+                ...$context,
+            ];
+        }
+
+        return [
+            'id' => $issue->id,
+            'severity' => $issue->severity->value,
+            'message' => $issue->message,
+            'context' => $this->exactMonetaryStrings($context),
         ];
     }
 

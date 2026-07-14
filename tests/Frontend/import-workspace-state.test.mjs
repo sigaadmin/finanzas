@@ -4,6 +4,7 @@ import {
     failImportMutation,
     finishImportMutation,
     importIssueDialogState,
+    importIssueContextDetails,
     importIssueDialogOpenAction,
     importIssuePageQuery,
     importFilePresentation,
@@ -14,6 +15,34 @@ import {
     startImportMutation,
     takeNextUpload,
 } from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.js';
+
+test('issue details expose only explicitly labeled business context', () => {
+    assert.deepEqual(
+        importIssueContextDetails({
+            sheet_name: 'HOJA FINAL',
+            row_number: 12,
+            activity_code: 'A03-A01',
+            specific_item_code: '21101',
+            source_region: '01-002',
+            normalized_region: '02-001',
+            difference_cents: '-250',
+            requires_reanalysis: true,
+            token: 'secret',
+            source_payload: { raw: true },
+            unknown_variable: 'never render',
+        }),
+        [
+            { label: 'Hoja', value: 'HOJA FINAL' },
+            { label: 'Renglón', value: '12' },
+            { label: 'Actividad', value: 'A03-A01' },
+            { label: 'Partida', value: '21101' },
+            { label: 'Región original', value: '01-002' },
+            { label: 'Región asignada', value: '02-001' },
+            { label: 'Diferencia', value: '-$2.50' },
+            { label: 'Acción necesaria', value: 'Volver a analizar' },
+        ],
+    );
+});
 
 test('file statuses use operational language and expose only available ABPRE actions', () => {
     const expectedLabels = {

@@ -37,12 +37,10 @@ test('manager workspace exposes five bounded slots exact money strings and mutat
         'own_revenue_budget_id' => $budget->id,
         'format' => OwnRevenueImportFormat::Abpre,
     ]);
-    OwnRevenueImportIssue::factory()->create([
+    $row = OwnRevenueImportRow::factory()->create([
         'own_revenue_import_file_id' => $file->id,
-        'context' => ['source_cents' => '9007199254740993'],
-    ]);
-    OwnRevenueImportRow::factory()->create([
-        'own_revenue_import_file_id' => $file->id,
+        'sheet_name' => 'HOJA FINAL',
+        'row_number' => 12,
         'row_kind' => 'abpre_line',
         'normalized_payload' => [
             'specificItemCode' => '21101',
@@ -51,6 +49,15 @@ test('manager workspace exposes five bounded slots exact money strings and mutat
             'normalizedRegion' => 'Calkiní',
             'months' => ['january' => '9007199254740993'],
             'annualAmountCents' => '9007199254740993',
+        ],
+    ]);
+    OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'own_revenue_import_row_id' => $row->id,
+        'context' => [
+            'source_cents' => '9007199254740993',
+            'token' => 'secret',
+            'source_payload' => ['raw' => true],
         ],
     ]);
 
@@ -67,6 +74,12 @@ test('manager workspace exposes five bounded slots exact money strings and mutat
             ->where('slots.4.label', 'Viáticos')
             ->where('budget.estimated_income_cents', '9007199254740993')
             ->where('selected_file.issues.data.0.context.source_cents', '9007199254740993')
+            ->where('selected_file.issues.data.0.context.sheet_name', 'HOJA FINAL')
+            ->where('selected_file.issues.data.0.context.row_number', 12)
+            ->missing('selected_file.issues.data.0.context.token')
+            ->missing('selected_file.issues.data.0.context.source_payload')
+            ->missing('selected_file.issues.data.0.code')
+            ->missing('selected_file.issues.data.0.field')
             ->missing('preview_file')
             ->missing('preview')
             ->missing('decision_warnings')
@@ -547,6 +560,11 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('importIssueDialogOpenAction')
         ->toContain('importIssueDialogState')
         ->toContain('importIssuePageQuery')
+        ->toContain('importIssueContextDetails')
+        ->not->toContain('Código interno')
+        ->not->toContain('{issue.code}')
+        ->not->toContain('{issue.field}')
+        ->not->toContain('?? key')
         ->and($preview)
         ->toContain('preview_page')
         ->toContain('formatCents')
@@ -578,6 +596,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('import_file_id')
         ->toContain('<AbprePreview')
         ->toContain('@/routes/finance/own-revenue/budgets/imports')
+        ->toContain('workSheetPreviewBadge')
         ->and($slot)
         ->toContain('target="_blank"')
         ->toContain('rel="noopener"')
@@ -615,6 +634,8 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('export function importIssuePageQuery')
         ->toContain('export function importIssueDialogState')
         ->toContain('export function importIssueDialogOpenAction')
+        ->toContain('Hoja')
+        ->toContain('Partida')
         ->and($workspace)
         ->toContain('slot.has_confirmed')
         ->toContain('slot.has_parser_pending')

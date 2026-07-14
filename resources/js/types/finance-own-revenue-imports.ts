@@ -87,6 +87,14 @@ export type OwnRevenueImportSlot = {
 };
 
 export type OwnRevenueImportIssueContext = Partial<{
+    sheet_name: string;
+    row_number: number;
+    activity_code: string;
+    activity_name: string;
+    activity: string;
+    item_name: string;
+    item_names: string[];
+    source_rows: number[];
     detected_year: number;
     fiscal_year: number;
     responsible_unit_code: string;
@@ -96,13 +104,19 @@ export type OwnRevenueImportIssueContext = Partial<{
     value: unknown;
     source_cents: string;
     calculated_cents: string;
+    work_sheet_total_cents: string;
+    abpre_total_cents: string;
+    difference_cents: string;
+    work_sheet_source_rows: number[];
+    requires_decision: boolean;
+    requires_reanalysis: boolean;
 }>;
 
 export type OwnRevenueImportIssue = {
     id: number;
     severity: OwnRevenueImportIssueSeverity;
-    code: string;
-    field: string | null;
+    code?: string;
+    field?: string | null;
     message: string;
     context: OwnRevenueImportIssueContext;
 };

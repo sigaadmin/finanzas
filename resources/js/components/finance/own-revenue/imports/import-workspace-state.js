@@ -91,6 +91,96 @@ export function importIssueDialogOpenAction(selectedFileId, fileId) {
     };
 }
 
+const issueContextLabels = {
+    sheet_name: 'Hoja',
+    row_number: 'Renglón',
+    activity_code: 'Actividad',
+    activity_name: 'Nombre de la actividad',
+    activity: 'Actividad encontrada',
+    item_name: 'Insumo',
+    item_names: 'Insumos encontrados',
+    source_rows: 'Renglones de origen',
+    detected_year: 'Año detectado',
+    fiscal_year: 'Año fiscal',
+    responsible_unit_code: 'Unidad responsable',
+    specific_item_code: 'Partida',
+    source_region: 'Región original',
+    normalized_region: 'Región asignada',
+    source_cents: 'Importe del archivo',
+    calculated_cents: 'Importe calculado',
+    work_sheet_total_cents: 'Total en Hoja de trabajo',
+    abpre_total_cents: 'Total oficial en ABPRE',
+    difference_cents: 'Diferencia',
+    work_sheet_source_rows: 'Renglones de origen',
+    requires_decision: 'Acción necesaria',
+    requires_reanalysis: 'Acción necesaria',
+};
+
+function issueCents(rawValue) {
+    const rawCents = String(rawValue);
+
+    if (!/^-?\d+$/.test(rawCents)) {
+        return null;
+    }
+
+    const negative = rawCents.startsWith('-');
+    const digits = (negative ? rawCents.slice(1) : rawCents)
+        .replace(/^0+(?=\d)/, '')
+        .padStart(3, '0');
+    const whole = digits.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    return `${negative ? '-' : ''}$${whole}.${digits.slice(-2)}`;
+}
+
+function issueContextValue(key, value) {
+    if (key.endsWith('_cents')) {
+        return issueCents(value);
+    }
+
+    if (key === 'requires_reanalysis') {
+        return value === true ? 'Volver a analizar' : null;
+    }
+
+    if (key === 'requires_decision') {
+        return value === true ? 'Revisar antes de continuar' : null;
+    }
+
+    if (
+        ['source_rows', 'work_sheet_source_rows'].includes(key) &&
+        Array.isArray(value)
+    ) {
+        return value.every((row) => Number.isInteger(row))
+            ? value.join(', ')
+            : null;
+    }
+
+    if (key === 'item_names' && Array.isArray(value)) {
+        return value.every((item) => typeof item === 'string')
+            ? value.join(', ')
+            : null;
+    }
+
+    return typeof value === 'string' || typeof value === 'number'
+        ? String(value)
+        : null;
+}
+
+export function importIssueContextDetails(context) {
+    return Object.entries(context).flatMap(([key, value]) => {
+        const label = issueContextLabels[key];
+
+        if (!label) {
+            return [];
+        }
+
+        const presentedValue = issueContextValue(key, value);
+
+        return presentedValue === null
+            ? []
+            : [{ label, value: presentedValue }];
+    });
+}
+
 export function startImportMutation(_current, fileId) {
     return { activeFileId: fileId, error: null };
 }

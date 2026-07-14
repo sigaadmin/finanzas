@@ -24,6 +24,36 @@ export function previewStateMessage(state) {
     return messages[state] ?? '';
 }
 
+export function workSheetPreviewBadge({
+    status,
+    viewState,
+    canManage,
+    canConfirm,
+}) {
+    if (status === 'confirmed' || viewState === 'confirmed') {
+        return 'Confirmado';
+    }
+
+    if (!canManage) {
+        return 'Sólo consulta';
+    }
+
+    if (canConfirm) {
+        return 'Listo para confirmar';
+    }
+
+    const labels = {
+        not_analyzed: 'Listo para analizar',
+        analyzing: 'Analizando',
+        failed: 'No se pudo analizar',
+        empty: 'Sin información para confirmar',
+        abpre_changed: 'Requiere nuevo análisis',
+        ready: 'Pendiente de revisión',
+    };
+
+    return labels[viewState] ?? 'Pendiente de revisión';
+}
+
 export function canManageWorkSheetDecision({
     canManage,
     decisionsEnabled,

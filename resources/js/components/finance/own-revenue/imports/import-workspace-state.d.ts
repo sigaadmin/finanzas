@@ -60,6 +60,10 @@ export function importIssueDialogOpenAction(
     fileId: number,
 ): { isOpen: boolean; shouldLoad: boolean };
 
+export function importIssueContextDetails(
+    context: object,
+): Array<{ label: string; value: string }>;
+
 export function startImportMutation(
     current: ImportMutationFeedback,
     fileId: number,

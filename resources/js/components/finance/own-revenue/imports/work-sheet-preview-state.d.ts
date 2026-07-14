@@ -9,6 +9,12 @@ export type WorkSheetPreviewState =
 
 export function formatCents(rawCents: string): string;
 export function previewStateMessage(state: WorkSheetPreviewState): string;
+export function workSheetPreviewBadge(options: {
+    status: string;
+    viewState: WorkSheetPreviewState;
+    canManage: boolean;
+    canConfirm: boolean;
+}): string;
 export function workSheetDecisionFeedback(
     errors: Partial<Record<string, string>>,
 ): string;

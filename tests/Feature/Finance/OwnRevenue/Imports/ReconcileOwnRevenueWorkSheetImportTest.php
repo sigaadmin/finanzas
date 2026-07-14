@@ -177,14 +177,16 @@ test('work sheet reconciliation reports positive negative and exclusive item dif
         ->and($issues['21301']->context['abpre_total_cents'])->toBe('0');
 
     $viewData = app(OwnRevenueImportViewData::class);
-    $serializedIssue = collect($viewData->issues($result)['data'])->firstWhere('field', '21101');
+    $serializedIssue = collect($viewData->issues($result)['data'])
+        ->first(fn (array $issue): bool => (string) ($issue['context']['specific_item_code'] ?? '') === '21101');
     expect($serializedIssue['context'])->toMatchArray([
         'work_sheet_total_cents' => '1001',
         'abpre_total_cents' => '1000',
         'difference_cents' => '1',
-        'abpre_import_file_id' => $abpre->id,
         'requires_decision' => true,
-    ])->and($viewData->decisionWarnings($result)['total'])->toBe(3);
+    ])->not->toHaveKeys(['abpre_import_file_id', 'abpre_line_ids'])
+        ->and($serializedIssue)->not->toHaveKeys(['code', 'field'])
+        ->and($viewData->decisionWarnings($result)['total'])->toBe(3);
 });
 
 test('work sheet analysis is blocked clearly when no usable confirmed ABPRE exists', function () {

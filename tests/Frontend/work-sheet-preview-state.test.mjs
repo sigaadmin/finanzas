@@ -7,9 +7,58 @@ import {
     formatCents,
     previewPageQuery,
     previewStateMessage,
+    workSheetPreviewBadge,
     workSheetConfirmationFeedback,
     workSheetDecisionFeedback,
 } from '../../resources/js/components/finance/own-revenue/imports/work-sheet-preview-state.js';
+
+test('work sheet preview badge reflects workflow state before permissions', () => {
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'confirmed',
+            viewState: 'confirmed',
+            canManage: false,
+            canConfirm: false,
+        }),
+        'Confirmado',
+    );
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'ready',
+            viewState: 'ready',
+            canManage: false,
+            canConfirm: false,
+        }),
+        'Sólo consulta',
+    );
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'ready',
+            viewState: 'ready',
+            canManage: true,
+            canConfirm: true,
+        }),
+        'Listo para confirmar',
+    );
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'ready',
+            viewState: 'ready',
+            canManage: true,
+            canConfirm: false,
+        }),
+        'Pendiente de revisión',
+    );
+    assert.equal(
+        workSheetPreviewBadge({
+            status: 'analyzing',
+            viewState: 'analyzing',
+            canManage: true,
+            canConfirm: false,
+        }),
+        'Analizando',
+    );
+});
 
 test('confirmation controls require management access current eligibility and a revision', () => {
     assert.equal(

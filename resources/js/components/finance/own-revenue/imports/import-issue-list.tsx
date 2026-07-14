@@ -2,6 +2,7 @@ import { Link, router, usePage } from '@inertiajs/react';
 import { AlertCircle, Info, ListChecks, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import {
+    importIssueContextDetails,
     importIssueDialogOpenAction,
     importIssueDialogState,
     importIssuePageQuery,
@@ -27,18 +28,6 @@ type Props = {
     budgetId: number;
     file: OwnRevenueImportFile;
     selectedFile: OwnRevenueSelectedImportFile | null;
-};
-
-const contextLabels: Record<string, string> = {
-    detected_year: 'Año detectado',
-    fiscal_year: 'Año fiscal',
-    responsible_unit_code: 'Unidad responsable',
-    specific_item_code: 'Partida específica',
-    source_region: 'Región original',
-    normalized_region: 'Región normalizada',
-    value: 'Valor',
-    source_cents: 'Centavos del archivo',
-    calculated_cents: 'Centavos calculados',
 };
 
 const severityLabels = {
@@ -143,62 +132,47 @@ export default function ImportIssueList({
                             No se encontraron problemas.
                         </p>
                     ) : (
-                        issues.data.map((issue) => (
-                            <article
-                                key={issue.id}
-                                className="grid grid-cols-[auto_1fr] gap-3 rounded-lg border p-3"
-                            >
-                                <IssueIcon issue={issue} />
-                                <div className="min-w-0">
-                                    <p className="text-sm font-medium">
-                                        {issue.message}
-                                    </p>
-                                    <details className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs">
-                                        <summary className="cursor-pointer font-medium text-muted-foreground">
-                                            Más información
-                                        </summary>
-                                        <div className="mt-2 grid gap-2">
-                                            <p>
-                                                <span className="text-muted-foreground">
-                                                    Código interno:{' '}
-                                                </span>
-                                                {issue.code}
-                                            </p>
-                                            {issue.field && (
-                                                <p>
-                                                    <span className="text-muted-foreground">
-                                                        Campo:{' '}
-                                                    </span>
-                                                    {issue.field}
-                                                </p>
-                                            )}
-                                            {Object.keys(issue.context).length >
-                                                0 && (
-                                                <dl className="grid gap-2 sm:grid-cols-2">
-                                                    {Object.entries(
-                                                        issue.context,
-                                                    ).map(([key, value]) => (
+                        issues.data.map((issue) => {
+                            const details = importIssueContextDetails(
+                                issue.context,
+                            );
+
+                            return (
+                                <article
+                                    key={issue.id}
+                                    className="grid grid-cols-[auto_1fr] gap-3 rounded-lg border p-3"
+                                >
+                                    <IssueIcon issue={issue} />
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-medium">
+                                            {issue.message}
+                                        </p>
+                                        {details.length > 0 && (
+                                            <details className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs">
+                                                <summary className="cursor-pointer font-medium text-muted-foreground">
+                                                    Más información
+                                                </summary>
+                                                <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                                                    {details.map((detail) => (
                                                         <div
-                                                            key={key}
+                                                            key={`${detail.label}-${detail.value}`}
                                                             className="min-w-0"
                                                         >
                                                             <dt className="text-muted-foreground">
-                                                                {contextLabels[
-                                                                    key
-                                                                ] ?? key}
+                                                                {detail.label}
                                                             </dt>
                                                             <dd className="font-medium break-words">
-                                                                {String(value)}
+                                                                {detail.value}
                                                             </dd>
                                                         </div>
                                                     ))}
                                                 </dl>
-                                            )}
-                                        </div>
-                                    </details>
-                                </div>
-                            </article>
-                        ))
+                                            </details>
+                                        )}
+                                    </div>
+                                </article>
+                            );
+                        })
                     )}
 
                     {issues && issues.last_page > 1 && (
