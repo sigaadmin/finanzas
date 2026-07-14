@@ -59,6 +59,26 @@ export function importFileProgressLabel(
         | null,
 ): string | null;
 
+export function supportingPreviewActions(input: {
+    status:
+        | 'uploaded'
+        | 'analyzing'
+        | 'needs_correction'
+        | 'ready'
+        | 'confirmed'
+        | 'replaced'
+        | 'discarded'
+        | 'failed'
+        | 'parser_pending';
+    confirmed: boolean;
+    canManage: boolean;
+    canConfirm: boolean;
+}): {
+    isClosed: boolean;
+    decisionsEnabled: boolean;
+    showConfirmReasons: boolean;
+};
+
 export function selectImportFileQuery(
     currentUrl: string,
     fileId: number,

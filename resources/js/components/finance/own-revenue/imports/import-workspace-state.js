@@ -69,6 +69,26 @@ export function importFileProgressLabel(status, format) {
     return format === 'abpre' ? 'Listo para confirmar' : 'Listo para revisar';
 }
 
+export function supportingPreviewActions({
+    status,
+    confirmed,
+    canManage,
+    canConfirm,
+}) {
+    const isClosed =
+        confirmed || ['confirmed', 'replaced', 'discarded'].includes(status);
+
+    return {
+        isClosed,
+        decisionsEnabled:
+            !isClosed &&
+            ['ready', 'needs_correction'].includes(status) &&
+            canManage &&
+            canConfirm,
+        showConfirmReasons: !isClosed,
+    };
+}
+
 function queryFromUrl(currentUrl) {
     return new URLSearchParams(currentUrl.split('?')[1] ?? '');
 }

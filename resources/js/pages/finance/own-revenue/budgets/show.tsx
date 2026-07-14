@@ -328,7 +328,7 @@ export default function OwnRevenueBudgetShow({
                                 className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
                             />
                             <ImportSummaryItem
-                                label="Parser pendiente"
+                                label="Revisión no disponible"
                                 value={importSummary.parser_pending}
                                 className="bg-muted/50"
                             />

@@ -535,6 +535,8 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('form.submit(store())')
         ->and($showPage)
         ->toContain('Importaciones XLSX')
+        ->toContain('Revisión no disponible')
+        ->not->toContain('Parser pendiente')
         ->toContain('@/routes/finance/own-revenue/budgets/imports')
         ->toContain('imports.show(budget.id)')
         ->and($workspace)
@@ -619,6 +621,9 @@ test('frontend import workspace honors navigation route money and permission con
         ->not->toContain("import { show } from '@/routes/finance/own-revenue/budgets/imports'")
         ->and($supportingPreview)
         ->toContain('OwnRevenueSupportingConfirmationController')
+        ->toContain('supportingPreviewActions')
+        ->toContain('previewState.decisionsEnabled')
+        ->toContain('previewState.showConfirmReasons')
         ->toContain('Confirmar archivo')
         ->toContain('actividad se asignará durante la conciliación')
         ->not->toContain('confirmación se habilitará cuando exista el módulo');

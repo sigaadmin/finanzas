@@ -66,11 +66,13 @@ El objetivo comprende cinco formatos y su estado actual es:
 | --- | --- | --- | --- |
 | ABPRE | implementado | implementada | implementada |
 | Hoja de trabajo | implementado | implementada | implementada con decisiones ABPRE |
-| Ficha técnica | pendiente | pendiente | depende de las entidades de necesidades de la Fase 2 |
-| Combustible | pendiente | pendiente | depende de recorridos y necesidades de combustible de la Fase 2 |
-| Viáticos | pendiente | pendiente | depende de comisiones, participantes y tarifas de la Fase 2 |
+| Ficha técnica | implementado | implementada | implementada con necesidades importadas |
+| Combustible | implementado | implementada | implementada con recorridos importados |
+| Viáticos | implementado | implementada | implementada con comisiones importadas |
 
-El siguiente incremento útil habilitará análisis, incidencias y vista previa para Ficha técnica, Combustible y Viáticos usando la infraestructura temporal existente. No se presentará como confirmación definitiva ni escribirá entidades presupuestarias que todavía no existen.
+Los cinco formatos ya cuentan con carga, análisis, incidencias, vista previa y confirmación. Los registros importados de Ficha técnica, Combustible y Viáticos conservarán su origen y recibirán la actividad correspondiente durante la conciliación con la Hoja de trabajo.
+
+El siguiente incremento funcional de la hoja de ruta será la exportación XLSX o la continuación de la planeación de la Fase 2. La exportación requiere autorización explícita antes de agregar una dependencia escritora de archivos XLSX.
 
 ## Criterio de reanudación
 

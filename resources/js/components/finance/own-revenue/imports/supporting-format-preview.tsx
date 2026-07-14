@@ -2,6 +2,7 @@ import { Link, useForm, usePage } from '@inertiajs/react';
 import { Check, LoaderCircle, X } from 'lucide-react';
 import OwnRevenueImportDecisionController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportDecisionController';
 import OwnRevenueSupportingConfirmationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueSupportingConfirmationController';
+import { supportingPreviewActions } from '@/components/finance/own-revenue/imports/import-workspace-state';
 import {
     formatCents,
     previewPageQuery,
@@ -198,6 +199,12 @@ export default function SupportingFormatPreview({
         analysis_revision: file.analysis_revision ?? '',
         file: '',
     });
+    const previewState = supportingPreviewActions({
+        status: file.status,
+        confirmed: file.confirmed,
+        canManage: permissions.manage,
+        canConfirm: permissions.confirm,
+    });
     const route = (page: number) =>
         showPreview(
             { budget: budget.id, importFile: file.id },
@@ -228,9 +235,10 @@ export default function SupportingFormatPreview({
                 <CardHeader>
                     <CardTitle>Información encontrada</CardTitle>
                     <CardDescription>
-                        {preview.total} renglones disponibles para revisión. Al
-                        confirmar se conservará este detalle; la actividad se
-                        asignará durante la conciliación con la Hoja de trabajo.
+                        {preview.total} renglones disponibles para revisión.{' '}
+                        {previewState.isClosed
+                            ? 'El detalle quedó conservado como evidencia de esta importación.'
+                            : 'Al confirmar se conservará este detalle; la actividad se asignará durante la conciliación con la Hoja de trabajo.'}
                     </CardDescription>
                 </CardHeader>
                 {canConfirm && (
@@ -263,13 +271,14 @@ export default function SupportingFormatPreview({
                     <CardHeader>
                         <CardTitle>Advertencias por revisar</CardTitle>
                         <CardDescription>
-                            Registra una decisión para cada advertencia antes de
-                            confirmar el archivo.
+                            {previewState.isClosed
+                                ? 'Las decisiones registradas se conservan como parte de la revisión.'
+                                : 'Registra una decisión para cada advertencia antes de confirmar el archivo.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-3">
                         {decisionWarnings.data.map((issue) =>
-                            permissions.manage && permissions.confirm ? (
+                            previewState.decisionsEnabled ? (
                                 <WarningDecision
                                     key={issue.id}
                                     budgetId={budget.id}
@@ -292,20 +301,22 @@ export default function SupportingFormatPreview({
                 </Card>
             )}
 
-            {!canConfirm && confirmReasons.length > 0 && (
-                <Card>
-                    <CardContent className="pt-6">
-                        <p className="text-sm font-medium">
-                            Antes de confirmar:
-                        </p>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                            {confirmReasons.map((reason) => (
-                                <li key={reason}>{reason}</li>
-                            ))}
-                        </ul>
-                    </CardContent>
-                </Card>
-            )}
+            {!canConfirm &&
+                previewState.showConfirmReasons &&
+                confirmReasons.length > 0 && (
+                    <Card>
+                        <CardContent className="pt-6">
+                            <p className="text-sm font-medium">
+                                Antes de confirmar:
+                            </p>
+                            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                                {confirmReasons.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                ))}
+                            </ul>
+                        </CardContent>
+                    </Card>
+                )}
 
             {preview.data.map((row) => (
                 <Card key={row.id}>

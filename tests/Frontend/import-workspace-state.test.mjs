@@ -15,6 +15,7 @@ import {
     resolveFailedUpload,
     selectImportFileQuery,
     startImportMutation,
+    supportingPreviewActions,
     takeNextUpload,
 } from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.js';
 
@@ -72,6 +73,38 @@ test('all five formats may be reanalyzed while mutable but not in terminal state
                 false,
             );
         }
+    }
+});
+
+test('supporting preview actions close after confirmation and only allow current reviews', () => {
+    assert.deepEqual(
+        supportingPreviewActions({
+            status: 'ready',
+            confirmed: false,
+            canManage: true,
+            canConfirm: true,
+        }),
+        {
+            isClosed: false,
+            decisionsEnabled: true,
+            showConfirmReasons: true,
+        },
+    );
+
+    for (const status of ['confirmed', 'replaced', 'discarded']) {
+        assert.deepEqual(
+            supportingPreviewActions({
+                status,
+                confirmed: status === 'confirmed',
+                canManage: true,
+                canConfirm: true,
+            }),
+            {
+                isClosed: true,
+                decisionsEnabled: false,
+                showConfirmReasons: false,
+            },
+        );
     }
 });
 
