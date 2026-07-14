@@ -19,6 +19,7 @@ class OwnRevenueAbprePreviewController extends Controller
     {
         Gate::authorize('viewImports', $budget);
         abort_unless($importFile->format === OwnRevenueImportFormat::Abpre, 404);
+        $importFile->loadCount($this->viewData->issueCounts());
 
         return Inertia::render('finance/own-revenue/imports/preview', [
             'budget' => $this->viewData->budget($budget),

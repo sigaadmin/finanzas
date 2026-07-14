@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Finance;
 
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
-use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportSessionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
@@ -82,11 +81,7 @@ class OwnRevenueImportController extends Controller
                 'confirmed_at',
             ])
             ->whereBelongsTo($budget, 'budget')
-            ->withCount([
-                'issues as error_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Error),
-                'issues as warning_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Warning),
-                'issues as info_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Info),
-            ]);
+            ->withCount($this->viewData->issueCounts());
     }
 
     /** @return array<string, mixed> */

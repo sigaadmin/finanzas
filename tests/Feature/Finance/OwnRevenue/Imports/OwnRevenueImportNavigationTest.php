@@ -189,6 +189,9 @@ test('dedicated ABPRE preview exposes safe paginated data with exact money strin
             ->where('selected_file.id', $file->id)
             ->where('selected_file.name', 'ABPRE seguro.xlsx')
             ->where('selected_file.version', 3)
+            ->where('selected_file.issue_counts.error', 0)
+            ->where('selected_file.issue_counts.warning', 26)
+            ->where('selected_file.issue_counts.info', 0)
             ->missing('selected_file.storage_disk')
             ->missing('selected_file.storage_path')
             ->missing('selected_file.sha256')
@@ -204,6 +207,27 @@ test('dedicated ABPRE preview exposes safe paginated data with exact money strin
             ->missing('decision_warnings.data.0.context.exception')
             ->where('permissions.manage', true)
             ->where('permissions.confirm', true)
+            ->where('permissions.download', true));
+});
+
+test('finance assistant may consult the dedicated ABPRE preview with readonly permissions', function () {
+    $assistant = importNavigationUser(UserRole::FinanceAssistant);
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+    ]);
+
+    $this->actingAs($assistant)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            'budget' => $budget,
+            'importFile' => $file,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('permissions.upload', false)
+            ->where('permissions.manage', false)
+            ->where('permissions.confirm', false)
             ->where('permissions.download', true));
 });
 

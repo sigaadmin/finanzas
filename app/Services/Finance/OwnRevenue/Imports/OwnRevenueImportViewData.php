@@ -8,6 +8,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -87,6 +88,16 @@ class OwnRevenueImportViewData
                 'warning' => (int) ($file->warning_issues_count ?? 0),
                 'info' => (int) ($file->info_issues_count ?? 0),
             ],
+        ];
+    }
+
+    /** @return array<string, Closure> */
+    public function issueCounts(): array
+    {
+        return [
+            'issues as error_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Error),
+            'issues as warning_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Warning),
+            'issues as info_issues_count' => fn ($query) => $query->where('severity', OwnRevenueImportIssueSeverity::Info),
         ];
     }
 
