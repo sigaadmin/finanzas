@@ -30,8 +30,12 @@ class OwnRevenueWorkSheetLineFactory extends Factory
             'own_revenue_budget_id' => fn (array $attributes): int => OwnRevenueImportFile::query()
                 ->findOrFail($attributes['own_revenue_import_file_id'])
                 ->own_revenue_budget_id,
+            'activity_code' => 'A03-A01',
+            'activity_name' => 'Servicios escolares',
             'own_revenue_activity_id' => fn (array $attributes): int => OwnRevenueActivity::factory()->create([
                 'own_revenue_budget_id' => $attributes['own_revenue_budget_id'],
+                'code' => $attributes['activity_code'],
+                'name' => $attributes['activity_name'],
             ])->id,
             'expense_classification_id' => fn (array $attributes): int => ExpenseClassification::factory()->create([
                 'fiscal_year' => OwnRevenueImportFile::query()
@@ -49,8 +53,6 @@ class OwnRevenueWorkSheetLineFactory extends Factory
                 'expense_type_code' => '1',
                 'expense_type_name' => 'Gasto corriente',
             ])->id,
-            'activity_code' => 'A03-A01',
-            'activity_name' => 'Servicios escolares',
             'item_name' => 'Materiales y útiles de oficina',
             'specific_item_code' => '21101',
             'region_code' => '02-001',

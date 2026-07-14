@@ -106,6 +106,8 @@ test('work sheet schema stores confirmed activity item calendarization with trac
         ->and($line->file->format)->toBe(OwnRevenueImportFormat::WorkSheet)
         ->and($line->own_revenue_budget_id)->toBe($line->activity->own_revenue_budget_id)
         ->and($line->activity)->toBeInstanceOf(OwnRevenueActivity::class)
+        ->and($line->activity_code)->toBe($line->activity->code)
+        ->and($line->activity_name)->toBe($line->activity->name)
         ->and($line->budget->fiscal_year)->toBe($line->expenseClassification->fiscal_year)
         ->and($line->expenseClassification->specific_item_code)->toBe('21101')
         ->and($line->activity_code)->toBe('A03-A01')
