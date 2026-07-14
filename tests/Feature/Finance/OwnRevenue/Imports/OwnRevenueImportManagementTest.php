@@ -23,10 +23,10 @@ beforeEach(function () {
     $this->withoutVite();
 });
 
-test('analysis endpoint flashes a truthful result for failed work sheets and successful ABPRE files', function (
+test('analysis endpoint flashes a consumable toast for failed and successful analyses', function (
     OwnRevenueImportFormat $format,
     OwnRevenueImportFileStatus $status,
-    string $flashKey,
+    string $toastType,
     string $message,
 ) {
     $manager = importManagementUser();
@@ -43,8 +43,12 @@ test('analysis endpoint flashes a truthful result for failed work sheets and suc
     $this->actingAs($manager)
         ->post(route('finance.own-revenue.budgets.imports.files.analyze', [$budget, $file]))
         ->assertRedirect(route('finance.own-revenue.budgets.imports.show', $budget))
-        ->assertSessionHas("inertia.flash_data.{$flashKey}", $message)
-        ->assertSessionMissing('inertia.flash_data.'.($flashKey === 'error' ? 'success' : 'error'));
+        ->assertSessionHas('inertia.flash_data.toast', [
+            'type' => $toastType,
+            'message' => $message,
+        ])
+        ->assertSessionMissing('inertia.flash_data.success')
+        ->assertSessionMissing('inertia.flash_data.error');
 })->with([
     'failed work sheet' => [
         OwnRevenueImportFormat::WorkSheet,
@@ -54,6 +58,12 @@ test('analysis endpoint flashes a truthful result for failed work sheets and suc
     ],
     'successful ABPRE' => [
         OwnRevenueImportFormat::Abpre,
+        OwnRevenueImportFileStatus::Ready,
+        'success',
+        'Archivo analizado correctamente.',
+    ],
+    'successful work sheet' => [
+        OwnRevenueImportFormat::WorkSheet,
         OwnRevenueImportFileStatus::Ready,
         'success',
         'Archivo analizado correctamente.',

@@ -21,9 +21,15 @@ class OwnRevenueImportAnalysisController extends Controller
         $result = $analyzeFile->handle($importFile, request()->user());
 
         if ($result->status === OwnRevenueImportFileStatus::Failed) {
-            Inertia::flash('error', 'No fue posible analizar el archivo. Revisa las incidencias e inténtalo nuevamente.');
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => 'No fue posible analizar el archivo. Revisa las incidencias e inténtalo nuevamente.',
+            ]);
         } else {
-            Inertia::flash('success', 'Archivo analizado correctamente.');
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => 'Archivo analizado correctamente.',
+            ]);
         }
 
         return to_route('finance.own-revenue.budgets.imports.show', $budget);
