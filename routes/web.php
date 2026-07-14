@@ -13,6 +13,7 @@ use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
+use App\Http\Controllers\Finance\OwnRevenueSupportingConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueWorkSheetConfirmationController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
 use App\Http\Controllers\Finance\PaymentRegistrationController;
@@ -139,6 +140,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/work-sheet/confirm', OwnRevenueWorkSheetConfirmationController::class)
             ->scopeBindings()
             ->name('own-revenue.budgets.imports.files.work-sheet.confirm');
+
+        Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/supporting/confirm', OwnRevenueSupportingConfirmationController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.supporting.confirm');
 
         Route::get('own-revenue/budgets/{budget}/imports/files/{importFile}/download', [OwnRevenueImportFileController::class, 'download'])
             ->scopeBindings()

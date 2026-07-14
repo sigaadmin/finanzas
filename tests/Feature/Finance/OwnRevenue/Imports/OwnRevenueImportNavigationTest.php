@@ -596,6 +596,7 @@ test('frontend import workspace honors navigation route money and permission con
     expect($supportingPreviewPath)->toBeFile();
 
     $previewPage = file_get_contents($previewPagePath);
+    $supportingPreview = file_get_contents($supportingPreviewPath);
 
     expect($previewPage)
         ->toContain('Vista previa ABPRE')
@@ -611,7 +612,12 @@ test('frontend import workspace honors navigation route money and permission con
         ->not->toContain('rel="noopener"')
         ->and($preview)
         ->toContain('@/routes/finance/own-revenue/budgets/imports/files')
-        ->not->toContain("import { show } from '@/routes/finance/own-revenue/budgets/imports'");
+        ->not->toContain("import { show } from '@/routes/finance/own-revenue/budgets/imports'")
+        ->and($supportingPreview)
+        ->toContain('OwnRevenueSupportingConfirmationController')
+        ->toContain('Confirmar archivo')
+        ->toContain('actividad se asignará durante la conciliación')
+        ->not->toContain('confirmación se habilitará cuando exista el módulo');
 
     expect($controller.$viewData)
         ->toContain('year.mismatch')

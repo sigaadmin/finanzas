@@ -1,8 +1,11 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, useForm, usePage } from '@inertiajs/react';
+import { Check, LoaderCircle } from 'lucide-react';
+import OwnRevenueSupportingConfirmationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueSupportingConfirmationController';
 import {
     formatCents,
     previewPageQuery,
 } from '@/components/finance/own-revenue/imports/work-sheet-preview-state';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -100,14 +103,42 @@ export default function SupportingFormatPreview({
     budget,
     selected_file: file,
     preview,
+    permissions,
 }: OwnRevenueSupportingPreviewProps) {
     const currentUrl = usePage().url;
     const format = file.format as SupportingFormat;
+    const confirmationForm = useForm({
+        analysis_revision: file.analysis_revision ?? '',
+        file: '',
+    });
+    const canConfirm =
+        permissions.manage &&
+        permissions.confirm &&
+        file.status === 'ready' &&
+        Boolean(file.analysis_revision);
     const route = (page: number) =>
         showPreview(
             { budget: budget.id, importFile: file.id },
             { query: previewPageQuery(currentUrl, 'preview_page', page) },
         );
+    const confirmFile = (): void => {
+        if (
+            !canConfirm ||
+            !window.confirm(
+                'Confirmar este archivo guardará su detalle y reemplazará la versión confirmada anterior. La actividad se asignará durante la conciliación. ¿Deseas continuar?',
+            )
+        ) {
+            return;
+        }
+
+        confirmationForm.submit(
+            OwnRevenueSupportingConfirmationController({
+                budget: budget.id,
+                importFile: file.id,
+            }),
+            { preserveScroll: true },
+        );
+    };
 
     return (
         <div className="grid gap-4">
@@ -115,11 +146,34 @@ export default function SupportingFormatPreview({
                 <CardHeader>
                     <CardTitle>Información encontrada</CardTitle>
                     <CardDescription>
-                        {preview.total} renglones disponibles para revisión. La
-                        confirmación se habilitará cuando exista el módulo de
-                        planeación correspondiente.
+                        {preview.total} renglones disponibles para revisión. Al
+                        confirmar se conservará este detalle; la actividad se
+                        asignará durante la conciliación con la Hoja de trabajo.
                     </CardDescription>
                 </CardHeader>
+                {canConfirm && (
+                    <CardContent className="grid gap-2">
+                        <Button
+                            type="button"
+                            className="w-fit"
+                            onClick={confirmFile}
+                            disabled={confirmationForm.processing}
+                        >
+                            {confirmationForm.processing ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                            ) : (
+                                <Check className="size-4" />
+                            )}
+                            Confirmar archivo
+                        </Button>
+                        <InputError
+                            message={
+                                confirmationForm.errors.file ??
+                                confirmationForm.errors.analysis_revision
+                            }
+                        />
+                    </CardContent>
+                )}
             </Card>
 
             {preview.data.map((row) => (

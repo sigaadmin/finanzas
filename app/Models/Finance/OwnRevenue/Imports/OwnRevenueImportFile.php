@@ -98,4 +98,22 @@ class OwnRevenueImportFile extends Model
     {
         return $this->hasMany(OwnRevenueWorkSheetLine::class);
     }
+
+    /** @return HasMany<OwnRevenueTechnicalSheetNeed, $this> */
+    public function technicalSheetNeeds(): HasMany
+    {
+        return $this->hasMany(OwnRevenueTechnicalSheetNeed::class);
+    }
+
+    /** @return HasMany<OwnRevenueFuelPlan, $this> */
+    public function fuelPlans(): HasMany
+    {
+        return $this->hasMany(OwnRevenueFuelPlan::class);
+    }
+
+    /** @return HasMany<OwnRevenueTravelCommission, $this> */
+    public function travelCommissions(): HasMany
+    {
+        return $this->hasMany(OwnRevenueTravelCommission::class);
+    }
 }

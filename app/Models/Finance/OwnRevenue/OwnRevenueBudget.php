@@ -6,8 +6,11 @@ use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeed;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTravelCommission;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\User;
 use Database\Factories\Finance\OwnRevenue\OwnRevenueBudgetFactory;
@@ -133,5 +136,23 @@ class OwnRevenueBudget extends Model
     public function workSheetLines(): HasMany
     {
         return $this->hasMany(OwnRevenueWorkSheetLine::class);
+    }
+
+    /** @return HasMany<OwnRevenueTechnicalSheetNeed, $this> */
+    public function technicalSheetNeeds(): HasMany
+    {
+        return $this->hasMany(OwnRevenueTechnicalSheetNeed::class);
+    }
+
+    /** @return HasMany<OwnRevenueFuelPlan, $this> */
+    public function fuelPlans(): HasMany
+    {
+        return $this->hasMany(OwnRevenueFuelPlan::class);
+    }
+
+    /** @return HasMany<OwnRevenueTravelCommission, $this> */
+    public function travelCommissions(): HasMany
+    {
+        return $this->hasMany(OwnRevenueTravelCommission::class);
     }
 }
