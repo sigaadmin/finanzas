@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'objective',
     'work_description',
     'technical_specs',
+    'goods_profile',
     'beneficiaries',
     'scheduled_date',
     'deliverables',
@@ -25,6 +26,16 @@ class U300TechnicalSheet extends Model
 {
     /** @use HasFactory<U300TechnicalSheetFactory> */
     use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'goods_profile' => 'array',
+        ];
+    }
 
     /**
      * @return BelongsTo<U300BudgetLine, $this>
