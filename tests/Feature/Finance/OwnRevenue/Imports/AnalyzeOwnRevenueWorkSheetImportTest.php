@@ -101,7 +101,7 @@ test('work sheet analysis persists source and normalized staging with warnings w
     $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
     $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
     $classification = workSheetAnalysisCog($fiscalYear);
-    confirmedAbpreForWorkSheetAnalysis($budget, $classification, 1001);
+    $abpre = confirmedAbpreForWorkSheetAnalysis($budget, $classification, 1001);
     $file = storedWorkSheetForAnalysis($budget, $manager, [
         5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '04-001', 'E' => 'CHETUMAL', 'F' => '10.01', ...workSheetMonths('10.01'), 'S' => '10.01'],
     ]);
@@ -111,6 +111,7 @@ test('work sheet analysis persists source and normalized staging with warnings w
     expect($result->status)->toBe(OwnRevenueImportFileStatus::Ready)
         ->and($result->analysis_token)->toBeNull()
         ->and($result->analyzed_at)->not->toBeNull()
+        ->and($result->abpre_import_file_id_at_analysis)->toBe($abpre->id)
         ->and($result->rows()->where('row_kind', 'work_sheet_line')->count())->toBe(1)
         ->and($result->rows()->where('row_kind', 'work_sheet_normalized_line')->count())->toBe(1)
         ->and($result->issues()->where('code', 'region.normalized')->sole()->severity)->toBe(OwnRevenueImportIssueSeverity::Warning)

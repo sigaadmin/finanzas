@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'own_revenue_import_session_id', 'own_revenue_budget_id', 'uploaded_by', 'format', 'detected_format',
     'detected_year', 'original_name', 'storage_disk', 'storage_path', 'size_bytes', 'sha256', 'version_number',
-    'status', 'analysis_token', 'analysis_revision', 'detection_confidence', 'detection_evidence', 'budget_updated_at_at_analysis', 'analyzed_at',
+    'status', 'analysis_token', 'analysis_revision', 'abpre_import_file_id_at_analysis', 'detection_confidence', 'detection_evidence', 'budget_updated_at_at_analysis', 'analyzed_at',
     'confirmed_by', 'confirmed_at', 'replaced_by_file_id',
 ])]
 class OwnRevenueImportFile extends Model
@@ -67,6 +67,12 @@ class OwnRevenueImportFile extends Model
     public function replacedByFile(): BelongsTo
     {
         return $this->belongsTo(self::class, 'replaced_by_file_id');
+    }
+
+    /** @return BelongsTo<OwnRevenueImportFile, $this> */
+    public function abpreAtAnalysis(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'abpre_import_file_id_at_analysis');
     }
 
     /** @return HasMany<OwnRevenueImportRow, $this> */

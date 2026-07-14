@@ -2,7 +2,9 @@ import { Link, useForm, usePage } from '@inertiajs/react';
 import { AlertCircle, Check, CircleAlert, LoaderCircle, X } from 'lucide-react';
 import OwnRevenueImportDecisionController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportDecisionController';
 import {
+    canManageWorkSheetDecision,
     formatCents,
+    previewPageQuery,
     previewStateMessage,
     workSheetDecisionFeedback,
 } from '@/components/finance/own-revenue/imports/work-sheet-preview-state';
@@ -33,6 +35,7 @@ type Props = {
     blockingIssues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
     reviewIssues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
     viewState: OwnRevenueWorkSheetPreviewProps['view_state'];
+    decisionsEnabled: boolean;
     permissions: OwnRevenueImportPermissions;
 };
 
@@ -50,17 +53,6 @@ const months = [
     ['11', 'Noviembre'],
     ['12', 'Diciembre'],
 ] as const;
-
-function queryFor(
-    currentUrl: string,
-    name: 'preview_page' | 'blocking_page' | 'review_page',
-    page: number,
-): Record<string, string> {
-    const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
-    query.set(name, String(page));
-
-    return Object.fromEntries(query.entries());
-}
 
 function Pagination({
     paginator,
@@ -84,7 +76,7 @@ function Pagination({
     const route = (page: number) =>
         showPreview(
             { budget: budgetId, importFile: fileId },
-            { query: queryFor(currentUrl, pageName, page) },
+            { query: previewPageQuery(currentUrl, pageName, page) },
         );
 
     return (
@@ -182,6 +174,7 @@ function DecisionControls({
                     size="sm"
                     onClick={() => submit('accepted')}
                     disabled={form.processing}
+                    aria-label={`Aceptar diferencia de la partida ${issue.item_code ?? ''}`}
                 >
                     {form.processing ? (
                         <LoaderCircle className="size-4 animate-spin" />
@@ -196,6 +189,7 @@ function DecisionControls({
                     variant="outline"
                     onClick={() => submit('rejected')}
                     disabled={form.processing}
+                    aria-label={`No aceptar diferencia de la partida ${issue.item_code ?? ''}`}
                 >
                     <X className="size-4" />
                     No aceptar
@@ -217,6 +211,7 @@ export default function WorkSheetPreview({
     blockingIssues,
     reviewIssues,
     viewState,
+    decisionsEnabled,
     permissions,
 }: Props) {
     const stateMessage = previewStateMessage(viewState);
@@ -300,9 +295,8 @@ export default function WorkSheetPreview({
                             Avisos por revisar
                         </CardTitle>
                         <CardDescription>
-                            El ABPRE conserva el importe oficial. Decide si la
-                            calendarización de la Hoja de trabajo puede
-                            conservarse.
+                            Revisa estas observaciones antes de continuar. El
+                            ABPRE conserva el importe oficial.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-3">
@@ -375,8 +369,18 @@ export default function WorkSheetPreview({
                                             </div>
                                         </dl>
                                     )}
-                                {permissions.manage &&
-                                    issue.requires_decision &&
+                                {issue.requires_decision && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Esta diferencia requiere indicar si
+                                        puede conservarse la calendarización de
+                                        la Hoja de trabajo.
+                                    </p>
+                                )}
+                                {canManageWorkSheetDecision({
+                                    canManage: permissions.manage,
+                                    decisionsEnabled,
+                                    requiresDecision: issue.requires_decision,
+                                }) &&
                                     file.analysis_revision && (
                                         <DecisionControls
                                             budgetId={budgetId}
@@ -403,8 +407,10 @@ export default function WorkSheetPreview({
                         Calendarización por actividad y partida
                     </CardTitle>
                     <CardDescription>
-                        Los importes ABPRE y sus diferencias se comparan por
-                        partida.
+                        “Anual” corresponde a la actividad de este renglón. El
+                        importe ABPRE y la diferencia son totales de toda la
+                        partida y pueden repetirse cuando una partida aparece en
+                        varias actividades.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
@@ -416,6 +422,11 @@ export default function WorkSheetPreview({
                     ) : (
                         <div className="max-h-[65vh] overflow-auto rounded-lg border">
                             <table className="w-full min-w-[150rem] text-xs">
+                                <caption className="sr-only">
+                                    Calendarización mensual por actividad e
+                                    insumo, con comparación total por partida
+                                    contra el ABPRE.
+                                </caption>
                                 <thead className="sticky top-0 z-10 bg-muted text-left text-muted-foreground shadow-sm">
                                     <tr>
                                         <th scope="col" className="px-3 py-2">
@@ -449,13 +460,13 @@ export default function WorkSheetPreview({
                                             scope="col"
                                             className="px-3 py-2 text-right"
                                         >
-                                            Importe ABPRE
+                                            Total ABPRE de la partida
                                         </th>
                                         <th
                                             scope="col"
                                             className="px-3 py-2 text-right"
                                         >
-                                            Diferencia de partida
+                                            Diferencia total de la partida
                                         </th>
                                     </tr>
                                 </thead>

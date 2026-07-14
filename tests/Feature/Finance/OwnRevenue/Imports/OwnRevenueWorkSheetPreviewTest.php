@@ -13,6 +13,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -71,12 +72,14 @@ function workSheetPreviewScenario(): array
         'detected_format' => OwnRevenueImportFormat::WorkSheet,
         'status' => OwnRevenueImportFileStatus::Ready,
         'analysis_revision' => (string) Str::uuid(),
+        'abpre_import_file_id_at_analysis' => $abpre->id,
         'analyzed_at' => now(),
         'original_name' => 'Hoja de trabajo julio.xlsx',
     ]);
     OwnRevenueImportRow::factory()->create([
         'own_revenue_import_file_id' => $file->id,
         'sheet_name' => '__normalized_work_sheet__',
+        'row_number' => 1,
         'row_kind' => 'work_sheet_normalized_line',
         'normalized_payload' => [
             'activityCode' => 'A03-A01',
@@ -148,6 +151,7 @@ test('work sheet preview exposes operational exact and reconciled props', functi
             ->where('selected_file.format', 'work_sheet')
             ->where('selected_file.analysis_revision', $file->analysis_revision)
             ->where('view_state', 'ready')
+            ->where('decisions_enabled', true)
             ->has('preview.data', 1)
             ->where('preview.data.0.activityCode', 'A03-A01')
             ->where('preview.data.0.itemName', 'Papelería para oficina')
@@ -190,6 +194,7 @@ test('consultation roles see work sheet preview without mutation permission', fu
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('permissions.manage', false)
+            ->where('decisions_enabled', false)
             ->where('permissions.confirm', false)
             ->where('permissions.download', true)
             ->has('review_issues.data', 1)
@@ -223,6 +228,126 @@ test('work sheet preview describes files that have not been analyzed or whose an
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('view_state', 'failed')
             ->has('preview.data', 0));
+});
+
+test('an active first analysis is described as in progress', function () {
+    $manager = workSheetPreviewUser(UserRole::FinanceManager);
+    $budget = OwnRevenueBudget::factory()->create();
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::WorkSheet,
+        'status' => OwnRevenueImportFileStatus::Analyzing,
+        'analysis_token' => (string) Str::uuid(),
+        'analyzed_at' => null,
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file]))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('view_state', 'analyzing')
+            ->where('decisions_enabled', false));
+});
+
+test('preview keeps the analyzed ABPRE snapshot and invalidates stale decisions after replacement', function () {
+    $manager = workSheetPreviewUser(UserRole::FinanceManager);
+    [$budget, $file, $snapshotAbpre] = workSheetPreviewScenario();
+    $snapshotAbpre->update(['status' => OwnRevenueImportFileStatus::Replaced]);
+    $currentAbpre = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Confirmed,
+        'confirmed_at' => now(),
+        'version_number' => 2,
+    ]);
+    $classification = ExpenseClassification::query()->where('fiscal_year', $budget->fiscal_year)->firstOrFail();
+    OwnRevenueAbpreLine::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'own_revenue_import_file_id' => $currentAbpre->id,
+        'expense_classification_id' => $classification->id,
+        'specific_item_code' => '21101',
+        'annual_amount_cents' => '1',
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file]))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('view_state', 'abpre_changed')
+            ->where('decisions_enabled', false)
+            ->where('preview.data.0.abpreAmountCents', '9007199254740993')
+            ->where('preview.data.0.differenceCents', '2')
+            ->where('review_issues.data.0.decision', null));
+});
+
+test('multiple activities in one item show the same ABPRE item totals', function () {
+    $manager = workSheetPreviewUser(UserRole::FinanceManager);
+    [$budget, $file] = workSheetPreviewScenario();
+    OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'sheet_name' => '__normalized_work_sheet__',
+        'row_number' => 2,
+        'row_kind' => 'work_sheet_normalized_line',
+        'normalized_payload' => [
+            'activityCode' => 'A03-A02',
+            'activityName' => 'Segunda actividad',
+            'itemName' => 'Papelería',
+            'specificItemCode' => '21101',
+            'sourceRegions' => [],
+            'months' => ['1' => '1'],
+            'annualAmountCents' => '1',
+        ],
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [$budget, $file]))
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->has('preview.data', 2)
+            ->where('preview.data.0.abpreAmountCents', '9007199254740993')
+            ->where('preview.data.1.abpreAmountCents', '9007199254740993')
+            ->where('preview.data.0.differenceCents', '2')
+            ->where('preview.data.1.differenceCents', '2'));
+});
+
+test('preview paginates before resolving only the visible item codes', function () {
+    $manager = workSheetPreviewUser(UserRole::FinanceManager);
+    [$budget, $file] = workSheetPreviewScenario();
+
+    foreach (range(2, 51) as $rowNumber) {
+        OwnRevenueImportRow::factory()->create([
+            'own_revenue_import_file_id' => $file->id,
+            'sheet_name' => '__normalized_work_sheet__',
+            'row_number' => $rowNumber,
+            'row_kind' => 'work_sheet_normalized_line',
+            'normalized_payload' => [
+                'activityCode' => 'A03-'.str_pad((string) $rowNumber, 2, '0', STR_PAD_LEFT),
+                'activityName' => 'Actividad '.$rowNumber,
+                'itemName' => 'Insumo '.$rowNumber,
+                'specificItemCode' => (string) (22000 + $rowNumber),
+                'sourceRegions' => [],
+                'months' => ['1' => '1'],
+                'annualAmountCents' => '1',
+            ],
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $response = $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.imports.files.preview', [
+            $budget,
+            $file,
+            'preview_page' => 2,
+        ]));
+    $normalizedPayloadQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn (string $query): bool => str_contains($query, 'normalized_payload'));
+
+    $response->assertInertia(fn (Assert $page): Assert => $page
+        ->where('preview.current_page', 2)
+        ->has('preview.data', 25));
+    expect($normalizedPayloadQueries)->not->toBeEmpty()
+        ->and($normalizedPayloadQueries->every(
+            fn (string $query): bool => str_contains(strtolower($query), 'limit'),
+        ))->toBeTrue();
 });
 
 test('work sheet preview enforces authorization budget boundaries and supported formats', function () {

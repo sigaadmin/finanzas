@@ -24,12 +24,18 @@ class OwnRevenueAbprePreviewController extends Controller
         ], true), 404);
         $importFile->loadCount($this->viewData->issueCounts());
 
+        $workSheetState = $importFile->format === OwnRevenueImportFormat::WorkSheet
+            ? $this->viewData->workSheetViewState($importFile)
+            : null;
         $previewData = $importFile->format === OwnRevenueImportFormat::WorkSheet
             ? [
                 'preview' => $this->viewData->workSheetPreview($importFile),
                 'blocking_issues' => $this->viewData->workSheetIssues($importFile, true),
                 'review_issues' => $this->viewData->workSheetIssues($importFile, false),
-                'view_state' => $this->viewData->workSheetViewState($importFile),
+                'view_state' => $workSheetState,
+                'decisions_enabled' => $workSheetState === 'ready'
+                    && Gate::allows('manageImports', $budget)
+                    && $this->viewData->workSheetDecisionsAreCurrent($importFile),
             ]
             : [
                 'preview' => $this->viewData->preview($importFile),

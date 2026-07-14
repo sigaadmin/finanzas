@@ -17,9 +17,26 @@ export function previewStateMessage(state) {
             'La revisión está en proceso. Actualiza la página en unos momentos.',
         failed: 'No fue posible preparar la vista previa. Vuelve a analizar el archivo desde Importaciones.',
         empty: 'El análisis no encontró renglones que puedan mostrarse.',
+        abpre_changed:
+            'El ABPRE cambió; vuelve a analizar la Hoja de trabajo antes de tomar decisiones.',
     };
 
     return messages[state] ?? '';
+}
+
+export function canManageWorkSheetDecision({
+    canManage,
+    decisionsEnabled,
+    requiresDecision,
+}) {
+    return canManage && decisionsEnabled && requiresDecision;
+}
+
+export function previewPageQuery(currentUrl, pageName, page) {
+    const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
+    query.set(pageName, String(page));
+
+    return Object.fromEntries(query.entries());
 }
 
 export function workSheetDecisionFeedback(errors) {

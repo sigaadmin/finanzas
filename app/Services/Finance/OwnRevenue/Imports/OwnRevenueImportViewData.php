@@ -18,6 +18,9 @@ use Illuminate\Support\Arr;
 
 class OwnRevenueImportViewData
 {
+    /** @var array<int, bool> */
+    private array $workSheetAbpreCurrent = [];
+
     private const DECISIONS_PER_PAGE = 25;
 
     private const ISSUES_PER_PAGE = 50;
@@ -180,16 +183,23 @@ class OwnRevenueImportViewData
     /** @return array<string, mixed> */
     public function workSheetPreview(OwnRevenueImportFile $file): array
     {
-        $reconciliation = $this->workSheetReconciliation($file);
-
-        return $this->paginateClamped(
+        $preview = $this->paginateClamped(
             $file->rows()
                 ->where('row_kind', 'work_sheet_normalized_line')
                 ->orderBy('row_number'),
             self::PREVIEW_PER_PAGE,
             'preview_page',
             ['id', 'row_number', 'normalized_payload'],
-        )
+        );
+        $itemCodes = $preview->getCollection()
+            ->map(fn (OwnRevenueImportRow $row): string => (string) ($row->normalized_payload['specificItemCode'] ?? ''))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $reconciliation = $this->workSheetReconciliation($file, $itemCodes);
+
+        return $preview
             ->through(function (OwnRevenueImportRow $row) use ($reconciliation): array {
                 $payload = $this->exactMonetaryStrings($row->normalized_payload ?? []);
                 $specificItemCode = (string) ($payload['specificItemCode'] ?? '');
@@ -220,6 +230,7 @@ class OwnRevenueImportViewData
             ? OwnRevenueImportIssueSeverity::Error
             : OwnRevenueImportIssueSeverity::Warning;
         $pageName = $blocking ? 'blocking_page' : 'review_page';
+        $abpreIsCurrent = $this->workSheetAbpreIsCurrent($file);
 
         return $this->paginateClamped(
             $file->issues()
@@ -236,9 +247,11 @@ class OwnRevenueImportViewData
             self::ISSUES_PER_PAGE,
             $pageName,
         )
-            ->through(function (OwnRevenueImportIssue $issue): array {
+            ->through(function (OwnRevenueImportIssue $issue) use ($abpreIsCurrent): array {
                 $context = $this->exactMonetaryStrings($issue->context ?? []);
-                $decision = $issue->decisions->first();
+                $decision = $abpreIsCurrent
+                    ? $issue->decisions->first()
+                    : null;
 
                 return [
                     'id' => $issue->id,
@@ -260,21 +273,31 @@ class OwnRevenueImportViewData
 
     public function workSheetViewState(OwnRevenueImportFile $file): string
     {
-        if ($file->analyzed_at === null && $file->status !== OwnRevenueImportFileStatus::Failed) {
-            return 'not_analyzed';
+        if ($file->status === OwnRevenueImportFileStatus::Analyzing) {
+            return 'analyzing';
         }
 
         if ($file->status === OwnRevenueImportFileStatus::Failed) {
             return 'failed';
         }
 
-        if ($file->status === OwnRevenueImportFileStatus::Analyzing) {
-            return 'analyzing';
+        if ($file->analyzed_at === null) {
+            return 'not_analyzed';
+        }
+
+        if ($file->abpre_import_file_id_at_analysis !== null
+            && ! $this->workSheetAbpreIsCurrent($file)) {
+            return 'abpre_changed';
         }
 
         return $file->rows()->where('row_kind', 'work_sheet_normalized_line')->exists()
             ? 'ready'
             : 'empty';
+    }
+
+    public function workSheetDecisionsAreCurrent(OwnRevenueImportFile $file): bool
+    {
+        return $this->workSheetAbpreIsCurrent($file);
     }
 
     /** @return array<string, mixed> */
@@ -329,33 +352,21 @@ class OwnRevenueImportViewData
         return (new LengthAwarePaginator([], 0, $perPage, 1))->toArray();
     }
 
-    /** @return array<string, array{abpre:string,difference:string}> */
-    private function workSheetReconciliation(OwnRevenueImportFile $file): array
+    /**
+     * @param  list<string>  $itemCodes
+     * @return array<string, array{abpre:string,difference:string}>
+     */
+    private function workSheetReconciliation(OwnRevenueImportFile $file, array $itemCodes): array
     {
-        $workSheetTotals = [];
-        foreach ($file->rows()
-            ->where('row_kind', 'work_sheet_normalized_line')
-            ->pluck('normalized_payload') as $payload) {
-            $specificItemCode = (string) ($payload['specificItemCode'] ?? '');
-            if ($specificItemCode === '') {
-                continue;
-            }
-
-            $workSheetTotals[$specificItemCode] = $this->addUnsignedIntegers(
-                $workSheetTotals[$specificItemCode] ?? '0',
-                (string) ($payload['annualAmountCents'] ?? '0'),
-            );
+        if ($itemCodes === []) {
+            return [];
         }
 
-        $abpre = OwnRevenueImportFile::query()
-            ->where('own_revenue_budget_id', $file->own_revenue_budget_id)
-            ->where('format', OwnRevenueImportFormat::Abpre)
-            ->where('status', OwnRevenueImportFileStatus::Confirmed)
-            ->latest('confirmed_at')
-            ->latest('id')
-            ->first();
         $abpreTotals = [];
-        foreach ($abpre?->abpreLines()->get(['specific_item_code', 'annual_amount_cents']) ?? [] as $line) {
+        $abpre = $file->abpreAtAnalysis;
+        foreach ($abpre?->abpreLines()
+            ->whereIn('specific_item_code', $itemCodes)
+            ->get(['specific_item_code', 'annual_amount_cents']) ?? [] as $line) {
             $code = $line->specific_item_code;
             $abpreTotals[$code] = $this->addUnsignedIntegers(
                 $abpreTotals[$code] ?? '0',
@@ -363,13 +374,19 @@ class OwnRevenueImportViewData
             );
         }
 
+        $mismatches = $file->issues()
+            ->where('code', 'work_sheet.abpre_mismatch')
+            ->whereIn('field', $itemCodes)
+            ->get(['field', 'context'])
+            ->filter(fn (OwnRevenueImportIssue $issue): bool => ($issue->context['abpre_import_file_id'] ?? null)
+                === $file->abpre_import_file_id_at_analysis)
+            ->keyBy('field');
         $reconciliation = [];
-        foreach (array_unique([...array_keys($workSheetTotals), ...array_keys($abpreTotals)]) as $code) {
-            $workSheetAmount = $workSheetTotals[$code] ?? '0';
-            $abpreAmount = $abpreTotals[$code] ?? '0';
+        foreach ($itemCodes as $code) {
+            $context = $mismatches->get($code)?->context ?? [];
             $reconciliation[$code] = [
-                'abpre' => $abpreAmount,
-                'difference' => $this->subtractUnsignedIntegers($workSheetAmount, $abpreAmount),
+                'abpre' => (string) ($context['abpre_total_cents'] ?? $abpreTotals[$code] ?? '0'),
+                'difference' => (string) ($context['difference_cents'] ?? '0'),
             ];
         }
 
@@ -396,41 +413,23 @@ class OwnRevenueImportViewData
         return $this->normalizeUnsignedInteger(strrev($result));
     }
 
-    private function subtractUnsignedIntegers(string $left, string $right): string
+    private function workSheetAbpreIsCurrent(OwnRevenueImportFile $file): bool
     {
-        $comparison = $this->compareUnsignedIntegers($left, $right);
-        if ($comparison === 0) {
-            return '0';
+        if (array_key_exists($file->id, $this->workSheetAbpreCurrent)) {
+            return $this->workSheetAbpreCurrent[$file->id];
         }
 
-        $negative = $comparison < 0;
-        $larger = strrev($this->normalizeUnsignedInteger($negative ? $right : $left));
-        $smaller = strrev($this->normalizeUnsignedInteger($negative ? $left : $right));
-        $borrow = 0;
-        $result = '';
-
-        for ($index = 0, $length = strlen($larger); $index < $length; $index++) {
-            $digit = (int) $larger[$index] - $borrow - (int) ($smaller[$index] ?? 0);
-            if ($digit < 0) {
-                $digit += 10;
-                $borrow = 1;
-            } else {
-                $borrow = 0;
-            }
-            $result .= (string) $digit;
+        if ($file->abpre_import_file_id_at_analysis === null) {
+            return $this->workSheetAbpreCurrent[$file->id] = false;
         }
 
-        $result = $this->normalizeUnsignedInteger(strrev($result));
-
-        return $negative ? '-'.$result : $result;
-    }
-
-    private function compareUnsignedIntegers(string $left, string $right): int
-    {
-        $left = $this->normalizeUnsignedInteger($left);
-        $right = $this->normalizeUnsignedInteger($right);
-
-        return strlen($left) <=> strlen($right) ?: strcmp($left, $right);
+        return $this->workSheetAbpreCurrent[$file->id] = OwnRevenueImportFile::query()
+            ->where('own_revenue_budget_id', $file->own_revenue_budget_id)
+            ->where('format', OwnRevenueImportFormat::Abpre)
+            ->where('status', OwnRevenueImportFileStatus::Confirmed)
+            ->latest('confirmed_at')
+            ->latest('id')
+            ->value('id') === $file->abpre_import_file_id_at_analysis;
     }
 
     private function normalizeUnsignedInteger(string $value): string

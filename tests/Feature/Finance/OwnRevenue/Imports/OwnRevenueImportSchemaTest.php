@@ -44,6 +44,18 @@ test('import schema keeps files rows issues and immutable ABPRE versions', funct
         ->and($row->normalized_payload['specific_item_code'])->toBe('21101');
 });
 
+test('work sheet analysis stores its ABPRE snapshot and preview rows have a covering index', function () {
+    expect(Schema::hasColumn('own_revenue_import_files', 'abpre_import_file_id_at_analysis'))->toBeTrue();
+
+    $indexes = collect(Schema::getIndexes('own_revenue_import_rows'));
+
+    expect($indexes->contains(fn (array $index): bool => $index['columns'] === [
+        'own_revenue_import_file_id',
+        'row_kind',
+        'row_number',
+    ]))->toBeTrue();
+});
+
 test('file versions are unique within a budget and format', function () {
     $budget = OwnRevenueBudget::factory()->create();
     $session = OwnRevenueImportSession::factory()->for($budget, 'budget')->create();

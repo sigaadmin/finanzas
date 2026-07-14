@@ -115,6 +115,17 @@ export default function OwnRevenueImportPreview({
                                 >
                             ).view_state
                         }
+                        decisionsEnabled={
+                            (
+                                props as Omit<
+                                    OwnRevenueWorkSheetPreviewProps,
+                                    | 'budget'
+                                    | 'selected_file'
+                                    | 'preview'
+                                    | 'permissions'
+                                >
+                            ).decisions_enabled
+                        }
                         permissions={permissions}
                     />
                 ) : (

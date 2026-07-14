@@ -223,7 +223,14 @@ export type OwnRevenueWorkSheetPreviewProps = {
     preview: LengthAwarePaginator<OwnRevenueWorkSheetPreviewRow>;
     blocking_issues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
     review_issues: LengthAwarePaginator<OwnRevenueWorkSheetIssue>;
-    view_state: 'not_analyzed' | 'analyzing' | 'failed' | 'empty' | 'ready';
+    view_state:
+        | 'not_analyzed'
+        | 'analyzing'
+        | 'failed'
+        | 'empty'
+        | 'abpre_changed'
+        | 'ready';
+    decisions_enabled: boolean;
     permissions: OwnRevenueImportPermissions;
 };
 
