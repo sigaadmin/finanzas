@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Actions\Finance\OwnRevenue\CopyOwnRevenueBudget;
+use App\Actions\Finance\OwnRevenue\Imports\StartOwnRevenueImportSession;
 use App\Actions\Finance\OwnRevenue\InitializeOwnRevenueBudget;
 use App\Actions\Finance\OwnRevenue\UpdateOwnRevenueBudgetSettings;
 use App\Http\Controllers\Controller;
@@ -13,6 +14,7 @@ use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\OwnRevenueSignatory;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -62,14 +64,33 @@ class OwnRevenueBudgetController extends Controller
         StoreOwnRevenueBudgetRequest $request,
         InitializeOwnRevenueBudget $initializeBudget,
         CopyOwnRevenueBudget $copyBudget,
+        StartOwnRevenueImportSession $startImportSession,
     ): RedirectResponse {
         $validated = $request->validated();
+        $creationMode = $validated['creation_mode']
+            ?? (isset($validated['source_budget_id']) ? 'copy' : 'blank');
 
-        if (isset($validated['source_budget_id'])) {
+        if ($creationMode === 'copy') {
             $source = OwnRevenueBudget::query()->findOrFail($validated['source_budget_id']);
             Gate::authorize('copy', $source);
             $budget = $copyBudget->handle($source, $validated['fiscal_year'], $request->user());
             $message = 'Presupuesto anual de ingresos propios copiado correctamente.';
+        } elseif ($creationMode === 'import') {
+            $budget = DB::transaction(function () use (
+                $request,
+                $validated,
+                $initializeBudget,
+                $startImportSession,
+            ): OwnRevenueBudget {
+                $budget = $initializeBudget->handle($request->user(), $validated);
+                $startImportSession->handle($budget, $request->user());
+
+                return $budget;
+            });
+
+            Inertia::flash('success', 'Presupuesto creado; cargue los archivos XLSX del ejercicio.');
+
+            return to_route('finance.own-revenue.budgets.imports.show', $budget);
         } else {
             $budget = $initializeBudget->handle($request->user(), $validated);
             $message = 'Presupuesto anual de ingresos propios creado correctamente.';

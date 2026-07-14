@@ -22,12 +22,16 @@ class StoreOwnRevenueBudgetRequest extends FormRequest
      */
     public function rules(): array
     {
-        $copyMode = $this->filled('source_budget_id');
+        $mode = $this->creationMode();
+        $copyMode = $mode === 'copy';
         $institutionalRule = $copyMode ? 'prohibited' : 'required';
         $annualRule = $copyMode ? 'prohibited' : 'sometimes';
 
         return [
-            'source_budget_id' => ['nullable', 'integer', Rule::exists(OwnRevenueBudget::class, 'id')],
+            'creation_mode' => ['sometimes', Rule::in(['blank', 'copy', 'import'])],
+            'source_budget_id' => $copyMode
+                ? ['required', 'integer', Rule::exists(OwnRevenueBudget::class, 'id')]
+                : ['prohibited'],
             'fiscal_year' => [
                 'required',
                 'integer',
@@ -81,7 +85,7 @@ class StoreOwnRevenueBudgetRequest extends FormRequest
             function (Validator $validator): void {
                 if ($validator->errors()->has('source_budget_id')
                     || $validator->errors()->has('fiscal_year')
-                    || ! $this->filled('source_budget_id')) {
+                    || $this->creationMode() !== 'copy') {
                     return;
                 }
 
@@ -97,5 +101,16 @@ class StoreOwnRevenueBudgetRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    private function creationMode(): string
+    {
+        $mode = $this->input('creation_mode');
+
+        if (is_string($mode)) {
+            return $mode;
+        }
+
+        return $this->filled('source_budget_id') ? 'copy' : 'blank';
     }
 }
