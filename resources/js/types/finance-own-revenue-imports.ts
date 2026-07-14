@@ -121,6 +121,11 @@ export type OwnRevenueImportIssue = {
     context: OwnRevenueImportIssueContext;
 };
 
+export type OwnRevenueImportModalIssue = Pick<
+    OwnRevenueImportIssue,
+    'severity' | 'message' | 'context'
+>;
+
 export type PaginatorLink = {
     url: string | null;
     label: string;
@@ -144,7 +149,9 @@ export type LengthAwarePaginator<T> = {
 };
 
 export type OwnRevenueSelectedImportFile = OwnRevenueImportFile & {
-    issues: LengthAwarePaginator<OwnRevenueImportIssue> & { has_more: boolean };
+    issues: LengthAwarePaginator<OwnRevenueImportModalIssue> & {
+        has_more: boolean;
+    };
 };
 
 export type OwnRevenueAbprePreviewRow = {

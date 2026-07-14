@@ -7,6 +7,7 @@ import {
     importIssueContextDetails,
     importIssueDialogOpenAction,
     importIssuePageQuery,
+    importIssuePresentationKey,
     importFilePresentation,
     importDecisionRememberKey,
     initialImportMutation,
@@ -42,6 +43,14 @@ test('issue details expose only explicitly labeled business context', () => {
             { label: 'Acción necesaria', value: 'Volver a analizar' },
         ],
     );
+});
+
+test('modal issue presentation keys are local and do not require backend identifiers', () => {
+    const first = importIssuePresentationKey(2, 0, 'Corrige la partida.');
+    const repeated = importIssuePresentationKey(2, 1, 'Corrige la partida.');
+
+    assert.equal(first, '2-0-Corrige la partida.');
+    assert.notEqual(first, repeated);
 });
 
 test('file statuses use operational language and expose only available ABPRE actions', () => {

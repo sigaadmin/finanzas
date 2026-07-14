@@ -6,6 +6,7 @@ import {
     importIssueDialogOpenAction,
     importIssueDialogState,
     importIssuePageQuery,
+    importIssuePresentationKey,
 } from '@/components/finance/own-revenue/imports/import-workspace-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import {
 import { show } from '@/routes/finance/own-revenue/budgets/imports';
 import type {
     OwnRevenueImportFile,
-    OwnRevenueImportIssue,
+    OwnRevenueImportModalIssue,
     OwnRevenueSelectedImportFile,
 } from '@/types/finance-own-revenue-imports';
 
@@ -36,7 +37,7 @@ const severityLabels = {
     info: 'Avisos',
 };
 
-function IssueIcon({ issue }: { issue: OwnRevenueImportIssue }) {
+function IssueIcon({ issue }: { issue: OwnRevenueImportModalIssue }) {
     if (issue.severity === 'error') {
         return <AlertCircle className="mt-0.5 size-4 text-destructive" />;
     }
@@ -132,14 +133,18 @@ export default function ImportIssueList({
                             No se encontraron problemas.
                         </p>
                     ) : (
-                        issues.data.map((issue) => {
+                        issues.data.map((issue, index) => {
                             const details = importIssueContextDetails(
                                 issue.context,
                             );
 
                             return (
                                 <article
-                                    key={issue.id}
+                                    key={importIssuePresentationKey(
+                                        issues.current_page,
+                                        index,
+                                        issue.message,
+                                    )}
                                     className="grid grid-cols-[auto_1fr] gap-3 rounded-lg border p-3"
                                 >
                                     <IssueIcon issue={issue} />

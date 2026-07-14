@@ -181,6 +181,10 @@ export function importIssueContextDetails(context) {
     });
 }
 
+export function importIssuePresentationKey(page, index, message) {
+    return `${page}-${index}-${message}`;
+}
+
 export function startImportMutation(_current, fileId) {
     return { activeFileId: fileId, error: null };
 }

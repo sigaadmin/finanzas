@@ -64,6 +64,12 @@ export function importIssueContextDetails(
     context: object,
 ): Array<{ label: string; value: string }>;
 
+export function importIssuePresentationKey(
+    page: number,
+    index: number,
+    message: string,
+): string;
+
 export function startImportMutation(
     current: ImportMutationFeedback,
     fileId: number,

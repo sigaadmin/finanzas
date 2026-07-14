@@ -80,6 +80,7 @@ test('manager workspace exposes five bounded slots exact money strings and mutat
             ->missing('selected_file.issues.data.0.context.source_payload')
             ->missing('selected_file.issues.data.0.code')
             ->missing('selected_file.issues.data.0.field')
+            ->missing('selected_file.issues.data.0.id')
             ->missing('preview_file')
             ->missing('preview')
             ->missing('decision_warnings')
@@ -349,7 +350,8 @@ test('stale issue pages clamp to the first page for the selected file', function
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('selected_file.id', $shortFile->id)
             ->where('selected_file.issues.current_page', 1)
-            ->where('selected_file.issues.data.0.id', $shortIssue->id));
+            ->where('selected_file.issues.data.0.message', $shortIssue->message)
+            ->missing('selected_file.issues.data.0.id'));
 });
 
 test('unassigned audit history exposes whether each file may be classified', function () {
@@ -564,6 +566,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->not->toContain('Código interno')
         ->not->toContain('{issue.code}')
         ->not->toContain('{issue.field}')
+        ->not->toContain('key={issue.id}')
         ->not->toContain('?? key')
         ->and($preview)
         ->toContain('preview_page')

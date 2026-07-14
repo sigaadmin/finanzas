@@ -459,7 +459,6 @@ class OwnRevenueImportViewData
         }
 
         return [
-            'id' => $issue->id,
             'severity' => $issue->severity->value,
             'message' => $issue->message,
             'context' => $this->exactMonetaryStrings($context),
