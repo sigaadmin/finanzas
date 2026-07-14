@@ -110,6 +110,7 @@ test('work sheet analysis persists source and normalized staging with warnings w
 
     expect($result->status)->toBe(OwnRevenueImportFileStatus::Ready)
         ->and($result->analysis_token)->toBeNull()
+        ->and($result->analysis_fingerprint)->toMatch('/^[a-f0-9]{64}$/')
         ->and($result->analyzed_at)->not->toBeNull()
         ->and($result->abpre_import_file_id_at_analysis)->toBe($abpre->id)
         ->and($result->rows()->where('row_kind', 'work_sheet_line')->count())->toBe(1)

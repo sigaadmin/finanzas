@@ -266,6 +266,7 @@ class AnalyzeOwnRevenueImportFile
                 'status' => $hasErrors ? OwnRevenueImportFileStatus::NeedsCorrection : OwnRevenueImportFileStatus::Ready,
                 'analysis_token' => null,
                 'analysis_revision' => (string) Str::uuid(),
+                'analysis_fingerprint' => $snapshot->fingerprint,
                 'abpre_import_file_id_at_analysis' => $format === OwnRevenueImportFormat::WorkSheet
                     ? OwnRevenueImportFile::query()
                         ->whereBelongsTo($lockedBudget, 'budget')
