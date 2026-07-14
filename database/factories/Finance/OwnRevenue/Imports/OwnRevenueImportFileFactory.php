@@ -38,6 +38,7 @@ class OwnRevenueImportFileFactory extends Factory
             'version_number' => 1,
             'status' => OwnRevenueImportFileStatus::Uploaded,
             'analysis_token' => null,
+            'analysis_revision' => null,
             'detection_confidence' => 100,
             'detection_evidence' => [],
             'budget_updated_at_at_analysis' => null,

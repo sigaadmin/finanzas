@@ -146,6 +146,7 @@ test('work sheet analysis resolves only activities from its budget and COG from 
 });
 
 test('reanalyzing a work sheet atomically replaces prior staging and issues', function () {
+    $this->freezeTime();
     Storage::fake('local');
     $manager = workSheetAnalysisManager();
     $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
@@ -157,12 +158,17 @@ test('reanalyzing a work sheet atomically replaces prior staging and issues', fu
         5 => ['A' => 'A03-A01 - Investigación', 'B' => 'Papelería', 'C' => '21101', 'D' => '04-001', 'E' => 'CHETUMAL', 'F' => '1', ...workSheetMonths('1'), 'S' => '1'],
     ]);
 
-    app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+    $firstResult = app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+    $firstRevision = $firstResult->analysis_revision;
     $oldRowIds = $file->rows()->pluck('id')->all();
     $oldIssueIds = $file->issues()->pluck('id')->all();
-    app(AnalyzeOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
+    $secondResult = app(AnalyzeOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
 
-    expect($file->rows()->count())->toBe(2)
+    expect(Str::isUuid($firstRevision))->toBeTrue()
+        ->and(Str::isUuid($secondResult->analysis_revision))->toBeTrue()
+        ->and($secondResult->analysis_revision)->not->toBe($firstRevision)
+        ->and($secondResult->analyzed_at?->equalTo($firstResult->analyzed_at))->toBeTrue()
+        ->and($file->rows()->count())->toBe(2)
         ->and($file->issues()->count())->toBe(1)
         ->and($file->rows()->whereKey($oldRowIds)->count())->toBe(0)
         ->and($file->issues()->whereKey($oldIssueIds)->count())->toBe(0);
@@ -184,6 +190,7 @@ test('a failed work sheet reanalysis preserves valid staging decisions and one o
         'sha256' => hash('sha256', $contents),
         'budget_updated_at_at_analysis' => $budget->updated_at,
         'analyzed_at' => now()->subMinute(),
+        'analysis_revision' => (string) Str::uuid(),
     ]);
     Storage::disk('local')->put($file->storage_path, $contents);
     $sourceRow = OwnRevenueImportRow::factory()->create([
@@ -210,6 +217,7 @@ test('a failed work sheet reanalysis preserves valid staging decisions and one o
         'resolved_by' => $manager->id,
     ]);
     $validAnalyzedAt = $file->analyzed_at;
+    $validAnalysisRevision = $file->analysis_revision;
     $validBudgetSnapshot = $file->budget_updated_at_at_analysis;
 
     $result = app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
@@ -219,6 +227,7 @@ test('a failed work sheet reanalysis preserves valid staging decisions and one o
     expect($secondResult->status)->toBe(OwnRevenueImportFileStatus::Failed)
         ->and($secondResult->analysis_token)->toBeNull()
         ->and($secondResult->analyzed_at?->equalTo($validAnalyzedAt))->toBeTrue()
+        ->and($secondResult->analysis_revision)->toBe($validAnalysisRevision)
         ->and($secondResult->budget_updated_at_at_analysis?->equalTo($validBudgetSnapshot))->toBeTrue()
         ->and($secondResult->rows()->count())->toBe(2)
         ->and($secondResult->issues()->count())->toBe(2)
@@ -240,6 +249,8 @@ test('a failed work sheet reanalysis preserves valid staging decisions and one o
     $successfulResult = app(AnalyzeOwnRevenueImportFile::class)->handle($secondResult->fresh(), $manager);
 
     expect($successfulResult->status)->toBe(OwnRevenueImportFileStatus::Ready)
+        ->and(Str::isUuid($successfulResult->analysis_revision))->toBeTrue()
+        ->and($successfulResult->analysis_revision)->not->toBe($validAnalysisRevision)
         ->and($sourceRow->fresh())->toBeNull()
         ->and($normalizedRow->fresh())->toBeNull()
         ->and($domainIssue->fresh())->toBeNull()

@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\Schema;
 
 test('import files store nullable analysis attempt ownership', function () {
     expect(Schema::hasColumn('own_revenue_import_files', 'analysis_token'))->toBeTrue()
-        ->and(OwnRevenueImportFile::factory()->create()->analysis_token)->toBeNull();
+        ->and(Schema::hasColumn('own_revenue_import_files', 'analysis_revision'))->toBeTrue()
+        ->and(OwnRevenueImportFile::factory()->create()->analysis_token)->toBeNull()
+        ->and(OwnRevenueImportFile::factory()->create()->analysis_revision)->toBeNull();
 });
 
 test('import schema keeps files rows issues and immutable ABPRE versions', function () {

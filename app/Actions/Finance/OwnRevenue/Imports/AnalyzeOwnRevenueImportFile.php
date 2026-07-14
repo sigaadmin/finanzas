@@ -265,6 +265,7 @@ class AnalyzeOwnRevenueImportFile
             $lockedFile->update([
                 'status' => $hasErrors ? OwnRevenueImportFileStatus::NeedsCorrection : OwnRevenueImportFileStatus::Ready,
                 'analysis_token' => null,
+                'analysis_revision' => (string) Str::uuid(),
                 'budget_updated_at_at_analysis' => $budget->updated_at,
                 'analyzed_at' => now(),
             ]);

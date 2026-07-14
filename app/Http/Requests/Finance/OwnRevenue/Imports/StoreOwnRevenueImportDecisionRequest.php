@@ -35,7 +35,7 @@ class StoreOwnRevenueImportDecisionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'analysis_revision' => ['required', 'string'],
+            'analysis_revision' => ['required', 'uuid'],
             'decision' => ['required', Rule::in(['accepted', 'rejected'])],
             'justification' => ['nullable', 'string', 'max:2000'],
         ];

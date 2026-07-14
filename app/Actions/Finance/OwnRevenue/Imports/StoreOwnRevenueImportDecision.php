@@ -26,12 +26,20 @@ class StoreOwnRevenueImportDecision
         Gate::forUser($user)->authorize('confirmImports', $file->budget);
 
         return DB::transaction(function () use ($file, $issue, $user, $analysisRevision, $decision, $justification): OwnRevenueImportIssue {
-            OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
+            $lockedBudget = OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
             $lockedIssue = OwnRevenueImportIssue::query()
                 ->where('own_revenue_import_file_id', $lockedFile->id)
                 ->lockForUpdate()
                 ->findOrFail($issue->id);
+
+            Gate::forUser($user)->authorize('confirmImports', $lockedBudget);
+            if ($lockedFile->budget_updated_at_at_analysis === null
+                || ! $lockedBudget->updated_at->equalTo($lockedFile->budget_updated_at_at_analysis)) {
+                throw ValidationException::withMessages([
+                    'file' => 'El presupuesto cambió después del análisis; vuelva a analizar la Hoja de trabajo.',
+                ]);
+            }
 
             $this->validateCurrentAnalysis($lockedFile, $lockedIssue, $analysisRevision);
             $lockedIssue->decisions()->delete();
@@ -62,7 +70,7 @@ class StoreOwnRevenueImportDecision
             OwnRevenueImportFileStatus::Ready,
             OwnRevenueImportFileStatus::NeedsCorrection,
         ], true);
-        $currentRevision = $file->analyzed_at?->toISOString();
+        $currentRevision = $file->analysis_revision;
 
         if ($file->format !== OwnRevenueImportFormat::WorkSheet
             || ! $validStatus

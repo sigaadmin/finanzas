@@ -1,8 +1,10 @@
 <?php
 
+use App\Actions\Finance\OwnRevenue\Imports\StoreOwnRevenueImportDecision;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
+use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
@@ -11,6 +13,8 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Str;
 
 function importDecisionUser(UserRole $role = UserRole::FinanceManager): User
 {
@@ -55,6 +59,7 @@ function pendingAbpreMismatchDecision(): array
         'format' => OwnRevenueImportFormat::WorkSheet,
         'status' => OwnRevenueImportFileStatus::Ready,
         'analyzed_at' => now(),
+        'analysis_revision' => (string) Str::uuid(),
         'budget_updated_at_at_analysis' => $budget->updated_at,
     ]);
     $issue = OwnRevenueImportIssue::factory()->create([
@@ -90,7 +95,7 @@ test('an accepted current mismatch decision is stored and no longer pending', fu
     [$budget, $file, $issue] = pendingAbpreMismatchDecision();
 
     $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
-        'analysis_revision' => $file->analyzed_at->toISOString(),
+        'analysis_revision' => $file->analysis_revision,
         'decision' => 'accepted',
         'justification' => 'La calendarización operativa difiere del techo oficial.',
     ])->assertRedirect();
@@ -99,7 +104,7 @@ test('an accepted current mismatch decision is stored and no longer pending', fu
     expect($decision->resolution)->toBe('accepted')
         ->and($decision->resolved_value)->toMatchArray([
             'accepted' => true,
-            'analysis_revision' => $file->analyzed_at->toISOString(),
+            'analysis_revision' => $file->analysis_revision,
         ])
         ->and($issue->hasPendingRequiredDecision())->toBeFalse();
 });
@@ -111,7 +116,7 @@ test('a rejected or absent mismatch decision remains pending', function () {
     expect($issue->hasPendingRequiredDecision())->toBeTrue();
 
     $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
-        'analysis_revision' => $file->analyzed_at->toISOString(),
+        'analysis_revision' => $file->analysis_revision,
         'decision' => 'rejected',
         'justification' => null,
     ])->assertRedirect();
@@ -125,13 +130,13 @@ test('decision endpoint rejects stale analysis revisions and stale ABPRE snapsho
     [$budget, $file, $issue] = pendingAbpreMismatchDecision();
 
     $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
-        'analysis_revision' => now()->subDay()->toISOString(),
+        'analysis_revision' => (string) Str::uuid(),
         'decision' => 'accepted',
     ])->assertSessionHasErrors('analysis_revision');
     expect($issue->decisions()->count())->toBe(0);
 
     $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
-        'analysis_revision' => $file->analyzed_at->toISOString(),
+        'analysis_revision' => $file->analysis_revision,
         'decision' => 'accepted',
     ])->assertRedirect();
     expect($issue->fresh()->hasPendingRequiredDecision())->toBeFalse();
@@ -149,7 +154,7 @@ test('decision endpoint rejects stale analysis revisions and stale ABPRE snapsho
     expect($issue->fresh()->hasPendingRequiredDecision())->toBeTrue();
 
     $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
-        'analysis_revision' => $file->analyzed_at->toISOString(),
+        'analysis_revision' => $file->analysis_revision,
         'decision' => 'accepted',
     ])->assertSessionHasErrors('analysis_revision');
     expect($issue->decisions()->count())->toBe(1);
@@ -160,10 +165,58 @@ test('decision endpoint scopes issues to their file and enforces authorization',
     $auditor = importDecisionUser(UserRole::FinanceAuditor);
     [$budget, $file, $issue] = pendingAbpreMismatchDecision();
     [, $otherFile, $otherIssue] = pendingAbpreMismatchDecision();
-    $payload = ['analysis_revision' => $file->analyzed_at->toISOString(), 'decision' => 'accepted'];
+    $payload = ['analysis_revision' => $file->analysis_revision, 'decision' => 'accepted'];
 
     $this->post(importDecisionRoute($budget, $file, $issue), $payload)->assertRedirect(route('login'));
     $this->actingAs($auditor)->post(importDecisionRoute($budget, $file, $issue), $payload)->assertForbidden();
     $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $otherIssue), $payload)->assertNotFound();
     expect($otherFile->id)->not->toBe($file->id);
+});
+
+test('decision endpoint requires a well formed analysis revision', function () {
+    $manager = importDecisionUser();
+    [$budget, $file, $issue] = pendingAbpreMismatchDecision();
+
+    $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
+        'decision' => 'accepted',
+    ])->assertSessionHasErrors('analysis_revision');
+    $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
+        'analysis_revision' => 'not-a-uuid',
+        'decision' => 'accepted',
+    ])->assertSessionHasErrors('analysis_revision');
+
+    expect($issue->decisions()->count())->toBe(0);
+});
+
+test('decision transaction rejects a budget closed after initial authorization', function () {
+    $manager = importDecisionUser();
+    [, $file, $issue] = pendingAbpreMismatchDecision();
+    $file->load('budget');
+    $file->budget->newQuery()->whereKey($file->budget)->update([
+        'status' => OwnRevenueBudgetStatus::Closed,
+    ]);
+
+    expect(fn () => app(StoreOwnRevenueImportDecision::class)->handle(
+        $file,
+        $issue,
+        $manager,
+        $file->analysis_revision,
+        'accepted',
+        null,
+    ))->toThrow(AuthorizationException::class);
+    expect($issue->decisions()->count())->toBe(0);
+});
+
+test('decision transaction rejects a changed budget snapshot', function () {
+    $manager = importDecisionUser();
+    [$budget, $file, $issue] = pendingAbpreMismatchDecision();
+    $this->travel(1)->seconds();
+    $budget->touch();
+
+    $this->actingAs($manager)->post(importDecisionRoute($budget, $file, $issue), [
+        'analysis_revision' => $file->analysis_revision,
+        'decision' => 'accepted',
+    ])->assertSessionHasErrors('file');
+
+    expect($issue->decisions()->count())->toBe(0);
 });

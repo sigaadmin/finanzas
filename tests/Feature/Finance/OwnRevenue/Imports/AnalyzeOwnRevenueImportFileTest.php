@@ -67,10 +67,12 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
     analyzeCog(2027);
     $file = uploadedAbpreForAnalysis($manager, $budget);
 
-    app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+    $firstResult = app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+    $firstRevision = $firstResult->analysis_revision;
 
     expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::NeedsCorrection)
         ->and($file->fresh()->analysis_token)->toBeNull()
+        ->and(Str::isUuid($firstRevision))->toBeTrue()
         ->and($file->rows()->count())->toBeGreaterThan(0)
         ->and($file->issues()->where('severity', 'error')->count())->toBeGreaterThan(0)
         ->and(OwnRevenueAbpreLine::query()->count())->toBe(0);
@@ -83,6 +85,7 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
         ]))
         ->assertOk()
         ->assertInertia(fn (Assert $page): Assert => $page
+            ->where('selected_file.analysis_revision', $firstRevision)
             ->where('preview.data.0.sourceRegions', [
                 ['code' => '04-001', 'name' => 'OTRA REGIÓN'],
                 ['code' => '03-002', 'name' => 'REGIÓN DOS'],
@@ -91,9 +94,11 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
             ->where('preview.data.0.regionName', 'Felipe Carrillo Puerto'));
 
     $rowCount = $file->rows()->count();
-    app(AnalyzeOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
+    $secondResult = app(AnalyzeOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
 
-    expect($file->rows()->count())->toBe($rowCount);
+    expect($file->rows()->count())->toBe($rowCount)
+        ->and(Str::isUuid($secondResult->analysis_revision))->toBeTrue()
+        ->and($secondResult->analysis_revision)->not->toBe($firstRevision);
 });
 
 test('failed analysis clears attempt ownership', function () {

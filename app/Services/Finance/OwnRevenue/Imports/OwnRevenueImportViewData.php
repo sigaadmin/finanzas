@@ -89,6 +89,7 @@ class OwnRevenueImportViewData
             'confidence' => $file->detection_confidence,
             'analyzed' => $file->analyzed_at !== null,
             'analyzed_at' => $file->analyzed_at?->toISOString(),
+            'analysis_revision' => $file->analysis_revision,
             'confirmed' => $file->confirmed_at !== null,
             'confirmed_at' => $file->confirmed_at?->toISOString(),
             'can_reclassify' => AssignOwnRevenueImportFormat::canReclassify($file),
