@@ -3,6 +3,7 @@
 namespace App\Actions\Finance\OwnRevenue\Imports;
 
 use App\Data\Finance\OwnRevenue\Imports\AbpreAnalysis;
+use App\Data\Finance\OwnRevenue\Imports\WorkSheetAnalysis;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
@@ -11,6 +12,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\AbpreWorkbookParser;
+use App\Services\Finance\OwnRevenue\Imports\WorkSheetWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -24,6 +26,7 @@ class AnalyzeOwnRevenueImportFile
     public function __construct(
         private readonly XlsxWorkbookReader $reader,
         private readonly AbpreWorkbookParser $parser,
+        private readonly WorkSheetWorkbookParser $workSheetParser,
     ) {}
 
     public function handle(OwnRevenueImportFile $file, User $user): OwnRevenueImportFile
@@ -53,7 +56,7 @@ class AnalyzeOwnRevenueImportFile
 
         $analysisToken = (string) Str::uuid();
 
-        DB::transaction(function () use ($file, $analysisToken): void {
+        $format = DB::transaction(function () use ($file, $analysisToken): OwnRevenueImportFormat {
             OwnRevenueBudget::query()->lockForUpdate()->findOrFail($file->own_revenue_budget_id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
             $this->ensureAnalyzable($lockedFile);
@@ -61,6 +64,8 @@ class AnalyzeOwnRevenueImportFile
                 'status' => OwnRevenueImportFileStatus::Analyzing,
                 'analysis_token' => $analysisToken,
             ]);
+
+            return $lockedFile->format;
         });
 
         try {
@@ -70,21 +75,35 @@ class AnalyzeOwnRevenueImportFile
                 ->pluck('id', 'specific_item_code')
                 ->map(fn (mixed $id): int => (int) $id)
                 ->all();
-            $analysis = $this->parser->parse(
-                $this->reader->read($path),
-                ['fiscal_year' => $budget->fiscal_year, 'responsible_unit_code' => $budget->responsible_unit_code],
-                $cogMap,
-            );
+            $workbook = $this->reader->read($path);
+            $analysis = match ($format) {
+                OwnRevenueImportFormat::Abpre => $this->parser->parse(
+                    $workbook,
+                    ['fiscal_year' => $budget->fiscal_year, 'responsible_unit_code' => $budget->responsible_unit_code],
+                    $cogMap,
+                ),
+                OwnRevenueImportFormat::WorkSheet => $this->workSheetParser->parse(
+                    $workbook,
+                    $budget->activities()
+                        ->pluck('id', 'code')
+                        ->map(fn (mixed $id): int => (int) $id)
+                        ->all(),
+                    $cogMap,
+                ),
+                default => throw ValidationException::withMessages([
+                    'file' => 'Este analizador sólo admite los formatos ABPRE y Hoja de trabajo.',
+                ]),
+            };
 
-            return $this->persist($file, $budget, $analysis, $analysisToken);
+            return $this->persist($file, $budget, $analysis, $analysisToken, $format);
         } catch (Throwable $exception) {
             if ($exception instanceof ValidationException) {
                 throw $exception;
             }
 
-            return DB::transaction(function () use ($file, $exception, $analysisToken): OwnRevenueImportFile {
+            return DB::transaction(function () use ($file, $exception, $analysisToken, $format): OwnRevenueImportFile {
                 $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
-                $this->ensureActiveAttempt($lockedFile, $analysisToken);
+                $this->ensureActiveAttempt($lockedFile, $analysisToken, $format);
                 $lockedFile->issues()->delete();
                 $lockedFile->issues()->create([
                     'severity' => OwnRevenueImportIssueSeverity::Error,
@@ -108,18 +127,21 @@ class AnalyzeOwnRevenueImportFile
     {
         $this->ensureMutable($file);
 
-        if ($file->format !== OwnRevenueImportFormat::Abpre) {
+        if (! in_array($file->format, [OwnRevenueImportFormat::Abpre, OwnRevenueImportFormat::WorkSheet], true)) {
             throw ValidationException::withMessages([
-                'file' => 'Este analizador sólo admite el formato ABPRE.',
+                'file' => 'Este analizador sólo admite los formatos ABPRE y Hoja de trabajo.',
             ]);
         }
     }
 
-    private function ensureActiveAttempt(OwnRevenueImportFile $file, string $analysisToken): void
-    {
+    private function ensureActiveAttempt(
+        OwnRevenueImportFile $file,
+        string $analysisToken,
+        OwnRevenueImportFormat $format,
+    ): void {
         $this->ensureMutable($file);
 
-        if ($file->format !== OwnRevenueImportFormat::Abpre
+        if ($file->format !== $format
             || $file->status !== OwnRevenueImportFileStatus::Analyzing
             || $file->analysis_token === null
             || ! hash_equals($file->analysis_token, $analysisToken)) {
@@ -143,13 +165,14 @@ class AnalyzeOwnRevenueImportFile
     private function persist(
         OwnRevenueImportFile $file,
         OwnRevenueBudget $budget,
-        AbpreAnalysis $analysis,
+        AbpreAnalysis|WorkSheetAnalysis $analysis,
         string $analysisToken,
+        OwnRevenueImportFormat $format,
     ): OwnRevenueImportFile {
-        return DB::transaction(function () use ($file, $budget, $analysis, $analysisToken): OwnRevenueImportFile {
+        return DB::transaction(function () use ($file, $budget, $analysis, $analysisToken, $format): OwnRevenueImportFile {
             OwnRevenueBudget::query()->lockForUpdate()->findOrFail($budget->id);
             $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
-            $this->ensureActiveAttempt($lockedFile, $analysisToken);
+            $this->ensureActiveAttempt($lockedFile, $analysisToken, $format);
             $lockedFile->issues()->delete();
             $lockedFile->rows()->delete();
             $rows = [];
@@ -162,18 +185,25 @@ class AnalyzeOwnRevenueImportFile
                 $rows[$sourceRow['sheet_name'].'|'.$sourceRow['row_number']] = $row;
             }
 
+            $normalizedSheet = $format === OwnRevenueImportFormat::Abpre
+                ? '__normalized_abpre__'
+                : '__normalized_work_sheet__';
+            $normalizedRowKind = $format === OwnRevenueImportFormat::Abpre
+                ? 'abpre_line'
+                : 'work_sheet_normalized_line';
+
             foreach ($analysis->lines as $index => $line) {
                 $lockedFile->rows()->create([
-                    'sheet_name' => '__normalized_abpre__',
+                    'sheet_name' => $normalizedSheet,
                     'row_number' => $index + 1,
-                    'row_kind' => 'abpre_line',
+                    'row_kind' => $normalizedRowKind,
                     'row_hash' => hash('sha256', json_encode($line, JSON_THROW_ON_ERROR)),
                     'source_payload' => ['source_rows' => $line->sourceRows],
                     'normalized_payload' => (array) $line,
                 ]);
             }
 
-            foreach ($analysis->justifications as $index => $justification) {
+            foreach ($analysis instanceof AbpreAnalysis ? $analysis->justifications : [] as $index => $justification) {
                 $lockedFile->rows()->create([
                     'sheet_name' => '__normalized_justifications__',
                     'row_number' => $index + 1,
@@ -199,12 +229,15 @@ class AnalyzeOwnRevenueImportFile
             }
 
             if ($analysis->lines === []) {
+                $isAbpre = $format === OwnRevenueImportFormat::Abpre;
                 $lockedFile->issues()->create([
                     'own_revenue_import_row_id' => null,
                     'severity' => OwnRevenueImportIssueSeverity::Error,
-                    'code' => 'abpre.no_importable_lines',
+                    'code' => $isAbpre ? 'abpre.no_importable_lines' : 'work_sheet.no_importable_lines',
                     'field' => null,
-                    'message' => 'El análisis no contiene líneas ABPRE importables.',
+                    'message' => $isAbpre
+                        ? 'El análisis no contiene líneas ABPRE importables.'
+                        : 'El análisis no contiene renglones importables de la Hoja de trabajo.',
                     'context' => [],
                 ]);
             }

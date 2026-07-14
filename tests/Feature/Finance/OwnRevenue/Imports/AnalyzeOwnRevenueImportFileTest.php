@@ -22,6 +22,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\AbpreWorkbookParser;
+use App\Services\Finance\OwnRevenue\Imports\WorkSheetWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -112,7 +113,7 @@ test('failed analysis clears attempt ownership', function () {
     $parser = Mockery::mock(AbpreWorkbookParser::class);
     $parser->shouldReceive('parse')->once()->andThrow(new RuntimeException('Controlled parser failure'));
 
-    $result = (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager);
+    $result = (new AnalyzeOwnRevenueImportFile($reader, $parser, new WorkSheetWorkbookParser))->handle($file, $manager);
 
     expect($result->status)->toBe(OwnRevenueImportFileStatus::Failed)
         ->and($result->analysis_token)->toBeNull()
@@ -146,7 +147,7 @@ test('analysis with no importable ABPRE lines requires correction', function () 
         [],
     ));
 
-    $result = (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager);
+    $result = (new AnalyzeOwnRevenueImportFile($reader, $parser, new WorkSheetWorkbookParser))->handle($file, $manager);
 
     expect($result->status)->toBe(OwnRevenueImportFileStatus::NeedsCorrection)
         ->and($result->issues()->where('code', 'abpre.no_importable_lines')->sole()->severity)
@@ -177,7 +178,7 @@ test('unavailable stored files fail validation without mutating import state', f
     $issueSnapshot = $issue->getRawOriginal();
 
     try {
-        (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager);
+        (new AnalyzeOwnRevenueImportFile($reader, $parser, new WorkSheetWorkbookParser))->handle($file, $manager);
         $this->fail('Expected unavailable storage to fail validation.');
     } catch (ValidationException $exception) {
         expect($exception->errors())->toBe([
@@ -258,7 +259,7 @@ test('final analysis writes preserve a file confirmed after parsing started', fu
             return new AbpreAnalysis([], [], [], []);
         },
     );
-    $action = new AnalyzeOwnRevenueImportFile($reader, $parser);
+    $action = new AnalyzeOwnRevenueImportFile($reader, $parser, new WorkSheetWorkbookParser);
     $rowSnapshot = $row->getRawOriginal();
     $issueSnapshot = $issue->getRawOriginal();
     $decisionSnapshot = $decision->getRawOriginal();
@@ -340,7 +341,7 @@ test('stale analysis attempts cannot overwrite concurrent file state', function 
                     },
                 );
 
-                expect(fn () => (new AnalyzeOwnRevenueImportFile($nextReader, $nextParser))->handle($file->fresh(), $manager))
+                expect(fn () => (new AnalyzeOwnRevenueImportFile($nextReader, $nextParser, new WorkSheetWorkbookParser))->handle($file->fresh(), $manager))
                     ->toThrow(ValidationException::class);
             }
 
@@ -362,7 +363,7 @@ test('stale analysis attempts cannot overwrite concurrent file state', function 
         },
     );
 
-    expect(fn () => (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager))
+    expect(fn () => (new AnalyzeOwnRevenueImportFile($reader, $parser, new WorkSheetWorkbookParser))->handle($file, $manager))
         ->toThrow(ValidationException::class);
 
     $file->refresh();
