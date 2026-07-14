@@ -2,6 +2,7 @@
 
 namespace App\Policies\Finance\OwnRevenue;
 
+use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 
@@ -53,6 +54,22 @@ class OwnRevenueBudgetPolicy
     public function confirmCog(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->canAdministrate($user);
+    }
+
+    public function viewImports(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->view($user, $ownRevenueBudget);
+    }
+
+    public function manageImports(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::Draft
+            && $this->canAdministrate($user);
+    }
+
+    public function confirmImports(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->manageImports($user, $ownRevenueBudget);
     }
 
     private function canAdministrate(User $user): bool

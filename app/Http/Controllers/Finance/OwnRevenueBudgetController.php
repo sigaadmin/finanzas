@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Actions\Finance\OwnRevenue\CopyOwnRevenueBudget;
+use App\Actions\Finance\OwnRevenue\Imports\StartOwnRevenueImportSession;
 use App\Actions\Finance\OwnRevenue\InitializeOwnRevenueBudget;
 use App\Actions\Finance\OwnRevenue\UpdateOwnRevenueBudgetSettings;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\OwnRevenue\StoreOwnRevenueBudgetRequest;
 use App\Http\Requests\Finance\OwnRevenue\UpdateOwnRevenueBudgetRequest;
@@ -13,6 +16,7 @@ use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\OwnRevenueSignatory;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -62,14 +66,33 @@ class OwnRevenueBudgetController extends Controller
         StoreOwnRevenueBudgetRequest $request,
         InitializeOwnRevenueBudget $initializeBudget,
         CopyOwnRevenueBudget $copyBudget,
+        StartOwnRevenueImportSession $startImportSession,
     ): RedirectResponse {
         $validated = $request->validated();
+        $creationMode = $validated['creation_mode']
+            ?? (isset($validated['source_budget_id']) ? 'copy' : 'blank');
 
-        if (isset($validated['source_budget_id'])) {
+        if ($creationMode === 'copy') {
             $source = OwnRevenueBudget::query()->findOrFail($validated['source_budget_id']);
             Gate::authorize('copy', $source);
             $budget = $copyBudget->handle($source, $validated['fiscal_year'], $request->user());
             $message = 'Presupuesto anual de ingresos propios copiado correctamente.';
+        } elseif ($creationMode === 'import') {
+            $budget = DB::transaction(function () use (
+                $request,
+                $validated,
+                $initializeBudget,
+                $startImportSession,
+            ): OwnRevenueBudget {
+                $budget = $initializeBudget->handle($request->user(), $validated);
+                $startImportSession->handle($budget, $request->user());
+
+                return $budget;
+            });
+
+            Inertia::flash('success', 'Presupuesto creado; cargue los archivos XLSX del ejercicio.');
+
+            return to_route('finance.own-revenue.budgets.imports.show', $budget);
         } else {
             $budget = $initializeBudget->handle($request->user(), $validated);
             $message = 'Presupuesto anual de ingresos propios creado correctamente.';
@@ -92,10 +115,12 @@ class OwnRevenueBudgetController extends Controller
 
         return Inertia::render('finance/own-revenue/budgets/show', [
             'budget' => $this->showBudgetData($budget),
+            'import_summary' => $this->importSummaryData($budget),
             'permissions' => [
                 'updateSettings' => Gate::allows('updateSettings', $budget),
                 'copy' => Gate::allows('copy', $budget),
                 'confirmCog' => Gate::allows('confirmCog', $budget),
+                'viewImports' => Gate::allows('viewImports', $budget),
             ],
         ]);
     }
@@ -173,6 +198,30 @@ class OwnRevenueBudgetController extends Controller
             ],
             'created_at' => $budget->created_at?->toISOString(),
             'updated_at' => $budget->updated_at?->toISOString(),
+        ];
+    }
+
+    /** @return array{confirmed: int, missing: int, parser_pending: int} */
+    private function importSummaryData(OwnRevenueBudget $budget): array
+    {
+        $files = $budget->importFiles()
+            ->select(['format', 'status'])
+            ->whereNotNull('format')
+            ->where('status', '!=', OwnRevenueImportFileStatus::Discarded)
+            ->get();
+
+        return [
+            'confirmed' => $files
+                ->where('status', OwnRevenueImportFileStatus::Confirmed)
+                ->pluck('format')
+                ->unique()
+                ->count(),
+            'missing' => count(OwnRevenueImportFormat::cases()) - $files->pluck('format')->unique()->count(),
+            'parser_pending' => $files
+                ->where('status', OwnRevenueImportFileStatus::ParserPending)
+                ->pluck('format')
+                ->unique()
+                ->count(),
         ];
     }
 }

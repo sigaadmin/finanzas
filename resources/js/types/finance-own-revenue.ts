@@ -18,6 +18,7 @@ export type OwnRevenueDetailPermissions = {
     updateSettings: boolean;
     copy: boolean;
     confirmCog: boolean;
+    viewImports: boolean;
 };
 
 export type OwnRevenueBudgetListItem = {

@@ -5,8 +5,12 @@ use App\Http\Controllers\Finance\ChargeConceptController;
 use App\Http\Controllers\Finance\ChargeConceptOfficialLinkController;
 use App\Http\Controllers\Finance\ExpenseClassificationImportController;
 use App\Http\Controllers\Finance\OfficialFeeConceptController;
+use App\Http\Controllers\Finance\OwnRevenueAbpreConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
+use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
+use App\Http\Controllers\Finance\OwnRevenueImportController;
+use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
 use App\Http\Controllers\Finance\PaymentRegistrationController;
 use App\Http\Controllers\Finance\ReceiptCancellationController;
@@ -102,6 +106,32 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::post('own-revenue/budgets/{budget}/cog/confirm', OwnRevenueCogConfirmationController::class)
             ->name('own-revenue.budgets.cog.confirm');
+
+        Route::get('own-revenue/budgets/{budget}/imports', [OwnRevenueImportController::class, 'show'])
+            ->name('own-revenue.budgets.imports.show');
+
+        Route::post('own-revenue/budgets/{budget}/imports/files', [OwnRevenueImportFileController::class, 'store'])
+            ->name('own-revenue.budgets.imports.files.store');
+
+        Route::put('own-revenue/budgets/{budget}/imports/files/{importFile}/format', [OwnRevenueImportFileController::class, 'updateFormat'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.format.update');
+
+        Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/analyze', OwnRevenueImportAnalysisController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.analyze');
+
+        Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/abpre/confirm', OwnRevenueAbpreConfirmationController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.abpre.confirm');
+
+        Route::get('own-revenue/budgets/{budget}/imports/files/{importFile}/download', [OwnRevenueImportFileController::class, 'download'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.download');
+
+        Route::delete('own-revenue/budgets/{budget}/imports/files/{importFile}', [OwnRevenueImportFileController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.imports.files.discard');
 
         Route::get('u300/imports/create', [U300ImportController::class, 'create'])
             ->name('u300.imports.create');

@@ -10,6 +10,7 @@
         "format:check": "prettier --check resources/",
         "lint": "eslint . --fix",
         "lint:check": "eslint .",
+        "test:frontend": "node --test tests/Frontend/*.test.mjs",
         "types:check": "tsc --noEmit"
     },
     "devDependencies": {

@@ -42,6 +42,10 @@ Incorporar adaptadores por formato para combustible, viáticos, ficha técnica, 
 
 La exportación regenerará versiones oficiales limpias de los cinco archivos. Antes de ejecutar esta fase se debe solicitar autorización explícita para agregar un escritor XLSX real, previsiblemente `phpoffice/phpspreadsheet`; el proyecto actualmente no incluye uno y sus reglas prohíben modificar dependencias sin aprobación.
 
+Diseño detallado de importación: `docs/superpowers/specs/2026-07-13-presupuesto-ingresos-propios-importacion-xlsx-design.md`.
+
+Primer incremento ejecutable —infraestructura común, cinco espacios de carga e importador ABPRE—: `docs/superpowers/plans/2026-07-13-presupuesto-ingresos-propios-xlsx-fase-3a.md`. Los adaptadores de hoja de trabajo, ficha técnica, combustible y viáticos se desarrollarán sobre esa infraestructura en planes independientes.
+
 ### Fase 4 — Presupuesto modificado y expedientes de gasto
 
 Incorporar:

@@ -1,5 +1,5 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, Copy, FilePlus2 } from 'lucide-react';
+import { ArrowLeft, Copy, FilePlus2, Sheet } from 'lucide-react';
 import { useState } from 'react';
 import {
     centsToPesos,
@@ -47,7 +47,7 @@ type CreateBudgetFormData = {
     fuel_price_status: AnnualValueStatus;
 };
 
-type Mode = 'blank' | 'copy';
+type Mode = 'blank' | 'copy' | 'import';
 
 function coherentStatus(
     value: string,
@@ -137,8 +137,11 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
         setMode(nextMode);
         form.clearErrors();
 
-        if (nextMode === 'blank') {
+        if (nextMode !== 'copy') {
             form.setData('source_budget_id', '');
+        }
+
+        if (nextMode === 'blank') {
             updateEstimatedIncome(estimatedIncomePesos);
         } else {
             setEstimatedIncomeError(undefined);
@@ -155,12 +158,36 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
         form.transform((data) => {
             if (mode === 'copy') {
                 return {
+                    creation_mode: 'copy',
                     source_budget_id: data.source_budget_id,
                     fiscal_year: data.fiscal_year,
                 };
             }
 
+            if (mode === 'import') {
+                return {
+                    creation_mode: 'import',
+                    fiscal_year: data.fiscal_year,
+                    institution_name: data.institution_name,
+                    responsible_unit_code: data.responsible_unit_code,
+                    responsible_unit_name: data.responsible_unit_name,
+                    budget_program_code: data.budget_program_code,
+                    budget_program_name: data.budget_program_name,
+                    component_code: data.component_code,
+                    component_name: data.component_name,
+                    official_activity_code: data.official_activity_code,
+                    official_activity_name: data.official_activity_name,
+                    estimated_income_cents: null,
+                    cut_percentage: '',
+                    uma_value: '',
+                    uma_status: 'pending_review',
+                    fuel_price_per_liter: '',
+                    fuel_price_status: 'pending_review',
+                };
+            }
+
             return {
+                creation_mode: 'blank',
                 fiscal_year: data.fiscal_year,
                 institution_name: data.institution_name,
                 responsible_unit_code: data.responsible_unit_code,
@@ -182,7 +209,7 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                 ),
             };
         });
-        form.post(store().url);
+        form.submit(store());
     };
 
     return (
@@ -204,13 +231,13 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                             Nuevo presupuesto anual
                         </h1>
                         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                            Inicia un ejercicio en blanco o copia la
-                            configuración de un año anterior.
+                            Inicia en blanco, copia un ejercicio anterior o abre
+                            un espacio de importación XLSX.
                         </p>
                     </div>
                 </header>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <button
                         type="button"
                         onClick={() => changeMode('blank')}
@@ -240,6 +267,23 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                             <span className="text-sm text-muted-foreground">
                                 Parte de un presupuesto anterior y revisa los
                                 datos anuales.
+                            </span>
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => changeMode('import')}
+                        aria-pressed={mode === 'import'}
+                        className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${mode === 'import' ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                    >
+                        <Sheet className="mt-0.5 size-5" />
+                        <span>
+                            <span className="block font-medium">
+                                Desde archivos XLSX
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                                Registra el ejercicio y continúa en el espacio
+                                de carga y revisión.
                             </span>
                         </span>
                     </button>
@@ -466,135 +510,159 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                 </CardContent>
                             </Card>
 
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Parámetros iniciales</CardTitle>
-                                    <CardDescription>
-                                        Son opcionales y pueden quedar
-                                        pendientes de revisión.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="grid gap-4 md:grid-cols-2">
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="estimated_income_pesos">
-                                            Ingreso estimado (pesos)
-                                        </Label>
-                                        <Input
-                                            id="estimated_income_pesos"
-                                            type="text"
-                                            inputMode="decimal"
-                                            value={estimatedIncomePesos}
-                                            onChange={(event) =>
-                                                updateEstimatedIncome(
-                                                    event.target.value,
+                            {mode === 'import' && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>
+                                            Parámetros pendientes
+                                        </CardTitle>
+                                        <CardDescription>
+                                            El ingreso estimado, recorte, UMA y
+                                            combustible se registrarán como
+                                            pendientes. Después de crear el
+                                            ejercicio podrás cargar y revisar
+                                            los cinco formatos XLSX.
+                                        </CardDescription>
+                                    </CardHeader>
+                                </Card>
+                            )}
+
+                            {mode === 'blank' && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>
+                                            Parámetros iniciales
+                                        </CardTitle>
+                                        <CardDescription>
+                                            Son opcionales y pueden quedar
+                                            pendientes de revisión.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="grid gap-4 md:grid-cols-2">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="estimated_income_pesos">
+                                                Ingreso estimado (pesos)
+                                            </Label>
+                                            <Input
+                                                id="estimated_income_pesos"
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={estimatedIncomePesos}
+                                                onChange={(event) =>
+                                                    updateEstimatedIncome(
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                aria-invalid={Boolean(
+                                                    estimatedIncomeError ??
+                                                    form.errors
+                                                        .estimated_income_cents,
+                                                )}
+                                                aria-describedby={
+                                                    (estimatedIncomeError ??
+                                                    form.errors
+                                                        .estimated_income_cents)
+                                                        ? 'estimated_income_pesos-error'
+                                                        : undefined
+                                                }
+                                            />
+                                            <InputError
+                                                id="estimated_income_pesos-error"
+                                                message={
+                                                    estimatedIncomeError ??
+                                                    form.errors
+                                                        .estimated_income_cents
+                                                }
+                                            />
+                                            {form.data
+                                                .estimated_income_cents !==
+                                                null && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    Se guardarán{' '}
+                                                    {form.data.estimated_income_cents.replace(
+                                                        /\B(?=(\d{3})+(?!\d))/g,
+                                                        ',',
+                                                    )}{' '}
+                                                    centavos (
+                                                    {centsToPesos(
+                                                        form.data
+                                                            .estimated_income_cents,
+                                                    )}{' '}
+                                                    pesos).
+                                                </p>
+                                            )}
+                                        </div>
+                                        <TextField
+                                            id="cut_percentage"
+                                            label="Porcentaje de recorte"
+                                            value={form.data.cut_percentage}
+                                            error={form.errors.cut_percentage}
+                                            onChange={(value) =>
+                                                form.setData(
+                                                    'cut_percentage',
+                                                    value,
                                                 )
                                             }
-                                            aria-invalid={Boolean(
-                                                estimatedIncomeError ??
-                                                form.errors
-                                                    .estimated_income_cents,
-                                            )}
-                                            aria-describedby={
-                                                (estimatedIncomeError ??
-                                                form.errors
-                                                    .estimated_income_cents)
-                                                    ? 'estimated_income_pesos-error'
-                                                    : undefined
+                                            inputMode="decimal"
+                                        />
+                                        <AnnualField
+                                            id="uma_value"
+                                            label="UMA"
+                                            value={form.data.uma_value}
+                                            status={form.data.uma_status}
+                                            valueError={form.errors.uma_value}
+                                            statusError={form.errors.uma_status}
+                                            onValueChange={(value) =>
+                                                setAnnualValue(
+                                                    'uma_value',
+                                                    'uma_status',
+                                                    value,
+                                                )
+                                            }
+                                            onStatusChange={(status) =>
+                                                form.setData(
+                                                    'uma_status',
+                                                    coherentStatus(
+                                                        form.data.uma_value,
+                                                        status,
+                                                    ),
+                                                )
                                             }
                                         />
-                                        <InputError
-                                            id="estimated_income_pesos-error"
-                                            message={
-                                                estimatedIncomeError ??
-                                                form.errors
-                                                    .estimated_income_cents
+                                        <AnnualField
+                                            id="fuel_price_per_liter"
+                                            label="Combustible por litro"
+                                            value={
+                                                form.data.fuel_price_per_liter
+                                            }
+                                            status={form.data.fuel_price_status}
+                                            valueError={
+                                                form.errors.fuel_price_per_liter
+                                            }
+                                            statusError={
+                                                form.errors.fuel_price_status
+                                            }
+                                            onValueChange={(value) =>
+                                                setAnnualValue(
+                                                    'fuel_price_per_liter',
+                                                    'fuel_price_status',
+                                                    value,
+                                                )
+                                            }
+                                            onStatusChange={(status) =>
+                                                form.setData(
+                                                    'fuel_price_status',
+                                                    coherentStatus(
+                                                        form.data
+                                                            .fuel_price_per_liter,
+                                                        status,
+                                                    ),
+                                                )
                                             }
                                         />
-                                        {form.data.estimated_income_cents !==
-                                            null && (
-                                            <p className="text-xs text-muted-foreground">
-                                                Se guardarán{' '}
-                                                {form.data.estimated_income_cents.replace(
-                                                    /\B(?=(\d{3})+(?!\d))/g,
-                                                    ',',
-                                                )}{' '}
-                                                centavos (
-                                                {centsToPesos(
-                                                    form.data
-                                                        .estimated_income_cents,
-                                                )}{' '}
-                                                pesos).
-                                            </p>
-                                        )}
-                                    </div>
-                                    <TextField
-                                        id="cut_percentage"
-                                        label="Porcentaje de recorte"
-                                        value={form.data.cut_percentage}
-                                        error={form.errors.cut_percentage}
-                                        onChange={(value) =>
-                                            form.setData(
-                                                'cut_percentage',
-                                                value,
-                                            )
-                                        }
-                                        inputMode="decimal"
-                                    />
-                                    <AnnualField
-                                        id="uma_value"
-                                        label="UMA"
-                                        value={form.data.uma_value}
-                                        status={form.data.uma_status}
-                                        valueError={form.errors.uma_value}
-                                        statusError={form.errors.uma_status}
-                                        onValueChange={(value) =>
-                                            setAnnualValue(
-                                                'uma_value',
-                                                'uma_status',
-                                                value,
-                                            )
-                                        }
-                                        onStatusChange={(status) =>
-                                            form.setData(
-                                                'uma_status',
-                                                coherentStatus(
-                                                    form.data.uma_value,
-                                                    status,
-                                                ),
-                                            )
-                                        }
-                                    />
-                                    <AnnualField
-                                        id="fuel_price_per_liter"
-                                        label="Combustible por litro"
-                                        value={form.data.fuel_price_per_liter}
-                                        status={form.data.fuel_price_status}
-                                        valueError={
-                                            form.errors.fuel_price_per_liter
-                                        }
-                                        statusError={
-                                            form.errors.fuel_price_status
-                                        }
-                                        onValueChange={(value) =>
-                                            setAnnualValue(
-                                                'fuel_price_per_liter',
-                                                'fuel_price_status',
-                                                value,
-                                            )
-                                        }
-                                        onStatusChange={(status) =>
-                                            form.setData(
-                                                'fuel_price_status',
-                                                coherentStatus(
-                                                    form.data
-                                                        .fuel_price_per_liter,
-                                                    status,
-                                                ),
-                                            )
-                                        }
-                                    />
-                                </CardContent>
-                            </Card>
+                                    </CardContent>
+                                </Card>
+                            )}
                         </>
                     )}
 
@@ -614,7 +682,9 @@ export default function OwnRevenueBudgetCreate({ sourceBudgets }: Props) {
                                 ? 'Creando…'
                                 : mode === 'copy'
                                   ? 'Copiar presupuesto'
-                                  : 'Crear presupuesto'}
+                                  : mode === 'import'
+                                    ? 'Crear y cargar XLSX'
+                                    : 'Crear presupuesto'}
                         </Button>
                     </div>
                 </form>

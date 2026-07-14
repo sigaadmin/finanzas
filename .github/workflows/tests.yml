@@ -45,6 +45,9 @@ jobs:
       - name: Install Node Dependencies
         run: npm i
 
+      - name: Frontend Behavior Tests
+        run: npm run test:frontend
+
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
