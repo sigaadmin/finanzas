@@ -9,6 +9,7 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportDecision;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportIssue;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportRow;
@@ -22,8 +23,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
-require_once __DIR__.'/../../../../Fixtures/Finance/OwnRevenue/Imports/OwnRevenueXlsxFixtureFactory.php';
-require_once __DIR__.'/../../../../Unit/Finance/OwnRevenue/Imports/WorkSheetWorkbookParserTest.php';
+require_once __DIR__.'/../../../../Fixtures/Finance/OwnRevenue/Imports/WorkSheetXlsxFixtures.php';
 
 function workSheetAnalysisManager(): User
 {
@@ -143,27 +143,83 @@ test('reanalyzing a work sheet atomically replaces prior staging and issues', fu
         ->and($file->issues()->whereKey($oldIssueIds)->count())->toBe(0);
 });
 
-test('a failed work sheet parse preserves prior staging and records an operational error', function () {
+test('a failed work sheet reanalysis preserves valid staging decisions and one operational error', function () {
     Storage::fake('local');
     $manager = workSheetAnalysisManager();
-    $budget = OwnRevenueBudget::factory()->create();
+    $fiscalYear = ((int) OwnRevenueBudget::query()->max('fiscal_year')) + 1;
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => $fiscalYear]);
+    $activity = $budget->activities()->create(['code' => 'A03-A01', 'name' => 'Investigación']);
+    workSheetAnalysisCog($fiscalYear);
     $contents = 'invalid workbook';
     $file = OwnRevenueImportFile::factory()->create([
         'own_revenue_budget_id' => $budget->id,
         'format' => OwnRevenueImportFormat::WorkSheet,
-        'status' => OwnRevenueImportFileStatus::ParserPending,
+        'status' => OwnRevenueImportFileStatus::Ready,
         'sha256' => hash('sha256', $contents),
+        'budget_updated_at_at_analysis' => $budget->updated_at,
+        'analyzed_at' => now()->subMinute(),
     ]);
     Storage::disk('local')->put($file->storage_path, $contents);
-    $row = OwnRevenueImportRow::factory()->create(['own_revenue_import_file_id' => $file->id]);
-    OwnRevenueImportIssue::factory()->create(['own_revenue_import_file_id' => $file->id, 'own_revenue_import_row_id' => $row->id]);
+    $sourceRow = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'sheet_name' => 'HOJA FINAL',
+        'row_number' => 5,
+        'row_kind' => 'work_sheet_line',
+    ]);
+    $normalizedRow = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'sheet_name' => '__normalized_work_sheet__',
+        'row_number' => 1,
+        'row_kind' => 'work_sheet_normalized_line',
+    ]);
+    $domainIssue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'own_revenue_import_row_id' => $sourceRow->id,
+        'severity' => OwnRevenueImportIssueSeverity::Warning,
+        'code' => 'region.normalized',
+    ]);
+    $decision = OwnRevenueImportDecision::factory()->create([
+        'own_revenue_import_issue_id' => $domainIssue->id,
+        'own_revenue_import_row_id' => $sourceRow->id,
+        'resolved_by' => $manager->id,
+    ]);
+    $validAnalyzedAt = $file->analyzed_at;
+    $validBudgetSnapshot = $file->budget_updated_at_at_analysis;
 
     $result = app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
+    $operationalIssueId = $result->issues()->where('code', 'analysis.failed')->sole()->id;
+    $secondResult = app(AnalyzeOwnRevenueImportFile::class)->handle($result, $manager);
 
-    expect($result->status)->toBe(OwnRevenueImportFileStatus::Failed)
-        ->and($result->analysis_token)->toBeNull()
-        ->and($row->fresh())->not->toBeNull()
-        ->and($result->issues()->sole()->code)->toBe('analysis.failed');
+    expect($secondResult->status)->toBe(OwnRevenueImportFileStatus::Failed)
+        ->and($secondResult->analysis_token)->toBeNull()
+        ->and($secondResult->analyzed_at?->equalTo($validAnalyzedAt))->toBeTrue()
+        ->and($secondResult->budget_updated_at_at_analysis?->equalTo($validBudgetSnapshot))->toBeTrue()
+        ->and($secondResult->rows()->count())->toBe(2)
+        ->and($secondResult->issues()->count())->toBe(2)
+        ->and($sourceRow->fresh())->not->toBeNull()
+        ->and($normalizedRow->fresh())->not->toBeNull()
+        ->and($domainIssue->fresh())->not->toBeNull()
+        ->and($decision->fresh())->not->toBeNull()
+        ->and($secondResult->issues()->where('code', 'analysis.failed')->count())->toBe(1)
+        ->and($secondResult->issues()->where('code', 'analysis.failed')->sole()->id)->toBe($operationalIssueId);
+
+    $fixture = workSheetParserFixture([
+        5 => ['A' => $activity->code.' - '.$activity->name, 'B' => 'Papelería', 'C' => '21101', 'D' => '02-001', 'E' => 'Felipe Carrillo Puerto', 'F' => '1', ...workSheetMonths('1'), 'S' => '1'],
+    ]);
+    $validContents = file_get_contents($fixture);
+    expect($validContents)->not->toBeFalse();
+    Storage::disk('local')->put($file->storage_path, $validContents);
+    $secondResult->update(['sha256' => hash('sha256', $validContents)]);
+
+    $successfulResult = app(AnalyzeOwnRevenueImportFile::class)->handle($secondResult->fresh(), $manager);
+
+    expect($successfulResult->status)->toBe(OwnRevenueImportFileStatus::Ready)
+        ->and($sourceRow->fresh())->toBeNull()
+        ->and($normalizedRow->fresh())->toBeNull()
+        ->and($domainIssue->fresh())->toBeNull()
+        ->and($decision->fresh())->toBeNull()
+        ->and($successfulResult->issues()->where('code', 'analysis.failed')->count())->toBe(0)
+        ->and($successfulResult->rows()->where('row_kind', 'work_sheet_normalized_line')->count())->toBe(1);
 });
 
 test('a stale work sheet attempt cannot replace newer staging or file ownership', function () {

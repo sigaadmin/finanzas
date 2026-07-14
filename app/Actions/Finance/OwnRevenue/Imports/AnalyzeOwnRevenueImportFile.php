@@ -104,18 +104,21 @@ class AnalyzeOwnRevenueImportFile
             return DB::transaction(function () use ($file, $exception, $analysisToken, $format): OwnRevenueImportFile {
                 $lockedFile = OwnRevenueImportFile::query()->lockForUpdate()->findOrFail($file->id);
                 $this->ensureActiveAttempt($lockedFile, $analysisToken, $format);
-                $lockedFile->issues()->delete();
-                $lockedFile->issues()->create([
-                    'severity' => OwnRevenueImportIssueSeverity::Error,
-                    'code' => 'analysis.failed',
-                    'field' => null,
-                    'message' => 'No fue posible analizar el archivo XLSX.',
-                    'context' => ['exception' => $exception->getMessage()],
-                ]);
+                $lockedFile->issues()->updateOrCreate(
+                    [
+                        'own_revenue_import_row_id' => null,
+                        'code' => 'analysis.failed',
+                    ],
+                    [
+                        'severity' => OwnRevenueImportIssueSeverity::Error,
+                        'field' => null,
+                        'message' => 'No fue posible analizar el archivo XLSX.',
+                        'context' => ['exception' => $exception->getMessage()],
+                    ],
+                );
                 $lockedFile->update([
                     'status' => OwnRevenueImportFileStatus::Failed,
                     'analysis_token' => null,
-                    'analyzed_at' => now(),
                 ]);
 
                 return $lockedFile->refresh();
