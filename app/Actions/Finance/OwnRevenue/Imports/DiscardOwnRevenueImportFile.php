@@ -27,7 +27,10 @@ class DiscardOwnRevenueImportFile
                 ]);
             }
 
-            $lockedFile->update(['status' => OwnRevenueImportFileStatus::Discarded]);
+            $lockedFile->update([
+                'status' => OwnRevenueImportFileStatus::Discarded,
+                'analysis_token' => null,
+            ]);
 
             return $lockedFile->refresh();
         }, attempts: 3);

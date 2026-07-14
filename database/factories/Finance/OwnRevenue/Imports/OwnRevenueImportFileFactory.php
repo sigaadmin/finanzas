@@ -37,6 +37,7 @@ class OwnRevenueImportFileFactory extends Factory
             'sha256' => fake()->unique()->sha256(),
             'version_number' => 1,
             'status' => OwnRevenueImportFileStatus::Uploaded,
+            'analysis_token' => null,
             'detection_confidence' => 100,
             'detection_evidence' => [],
             'budget_updated_at_at_analysis' => null,

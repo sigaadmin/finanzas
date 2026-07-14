@@ -43,6 +43,7 @@ class AssignOwnRevenueImportFormat
                 'status' => $format === OwnRevenueImportFormat::Abpre
                     ? OwnRevenueImportFileStatus::Uploaded
                     : OwnRevenueImportFileStatus::ParserPending,
+                'analysis_token' => null,
             ]);
 
             return $lockedFile->refresh();

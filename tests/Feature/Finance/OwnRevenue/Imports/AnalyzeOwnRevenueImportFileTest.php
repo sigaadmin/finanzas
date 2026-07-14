@@ -1,12 +1,16 @@
 <?php
 
 use App\Actions\Finance\OwnRevenue\Imports\AnalyzeOwnRevenueImportFile;
+use App\Actions\Finance\OwnRevenue\Imports\AssignOwnRevenueImportFormat;
+use App\Actions\Finance\OwnRevenue\Imports\DiscardOwnRevenueImportFile;
 use App\Actions\Finance\OwnRevenue\Imports\StartOwnRevenueImportSession;
 use App\Actions\Finance\OwnRevenue\Imports\UploadOwnRevenueImportFile;
 use App\Data\Finance\OwnRevenue\Imports\AbpreAnalysis;
+use App\Data\Finance\OwnRevenue\Imports\ImportIssueData;
 use App\Data\Finance\OwnRevenue\Imports\XlsxWorkbook;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportIssueSeverity;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
@@ -21,6 +25,7 @@ use App\Services\Finance\OwnRevenue\Imports\AbpreWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 require_once __DIR__.'/../../../../Fixtures/Finance/OwnRevenue/Imports/OwnRevenueXlsxFixtureFactory.php';
@@ -63,6 +68,7 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
     app(AnalyzeOwnRevenueImportFile::class)->handle($file, $manager);
 
     expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::NeedsCorrection)
+        ->and($file->fresh()->analysis_token)->toBeNull()
         ->and($file->rows()->count())->toBeGreaterThan(0)
         ->and($file->issues()->where('severity', 'error')->count())->toBeGreaterThan(0)
         ->and(OwnRevenueAbpreLine::query()->count())->toBe(0);
@@ -71,6 +77,30 @@ test('analysis replaces staging and never creates confirmed ABPRE lines', functi
     app(AnalyzeOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
 
     expect($file->rows()->count())->toBe($rowCount);
+});
+
+test('failed analysis clears attempt ownership', function () {
+    Storage::fake('local');
+    $manager = analyzeImportUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $contents = 'failed analysis workbook';
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
+        'sha256' => hash('sha256', $contents),
+    ]);
+    Storage::disk('local')->put($file->storage_path, $contents);
+    $reader = Mockery::mock(XlsxWorkbookReader::class);
+    $reader->shouldReceive('read')->once()->andReturn(new XlsxWorkbook([]));
+    $parser = Mockery::mock(AbpreWorkbookParser::class);
+    $parser->shouldReceive('parse')->once()->andThrow(new RuntimeException('Controlled parser failure'));
+
+    $result = (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager);
+
+    expect($result->status)->toBe(OwnRevenueImportFileStatus::Failed)
+        ->and($result->analysis_token)->toBeNull()
+        ->and($result->issues()->sole()->code)->toBe('analysis.failed');
 });
 
 test('final analysis writes preserve a file confirmed after parsing started', function (string $outcome) {
@@ -133,4 +163,124 @@ test('final analysis writes preserve a file confirmed after parsing started', fu
 })->with([
     'success persistence' => 'success',
     'failure persistence' => 'failure',
+]);
+
+test('stale analysis attempts cannot overwrite concurrent file state', function (string $mutation, string $outcome) {
+    Storage::fake('local');
+    $manager = analyzeImportUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $contents = 'overlapping analysis workbook';
+    $file = OwnRevenueImportFile::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'format' => OwnRevenueImportFormat::Abpre,
+        'status' => OwnRevenueImportFileStatus::Uploaded,
+        'sha256' => hash('sha256', $contents),
+    ]);
+    Storage::disk('local')->put($file->storage_path, $contents);
+    $row = OwnRevenueImportRow::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+    ]);
+    $issue = OwnRevenueImportIssue::factory()->create([
+        'own_revenue_import_file_id' => $file->id,
+        'own_revenue_import_row_id' => $row->id,
+        'code' => 'seed.issue',
+    ]);
+    $decision = OwnRevenueImportDecision::factory()->create([
+        'own_revenue_import_issue_id' => $issue->id,
+        'own_revenue_import_row_id' => $row->id,
+        'resolved_by' => $manager->id,
+    ]);
+    $reader = Mockery::mock(XlsxWorkbookReader::class);
+    $reader->shouldReceive('read')->once()->andReturn(new XlsxWorkbook([]));
+    $parser = Mockery::mock(AbpreWorkbookParser::class);
+    $replacementToken = null;
+    $parser->shouldReceive('parse')->once()->andReturnUsing(
+        function () use ($mutation, $outcome, $file, $manager, &$replacementToken): AbpreAnalysis {
+            $activeAttempt = $file->fresh();
+            expect($activeAttempt->status)->toBe(OwnRevenueImportFileStatus::Analyzing)
+                ->and(Str::isUuid($activeAttempt->analysis_token))->toBeTrue();
+
+            if ($mutation === 'discard') {
+                app(DiscardOwnRevenueImportFile::class)->handle($file->fresh(), $manager);
+            } elseif ($mutation === 'format') {
+                app(AssignOwnRevenueImportFormat::class)->handle(
+                    $file->fresh(),
+                    $manager,
+                    OwnRevenueImportFormat::Fuel,
+                );
+            } else {
+                $nextReader = Mockery::mock(XlsxWorkbookReader::class);
+                $nextReader->shouldReceive('read')->once()->andReturn(new XlsxWorkbook([]));
+                $nextParser = Mockery::mock(AbpreWorkbookParser::class);
+                $nextParser->shouldReceive('parse')->once()->andReturnUsing(
+                    function () use ($file, $activeAttempt, &$replacementToken): never {
+                        $secondAttempt = $file->fresh();
+                        $replacementToken = $secondAttempt->analysis_token;
+
+                        expect($secondAttempt->status)->toBe(OwnRevenueImportFileStatus::Analyzing)
+                            ->and(Str::isUuid($replacementToken))->toBeTrue()
+                            ->and($replacementToken)->not->toBe($activeAttempt->analysis_token);
+
+                        throw ValidationException::withMessages([
+                            'file' => 'Controlled pause after claiming the second attempt.',
+                        ]);
+                    },
+                );
+
+                expect(fn () => (new AnalyzeOwnRevenueImportFile($nextReader, $nextParser))->handle($file->fresh(), $manager))
+                    ->toThrow(ValidationException::class);
+            }
+
+            if ($outcome === 'failure') {
+                throw new RuntimeException('Controlled stale attempt failure');
+            }
+
+            return new AbpreAnalysis(
+                [],
+                [],
+                [new ImportIssueData(
+                    OwnRevenueImportIssueSeverity::Info,
+                    'first.attempt',
+                    null,
+                    'Resultado obsoleto del primer intento.',
+                )],
+                [],
+            );
+        },
+    );
+
+    expect(fn () => (new AnalyzeOwnRevenueImportFile($reader, $parser))->handle($file, $manager))
+        ->toThrow(ValidationException::class);
+
+    $file->refresh();
+
+    if ($mutation === 'discard') {
+        expect($file->status)->toBe(OwnRevenueImportFileStatus::Discarded)
+            ->and($file->analysis_token)->toBeNull()
+            ->and($file->format)->toBe(OwnRevenueImportFormat::Abpre)
+            ->and($row->fresh())->not->toBeNull()
+            ->and($issue->fresh()?->code)->toBe('seed.issue')
+            ->and($decision->fresh())->not->toBeNull();
+    } elseif ($mutation === 'format') {
+        expect($file->status)->toBe(OwnRevenueImportFileStatus::ParserPending)
+            ->and($file->analysis_token)->toBeNull()
+            ->and($file->format)->toBe(OwnRevenueImportFormat::Fuel)
+            ->and($row->fresh())->not->toBeNull()
+            ->and($issue->fresh()?->code)->toBe('seed.issue')
+            ->and($decision->fresh())->not->toBeNull();
+    } else {
+        expect($file->status)->toBe(OwnRevenueImportFileStatus::Analyzing)
+            ->and($file->analysis_token)->toBe($replacementToken)
+            ->and($file->format)->toBe(OwnRevenueImportFormat::Abpre)
+            ->and($row->fresh())->not->toBeNull()
+            ->and($issue->fresh()?->code)->toBe('seed.issue')
+            ->and($decision->fresh())->not->toBeNull();
+    }
+})->with([
+    'discard before successful completion' => ['discard', 'success'],
+    'discard before failed completion' => ['discard', 'failure'],
+    'format before successful completion' => ['format', 'success'],
+    'format before failed completion' => ['format', 'failure'],
+    'new attempt before successful completion' => ['overlap', 'success'],
+    'new attempt before failed completion' => ['overlap', 'failure'],
 ]);
