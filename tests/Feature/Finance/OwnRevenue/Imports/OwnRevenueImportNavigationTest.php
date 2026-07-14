@@ -520,6 +520,7 @@ test('frontend import workspace honors navigation route money and permission con
     $workspace = file_get_contents(resource_path('js/pages/finance/own-revenue/imports/show.tsx'));
     $slot = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-file-slot.tsx'));
     $issues = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-issue-list.tsx'));
+    $frontendState = file_get_contents(resource_path('js/components/finance/own-revenue/imports/import-workspace-state.js'));
     $preview = file_get_contents(resource_path('js/components/finance/own-revenue/imports/abpre-preview.tsx'));
     $types = file_get_contents(resource_path('js/types/finance-own-revenue-imports.ts'));
     $controller = file_get_contents(app_path('Http/Controllers/Finance/OwnRevenueImportController.php'));
@@ -559,8 +560,9 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('Ver incidencias')
         ->toContain('No se encontraron problemas')
         ->toContain('preserveState')
-        ->toContain('issues_page')
-        ->toContain('import_file_id')
+        ->toContain('importIssueDialogOpenAction')
+        ->toContain('importIssueDialogState')
+        ->toContain('importIssuePageQuery')
         ->and($preview)
         ->toContain('preview_page')
         ->toContain('formatCents')
@@ -593,9 +595,7 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('uploadQueue')
         ->toContain('filesToQueue')
         ->toContain('onFinish')
-        ->toContain("query.delete('issues_page')")
-        ->toContain("query.delete('preview_page')")
-        ->toContain("query.delete('decisions_page')")
+        ->toContain('selectImportFileQuery')
         ->toContain('file.can_reclassify')
         ->toContain('mutationFeedback.activeFileId')
         ->toContain('role="alert"')
@@ -608,6 +608,11 @@ test('frontend import workspace honors navigation route money and permission con
         ->toContain('@/routes/finance/own-revenue/budgets/imports/files')
         ->not->toContain('Parser pendiente')
         ->not->toContain('files[0]')
+        ->and($frontendState)
+        ->toContain('export function selectImportFileQuery')
+        ->toContain('export function importIssuePageQuery')
+        ->toContain('export function importIssueDialogState')
+        ->toContain('export function importIssueDialogOpenAction')
         ->and($workspace)
         ->toContain('slot.has_confirmed')
         ->toContain('slot.has_parser_pending')

@@ -38,6 +38,27 @@ export function importFilePresentation(input: {
     canViewPreview: boolean;
 };
 
+export function selectImportFileQuery(
+    currentUrl: string,
+    fileId: number,
+): Record<string, string>;
+
+export function importIssuePageQuery(
+    currentUrl: string,
+    fileId: number,
+    page?: number,
+): Record<string, string>;
+
+export function importIssueDialogState(
+    current: { isOpen: boolean } | undefined,
+    isOpen: boolean,
+): { isOpen: boolean };
+
+export function importIssueDialogOpenAction(
+    selectedFileId: number | null,
+    fileId: number,
+): { isOpen: boolean; shouldLoad: boolean };
+
 export function startImportMutation(
     current: ImportMutationFeedback,
     fileId: number,

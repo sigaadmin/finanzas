@@ -24,12 +24,50 @@ export function importFilePresentation({
     const isAbpre = format === 'abpre';
 
     return {
-        label: importFileStatusLabels[status],
+        label:
+            format === null
+                ? 'Pendiente de clasificar'
+                : importFileStatusLabels[status],
         canAnalyze:
             isAbpre &&
             ['uploaded', 'needs_correction', 'failed'].includes(status),
         canViewIssues: analyzed || issueCount > 0,
         canViewPreview: isAbpre && analyzed,
+    };
+}
+
+function queryFromUrl(currentUrl) {
+    return new URLSearchParams(currentUrl.split('?')[1] ?? '');
+}
+
+export function selectImportFileQuery(currentUrl, fileId) {
+    const query = queryFromUrl(currentUrl);
+    query.set('import_file_id', String(fileId));
+    query.delete('issues_page');
+    query.delete('preview_page');
+    query.delete('decisions_page');
+
+    return Object.fromEntries(query.entries());
+}
+
+export function importIssuePageQuery(currentUrl, fileId, page = 1) {
+    const query = queryFromUrl(currentUrl);
+    query.set('import_file_id', String(fileId));
+    query.set('issues_page', String(page));
+
+    return Object.fromEntries(query.entries());
+}
+
+export function importIssueDialogState(_current, isOpen) {
+    return { isOpen };
+}
+
+export function importIssueDialogOpenAction(selectedFileId, fileId) {
+    const hasSelectedFile = selectedFileId === fileId;
+
+    return {
+        isOpen: hasSelectedFile,
+        shouldLoad: !hasSelectedFile,
     };
 }
 

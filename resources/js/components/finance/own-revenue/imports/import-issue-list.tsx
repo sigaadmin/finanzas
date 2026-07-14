@@ -1,6 +1,11 @@
 import { Link, router, usePage } from '@inertiajs/react';
 import { AlertCircle, Info, ListChecks, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
+import {
+    importIssueDialogOpenAction,
+    importIssueDialogState,
+    importIssuePageQuery,
+} from '@/components/finance/own-revenue/imports/import-workspace-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,18 +47,6 @@ const severityLabels = {
     info: 'Avisos',
 };
 
-function queryFor(
-    currentUrl: string,
-    fileId: number,
-    page = 1,
-): Record<string, string> {
-    const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
-    query.set('import_file_id', String(fileId));
-    query.set('issues_page', String(page));
-
-    return Object.fromEntries(query.entries());
-}
-
 function IssueIcon({ issue }: { issue: OwnRevenueImportIssue }) {
     if (issue.severity === 'error') {
         return <AlertCircle className="mt-0.5 size-4 text-destructive" />;
@@ -74,25 +67,36 @@ export default function ImportIssueList({
     selectedFile,
 }: Props) {
     const currentUrl = usePage().url;
-    const [isOpen, setIsOpen] = useState(false);
+    const [dialogState, setDialogState] = useState(() =>
+        importIssueDialogState(undefined, false),
+    );
     const issues = selectedFile?.id === file.id ? selectedFile.issues : null;
 
+    const setDialogOpen = (isOpen: boolean): void => {
+        setDialogState((current) => importIssueDialogState(current, isOpen));
+    };
+
     const openIssues = (): void => {
-        if (issues) {
-            setIsOpen(true);
+        const action = importIssueDialogOpenAction(
+            selectedFile?.id ?? null,
+            file.id,
+        );
+
+        if (!action.shouldLoad) {
+            setDialogOpen(action.isOpen);
 
             return;
         }
 
-        router.get(show(budgetId), queryFor(currentUrl, file.id), {
+        router.get(show(budgetId), importIssuePageQuery(currentUrl, file.id), {
             preserveScroll: true,
             preserveState: true,
-            onSuccess: () => setIsOpen(true),
+            onSuccess: () => setDialogOpen(true),
         });
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={dialogState.isOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
                 <Button
                     type="button"
@@ -206,7 +210,7 @@ export default function ImportIssueList({
                                 <Button asChild size="sm" variant="outline">
                                     <Link
                                         href={show(budgetId, {
-                                            query: queryFor(
+                                            query: importIssuePageQuery(
                                                 currentUrl,
                                                 file.id,
                                                 issues.current_page - 1,
@@ -231,7 +235,7 @@ export default function ImportIssueList({
                                 <Button asChild size="sm" variant="outline">
                                     <Link
                                         href={show(budgetId, {
-                                            query: queryFor(
+                                            query: importIssuePageQuery(
                                                 currentUrl,
                                                 file.id,
                                                 issues.current_page + 1,

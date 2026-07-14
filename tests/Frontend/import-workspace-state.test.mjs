@@ -3,10 +3,14 @@ import test from 'node:test';
 import {
     failImportMutation,
     finishImportMutation,
+    importIssueDialogState,
+    importIssueDialogOpenAction,
+    importIssuePageQuery,
     importFilePresentation,
     importDecisionRememberKey,
     initialImportMutation,
     resolveFailedUpload,
+    selectImportFileQuery,
     startImportMutation,
     takeNextUpload,
 } from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.js';
@@ -90,6 +94,74 @@ test('file statuses use operational language and expose only available ABPRE act
             canViewPreview: false,
         },
     );
+});
+
+test('unclassified uploads stay pending classification without changing ABPRE language', () => {
+    assert.equal(
+        importFilePresentation({
+            status: 'uploaded',
+            format: null,
+            analyzed: false,
+            issueCount: 0,
+        }).label,
+        'Pendiente de clasificar',
+    );
+    assert.equal(
+        importFilePresentation({
+            status: 'uploaded',
+            format: 'abpre',
+            analyzed: false,
+            issueCount: 0,
+        }).label,
+        'Listo para analizar',
+    );
+});
+
+test('issue dialog queries preserve context while file changes clear stale pages', () => {
+    assert.deepEqual(
+        importIssuePageQuery(
+            '/imports?unassigned_page=2&abpre_versions_page=3&filter=active',
+            41,
+            4,
+        ),
+        {
+            unassigned_page: '2',
+            abpre_versions_page: '3',
+            filter: 'active',
+            import_file_id: '41',
+            issues_page: '4',
+        },
+    );
+
+    assert.deepEqual(
+        selectImportFileQuery(
+            '/imports?filter=active&import_file_id=41&issues_page=4&preview_page=2&decisions_page=3',
+            99,
+        ),
+        {
+            filter: 'active',
+            import_file_id: '99',
+        },
+    );
+});
+
+test('issue dialog may close and reopen for an already selected file', () => {
+    assert.deepEqual(importIssueDialogOpenAction(41, 41), {
+        isOpen: true,
+        shouldLoad: false,
+    });
+    assert.deepEqual(importIssueDialogOpenAction(null, 41), {
+        isOpen: false,
+        shouldLoad: true,
+    });
+
+    const opened = importIssueDialogState(undefined, true);
+    const closed = importIssueDialogState(opened, false);
+    const reopened = importIssueDialogState(closed, true);
+
+    assert.deepEqual(opened, { isOpen: true });
+    assert.deepEqual(closed, { isOpen: false });
+    assert.deepEqual(reopened, { isOpen: true });
 });
 
 test('mutation feedback clears stale errors and exposes validation failures', () => {

@@ -19,6 +19,7 @@ import {
     importFilePresentation,
     initialImportMutation,
     resolveFailedUpload,
+    selectImportFileQuery,
     startImportMutation,
     takeNextUpload,
 } from '@/components/finance/own-revenue/imports/import-workspace-state';
@@ -71,19 +72,6 @@ function queryWith(
 ): Record<string, string> {
     const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
     query.set(name, String(value));
-
-    return Object.fromEntries(query.entries());
-}
-
-function fileSelectionQuery(
-    currentUrl: string,
-    fileId: number,
-): Record<string, string> {
-    const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
-    query.set('import_file_id', String(fileId));
-    query.delete('issues_page');
-    query.delete('preview_page');
-    query.delete('decisions_page');
 
     return Object.fromEntries(query.entries());
 }
@@ -433,7 +421,7 @@ export default function ImportFileSlot({
                                         <div className="min-w-0">
                                             <Link
                                                 href={show(budgetId, {
-                                                    query: fileSelectionQuery(
+                                                    query: selectImportFileQuery(
                                                         currentUrl,
                                                         file.id,
                                                     ),
