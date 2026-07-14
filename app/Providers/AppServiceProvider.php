@@ -35,7 +35,13 @@ class AppServiceProvider extends ServiceProvider
     {
         Date::use(CarbonImmutable::class);
 
-        Gate::before(fn (User $user): ?bool => $user->isOwner() ? true : null);
+        Gate::before(function (User $user, string $ability): ?bool {
+            if (! $user->isOwner()) {
+                return null;
+            }
+
+            return in_array($ability, ['manageImports', 'confirmImports'], true) ? null : true;
+        });
 
         Gate::define('operate-finance', fn ($user): bool => $user->canOperateFinance());
         Gate::define('manage-expense-classifications', fn (User $user): bool => $user->canManageExpenseClassifications());
