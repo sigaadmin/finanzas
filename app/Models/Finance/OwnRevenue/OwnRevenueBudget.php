@@ -8,6 +8,7 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\User;
 use Database\Factories\Finance\OwnRevenue\OwnRevenueBudgetFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -126,5 +127,11 @@ class OwnRevenueBudget extends Model
     public function abpreLines(): HasMany
     {
         return $this->hasMany(OwnRevenueAbpreLine::class);
+    }
+
+    /** @return HasMany<OwnRevenueWorkSheetLine, $this> */
+    public function workSheetLines(): HasMany
+    {
+        return $this->hasMany(OwnRevenueWorkSheetLine::class);
     }
 }
