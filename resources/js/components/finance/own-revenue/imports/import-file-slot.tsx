@@ -12,9 +12,11 @@ import {
 import { useRef, useState } from 'react';
 import OwnRevenueImportAnalysisController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportAnalysisController';
 import OwnRevenueImportFileController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportFileController';
+import ImportIssueList from '@/components/finance/own-revenue/imports/import-issue-list';
 import {
     failImportMutation,
     finishImportMutation,
+    importFilePresentation,
     initialImportMutation,
     resolveFailedUpload,
     startImportMutation,
@@ -31,17 +33,19 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { show } from '@/routes/finance/own-revenue/budgets/imports';
+import { preview } from '@/routes/finance/own-revenue/budgets/imports/files';
 import type {
     OwnRevenueImportFile,
     OwnRevenueImportFormat,
     OwnRevenueImportPermissions,
+    OwnRevenueSelectedImportFile,
     OwnRevenueImportSlot,
 } from '@/types/finance-own-revenue-imports';
 
 type Props = {
     budgetId: number;
     slot: OwnRevenueImportSlot;
-    selectedFileId: number | null;
+    selectedFile: OwnRevenueSelectedImportFile | null;
     permissions: OwnRevenueImportPermissions;
 };
 
@@ -58,18 +62,6 @@ type UploadQueueEntry = {
 type FailedUpload = {
     file: File;
     message: string;
-};
-
-const statusLabels: Record<OwnRevenueImportFile['status'], string> = {
-    uploaded: 'Cargado',
-    analyzing: 'Analizando',
-    needs_correction: 'Requiere corrección',
-    ready: 'Listo',
-    confirmed: 'Confirmado',
-    replaced: 'Reemplazado',
-    discarded: 'Descartado',
-    failed: 'Falló',
-    parser_pending: 'Parser pendiente',
 };
 
 function queryWith(
@@ -118,7 +110,7 @@ function canDiscard(file: OwnRevenueImportFile): boolean {
 export default function ImportFileSlot({
     budgetId,
     slot,
-    selectedFileId,
+    selectedFile,
     permissions,
 }: Props) {
     const currentUrl = usePage().url;
@@ -283,7 +275,9 @@ export default function ImportFileSlot({
                     {slot.has_confirmed ? (
                         <Badge className="bg-emerald-600">Confirmado</Badge>
                     ) : slot.has_parser_pending ? (
-                        <Badge variant="outline">Parser pendiente</Badge>
+                        <Badge variant="outline">
+                            Revisión automática aún no disponible
+                        </Badge>
                     ) : slot.is_missing && slot.versions_total > 0 ? (
                         <Badge variant="secondary">Sólo auditoría</Badge>
                     ) : (
@@ -419,197 +413,232 @@ export default function ImportFileSlot({
                             Este formato todavía no tiene historial.
                         </p>
                     ) : (
-                        slot.versions.map((file) => (
-                            <article
-                                key={file.id}
-                                className={`grid gap-2 rounded-lg border p-3 ${selectedFileId === file.id ? 'border-primary bg-primary/5' : ''}`}
-                            >
-                                <div className="flex min-w-0 items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <Link
-                                            href={show(budgetId, {
-                                                query: fileSelectionQuery(
-                                                    currentUrl,
-                                                    file.id,
-                                                ),
-                                            })}
-                                            preserveScroll
-                                            className="block truncate text-sm font-medium hover:underline"
-                                        >
-                                            {file.name}
-                                        </Link>
-                                        <p className="text-xs text-muted-foreground">
-                                            v{file.version} ·{' '}
-                                            {formatBytes(file.size)}
-                                            {file.year ? ` · ${file.year}` : ''}
-                                        </p>
-                                    </div>
-                                    <Badge variant="outline">
-                                        {statusLabels[file.status]}
-                                    </Badge>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 text-xs">
-                                    {file.status === 'analyzing' && (
-                                        <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
-                                            <LoaderCircle className="size-3 animate-spin" />{' '}
-                                            Procesando
-                                        </span>
-                                    )}
-                                    {file.issue_counts.error > 0 && (
-                                        <span className="flex items-center gap-1 text-destructive">
-                                            <AlertCircle className="size-3" />{' '}
-                                            {file.issue_counts.error} errores
-                                        </span>
-                                    )}
-                                    {file.status === 'ready' && (
-                                        <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
-                                            <CheckCircle2 className="size-3" />{' '}
-                                            Listo para confirmar
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                    {permissions.download && (
-                                        <Button
-                                            asChild
-                                            size="sm"
-                                            variant="ghost"
-                                        >
-                                            <a
-                                                href={
-                                                    OwnRevenueImportFileController.download(
-                                                        {
-                                                            budget: budgetId,
-                                                            importFile: file.id,
-                                                        },
-                                                    ).url
-                                                }
+                        slot.versions.map((file) => {
+                            const presentation = importFilePresentation({
+                                status: file.status,
+                                format: file.format,
+                                analyzed: file.analyzed,
+                                issueCount:
+                                    file.issue_counts.error +
+                                    file.issue_counts.warning +
+                                    file.issue_counts.info,
+                            });
+
+                            return (
+                                <article
+                                    key={file.id}
+                                    className={`grid gap-2 rounded-lg border p-3 ${selectedFile?.id === file.id ? 'border-primary bg-primary/5' : ''}`}
+                                >
+                                    <div className="flex min-w-0 items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <Link
+                                                href={show(budgetId, {
+                                                    query: fileSelectionQuery(
+                                                        currentUrl,
+                                                        file.id,
+                                                    ),
+                                                })}
+                                                preserveScroll
+                                                className="block truncate text-sm font-medium hover:underline"
                                             >
-                                                <Download className="size-3" />{' '}
-                                                Descargar
-                                            </a>
-                                        </Button>
-                                    )}
-                                    {permissions.manage &&
-                                        file.format === 'abpre' &&
-                                        [
-                                            'uploaded',
-                                            'needs_correction',
-                                            'failed',
-                                        ].includes(file.status) && (
+                                                {file.name}
+                                            </Link>
+                                            <p className="text-xs text-muted-foreground">
+                                                v{file.version} ·{' '}
+                                                {formatBytes(file.size)}
+                                                {file.year
+                                                    ? ` · ${file.year}`
+                                                    : ''}
+                                            </p>
+                                        </div>
+                                        <Badge variant="outline">
+                                            {presentation.label}
+                                        </Badge>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                                        {file.status === 'analyzing' && (
+                                            <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+                                                <LoaderCircle className="size-3 animate-spin" />{' '}
+                                                Procesando
+                                            </span>
+                                        )}
+                                        {file.issue_counts.error > 0 && (
+                                            <span className="flex items-center gap-1 text-destructive">
+                                                <AlertCircle className="size-3" />{' '}
+                                                {file.issue_counts.error}{' '}
+                                                errores
+                                            </span>
+                                        )}
+                                        {file.status === 'ready' && (
+                                            <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300">
+                                                <CheckCircle2 className="size-3" />{' '}
+                                                Listo para confirmar
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {permissions.download && (
                                             <Button
-                                                type="button"
+                                                asChild
                                                 size="sm"
-                                                variant="outline"
-                                                disabled={
-                                                    mutationFeedback.activeFileId !==
-                                                    null
-                                                }
-                                                onClick={() => {
-                                                    setMutationFeedback(
-                                                        (current) =>
-                                                            startImportMutation(
-                                                                current,
-                                                                file.id,
-                                                            ),
-                                                    );
-                                                    router.post(
-                                                        OwnRevenueImportAnalysisController(
+                                                variant="ghost"
+                                            >
+                                                <a
+                                                    href={
+                                                        OwnRevenueImportFileController.download(
                                                             {
                                                                 budget: budgetId,
                                                                 importFile:
                                                                     file.id,
                                                             },
-                                                        ),
-                                                        {},
-                                                        mutationOptions(),
-                                                    );
-                                                }}
-                                            >
-                                                <Search className="size-3" />{' '}
-                                                Analizar ABPRE
+                                                        ).url
+                                                    }
+                                                >
+                                                    <Download className="size-3" />{' '}
+                                                    Descargar
+                                                </a>
                                             </Button>
                                         )}
-                                    {permissions.manage &&
-                                        file.can_reclassify && (
-                                            <select
-                                                aria-label={`Corregir tipo de ${file.name}`}
-                                                value={file.format ?? ''}
-                                                disabled={
-                                                    mutationFeedback.activeFileId !==
-                                                    null
-                                                }
-                                                onChange={(event) =>
-                                                    assignFormat(
-                                                        file,
-                                                        event.target
-                                                            .value as OwnRevenueImportFormat,
-                                                    )
-                                                }
-                                                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                                            >
-                                                <option value="" disabled>
-                                                    Corregir tipo
-                                                </option>
-                                                <option value="abpre">
-                                                    ABPRE
-                                                </option>
-                                                <option value="work_sheet">
-                                                    Hoja de trabajo
-                                                </option>
-                                                <option value="technical_sheet">
-                                                    Ficha técnica
-                                                </option>
-                                                <option value="fuel">
-                                                    Combustible
-                                                </option>
-                                                <option value="travel_expenses">
-                                                    Viáticos
-                                                </option>
-                                            </select>
-                                        )}
-                                    {permissions.manage && canDiscard(file) && (
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="ghost"
-                                            disabled={
-                                                mutationFeedback.activeFileId !==
-                                                null
-                                            }
-                                            onClick={() => {
-                                                if (
-                                                    window.confirm(
-                                                        `Descartar la versión ${file.version} de ${file.name}?`,
-                                                    )
-                                                ) {
-                                                    setMutationFeedback(
-                                                        (current) =>
-                                                            startImportMutation(
-                                                                current,
-                                                                file.id,
-                                                            ),
-                                                    );
-                                                    router.delete(
-                                                        OwnRevenueImportFileController.destroy(
-                                                            {
-                                                                budget: budgetId,
-                                                                importFile:
+                                        {permissions.manage &&
+                                            presentation.canAnalyze && (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    disabled={
+                                                        mutationFeedback.activeFileId !==
+                                                        null
+                                                    }
+                                                    onClick={() => {
+                                                        setMutationFeedback(
+                                                            (current) =>
+                                                                startImportMutation(
+                                                                    current,
                                                                     file.id,
-                                                            },
-                                                        ),
-                                                        mutationOptions(),
-                                                    );
-                                                }
-                                            }}
-                                        >
-                                            <Trash2 className="size-3" />{' '}
-                                            Descartar
-                                        </Button>
-                                    )}
-                                </div>
-                            </article>
-                        ))
+                                                                ),
+                                                        );
+                                                        router.post(
+                                                            OwnRevenueImportAnalysisController(
+                                                                {
+                                                                    budget: budgetId,
+                                                                    importFile:
+                                                                        file.id,
+                                                                },
+                                                            ),
+                                                            {},
+                                                            mutationOptions(),
+                                                        );
+                                                    }}
+                                                >
+                                                    <Search className="size-3" />{' '}
+                                                    Analizar
+                                                </Button>
+                                            )}
+                                        {presentation.canViewIssues && (
+                                            <ImportIssueList
+                                                budgetId={budgetId}
+                                                file={file}
+                                                selectedFile={selectedFile}
+                                            />
+                                        )}
+                                        {presentation.canViewPreview && (
+                                            <Button
+                                                asChild
+                                                size="sm"
+                                                variant="outline"
+                                            >
+                                                <Link
+                                                    href={preview({
+                                                        budget: budgetId,
+                                                        importFile: file.id,
+                                                    })}
+                                                >
+                                                    Ver vista previa
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {permissions.manage &&
+                                            file.can_reclassify && (
+                                                <select
+                                                    aria-label={`Corregir tipo de ${file.name}`}
+                                                    value={file.format ?? ''}
+                                                    disabled={
+                                                        mutationFeedback.activeFileId !==
+                                                        null
+                                                    }
+                                                    onChange={(event) =>
+                                                        assignFormat(
+                                                            file,
+                                                            event.target
+                                                                .value as OwnRevenueImportFormat,
+                                                        )
+                                                    }
+                                                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                                                >
+                                                    <option value="" disabled>
+                                                        Corregir tipo
+                                                    </option>
+                                                    <option value="abpre">
+                                                        ABPRE
+                                                    </option>
+                                                    <option value="work_sheet">
+                                                        Hoja de trabajo
+                                                    </option>
+                                                    <option value="technical_sheet">
+                                                        Ficha técnica
+                                                    </option>
+                                                    <option value="fuel">
+                                                        Combustible
+                                                    </option>
+                                                    <option value="travel_expenses">
+                                                        Viáticos
+                                                    </option>
+                                                </select>
+                                            )}
+                                        {permissions.manage &&
+                                            canDiscard(file) && (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    disabled={
+                                                        mutationFeedback.activeFileId !==
+                                                        null
+                                                    }
+                                                    onClick={() => {
+                                                        if (
+                                                            window.confirm(
+                                                                `Descartar la versión ${file.version} de ${file.name}?`,
+                                                            )
+                                                        ) {
+                                                            setMutationFeedback(
+                                                                (current) =>
+                                                                    startImportMutation(
+                                                                        current,
+                                                                        file.id,
+                                                                    ),
+                                                            );
+                                                            router.delete(
+                                                                OwnRevenueImportFileController.destroy(
+                                                                    {
+                                                                        budget: budgetId,
+                                                                        importFile:
+                                                                            file.id,
+                                                                    },
+                                                                ),
+                                                                mutationOptions(),
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 className="size-3" />{' '}
+                                                    Descartar
+                                                </Button>
+                                            )}
+                                    </div>
+                                </article>
+                            );
+                        })
                     )}
                 </div>
 

@@ -2,14 +2,12 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Download, FileQuestion, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import OwnRevenueImportFileController from '@/actions/App/Http/Controllers/Finance/OwnRevenueImportFileController';
-import AbprePreview, {
-    formatCents,
-} from '@/components/finance/own-revenue/imports/abpre-preview';
+import { formatCents } from '@/components/finance/own-revenue/imports/abpre-preview';
 import ImportFileSlot from '@/components/finance/own-revenue/imports/import-file-slot';
-import ImportIssueList from '@/components/finance/own-revenue/imports/import-issue-list';
 import {
     failImportMutation,
     finishImportMutation,
+    importFilePresentation,
     initialImportMutation,
     startImportMutation,
 } from '@/components/finance/own-revenue/imports/import-workspace-state';
@@ -42,18 +40,16 @@ function queryFor(
 
 export default function OwnRevenueImportShow({
     budget,
-    session,
     slots,
     unassigned_files: unassignedFiles,
     unassigned_files_meta: unassignedMeta,
     selected_file: selectedFile,
-    preview_file: previewFile,
-    preview,
-    decision_warnings: decisionWarnings,
     permissions,
 }: OwnRevenueImportWorkspaceProps) {
     const currentUrl = usePage().url;
-    const confirmedCount = slots.filter((slot) => slot.has_confirmed).length;
+    const readyCount = slots.filter(
+        (slot) => slot.has_confirmed || slot.latest_status === 'ready',
+    ).length;
     const parserPendingCount = slots.filter(
         (slot) => slot.has_parser_pending,
     ).length;
@@ -89,7 +85,7 @@ export default function OwnRevenueImportShow({
 
     return (
         <>
-            <Head title={`Importaciones XLSX ${budget.fiscal_year}`} />
+            <Head title={`Importar archivos ${budget.fiscal_year}`} />
             <main className="flex h-full flex-1 flex-col gap-5 p-4 md:p-6">
                 <header className="grid gap-3">
                     <Button asChild variant="ghost" size="sm" className="w-fit">
@@ -104,12 +100,11 @@ export default function OwnRevenueImportShow({
                                 Presupuesto de Ingresos Propios
                             </p>
                             <h1 className="mt-1 text-2xl font-semibold">
-                                Importaciones XLSX · {budget.fiscal_year}
+                                Importar archivos del presupuesto
                             </h1>
                             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                                Carga, clasifica y revisa cada formato. Los
-                                libros XLSX se procesan únicamente en el
-                                servidor.
+                                Agrega y revisa los formatos correspondientes a{' '}
+                                {budget.fiscal_year}.
                             </p>
                         </div>
                         <Badge variant="outline" className="w-fit">
@@ -125,35 +120,27 @@ export default function OwnRevenueImportShow({
                     className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
                     aria-label="Resumen de importaciones"
                 >
-                    <Summary
-                        label="Confirmados"
-                        value={confirmedCount}
-                        tone="success"
-                    />
+                    <Summary label="Listos" value={readyCount} tone="success" />
                     <Summary
                         label="Faltantes"
                         value={missingCount}
                         tone="warning"
                     />
                     <Summary
-                        label="Parser pendiente"
+                        label="Revisión no disponible"
                         value={parserPendingCount}
                     />
                     <Summary
-                        label="Sin clasificar"
+                        label="Por clasificar"
                         value={unassignedMeta.total}
                     />
                 </section>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Fotografía institucional</CardTitle>
-                        <CardDescription>
-                            Datos contra los que se validan el año, la unidad y
-                            la región de los archivos.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                <details className="group rounded-lg border bg-card text-card-foreground shadow-sm">
+                    <summary className="cursor-pointer list-none px-6 py-4 font-medium marker:hidden">
+                        Más información
+                    </summary>
+                    <div className="grid gap-3 border-t px-6 py-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
                         <InstitutionValue
                             label="Institución"
                             value={budget.institution_name}
@@ -178,16 +165,8 @@ export default function OwnRevenueImportShow({
                                     : formatCents(budget.estimated_income_cents)
                             }
                         />
-                        <InstitutionValue
-                            label="Sesión"
-                            value={
-                                session
-                                    ? `#${session.id} · ${session.status}`
-                                    : 'Se abrirá con la primera carga'
-                            }
-                        />
-                    </CardContent>
-                </Card>
+                    </div>
+                </details>
 
                 <section
                     className="grid gap-4 xl:grid-cols-2"
@@ -198,7 +177,7 @@ export default function OwnRevenueImportShow({
                             key={slot.format}
                             budgetId={budget.id}
                             slot={slot}
-                            selectedFileId={selectedFile?.id ?? null}
+                            selectedFile={selectedFile}
                             permissions={permissions}
                         />
                     ))}
@@ -237,7 +216,20 @@ export default function OwnRevenueImportShow({
                                         </p>
                                         <p className="text-xs text-muted-foreground">
                                             {file.size.toLocaleString('es-MX')}{' '}
-                                            bytes · {file.status}
+                                            bytes ·{' '}
+                                            {
+                                                importFilePresentation({
+                                                    status: file.status,
+                                                    format: file.format,
+                                                    analyzed: file.analyzed,
+                                                    issueCount:
+                                                        file.issue_counts
+                                                            .error +
+                                                        file.issue_counts
+                                                            .warning +
+                                                        file.issue_counts.info,
+                                                }).label
+                                            }
                                         </p>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -369,22 +361,6 @@ export default function OwnRevenueImportShow({
                         </CardContent>
                     </Card>
                 )}
-
-                <div className="grid gap-4 2xl:grid-cols-2">
-                    <ImportIssueList
-                        budgetId={budget.id}
-                        selectedFile={selectedFile}
-                    />
-                    <AbprePreview
-                        key={`${previewFile?.id ?? 'no-file'}-${previewFile?.analyzed_at ?? 'unanalyzed'}`}
-                        budgetId={budget.id}
-                        preview={preview}
-                        previewFile={previewFile}
-                        decisionWarnings={decisionWarnings}
-                        selectedFile={selectedFile}
-                        permissions={permissions}
-                    />
-                </div>
             </main>
         </>
     );

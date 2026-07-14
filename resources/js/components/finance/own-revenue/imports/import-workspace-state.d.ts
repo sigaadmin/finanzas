@@ -11,6 +11,33 @@ export type UploadFileIdentity = {
 
 export const initialImportMutation: ImportMutationFeedback;
 
+export function importFilePresentation(input: {
+    status:
+        | 'uploaded'
+        | 'analyzing'
+        | 'needs_correction'
+        | 'ready'
+        | 'confirmed'
+        | 'replaced'
+        | 'discarded'
+        | 'failed'
+        | 'parser_pending';
+    format:
+        | 'abpre'
+        | 'work_sheet'
+        | 'technical_sheet'
+        | 'fuel'
+        | 'travel_expenses'
+        | null;
+    analyzed: boolean;
+    issueCount: number;
+}): {
+    label: string;
+    canAnalyze: boolean;
+    canViewIssues: boolean;
+    canViewPreview: boolean;
+};
+
 export function startImportMutation(
     current: ImportMutationFeedback,
     fileId: number,

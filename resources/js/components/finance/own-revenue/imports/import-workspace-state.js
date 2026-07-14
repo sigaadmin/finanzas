@@ -3,6 +3,36 @@ export const initialImportMutation = {
     error: null,
 };
 
+const importFileStatusLabels = {
+    uploaded: 'Listo para analizar',
+    analyzing: 'Analizando',
+    needs_correction: 'Requiere atención',
+    ready: 'Listo para revisar',
+    confirmed: 'Confirmado',
+    failed: 'No se pudo analizar',
+    parser_pending: 'Revisión automática aún no disponible',
+    replaced: 'Reemplazado por otra versión',
+    discarded: 'Descartado',
+};
+
+export function importFilePresentation({
+    status,
+    format,
+    analyzed,
+    issueCount,
+}) {
+    const isAbpre = format === 'abpre';
+
+    return {
+        label: importFileStatusLabels[status],
+        canAnalyze:
+            isAbpre &&
+            ['uploaded', 'needs_correction', 'failed'].includes(status),
+        canViewIssues: analyzed || issueCount > 0,
+        canViewPreview: isAbpre && analyzed,
+    };
+}
+
 export function startImportMutation(_current, fileId) {
     return { activeFileId: fileId, error: null };
 }

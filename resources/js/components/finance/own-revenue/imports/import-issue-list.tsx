@@ -1,22 +1,26 @@
-import { Link, usePage } from '@inertiajs/react';
-import { AlertCircle, Info, TriangleAlert } from 'lucide-react';
+import { Link, router, usePage } from '@inertiajs/react';
+import { AlertCircle, Info, ListChecks, TriangleAlert } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import { show } from '@/routes/finance/own-revenue/budgets/imports';
 import type {
+    OwnRevenueImportFile,
     OwnRevenueImportIssue,
     OwnRevenueSelectedImportFile,
 } from '@/types/finance-own-revenue-imports';
 
 type Props = {
     budgetId: number;
+    file: OwnRevenueImportFile;
     selectedFile: OwnRevenueSelectedImportFile | null;
 };
 
@@ -32,10 +36,16 @@ const contextLabels: Record<string, string> = {
     calculated_cents: 'Centavos calculados',
 };
 
+const severityLabels = {
+    error: 'Errores',
+    warning: 'Advertencias',
+    info: 'Avisos',
+};
+
 function queryFor(
     currentUrl: string,
     fileId: number,
-    page: number,
+    page = 1,
 ): Record<string, string> {
     const query = new URLSearchParams(currentUrl.split('?')[1] ?? '');
     query.set('import_file_id', String(fileId));
@@ -58,126 +68,190 @@ function IssueIcon({ issue }: { issue: OwnRevenueImportIssue }) {
     return <Info className="mt-0.5 size-4 text-blue-600 dark:text-blue-300" />;
 }
 
-export default function ImportIssueList({ budgetId, selectedFile }: Props) {
+export default function ImportIssueList({
+    budgetId,
+    file,
+    selectedFile,
+}: Props) {
     const currentUrl = usePage().url;
+    const [isOpen, setIsOpen] = useState(false);
+    const issues = selectedFile?.id === file.id ? selectedFile.issues : null;
+
+    const openIssues = (): void => {
+        if (issues) {
+            setIsOpen(true);
+
+            return;
+        }
+
+        router.get(show(budgetId), queryFor(currentUrl, file.id), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => setIsOpen(true),
+        });
+    };
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Incidencias del archivo</CardTitle>
-                <CardDescription>
-                    {selectedFile
-                        ? `${selectedFile.issues.total} incidencias en ${selectedFile.name}`
-                        : 'Selecciona una versión para consultar sus incidencias.'}
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-                {!selectedFile || selectedFile.issues.data.length === 0 ? (
-                    <p className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-                        {selectedFile
-                            ? 'No se detectaron incidencias.'
-                            : 'Sin archivo seleccionado.'}
-                    </p>
-                ) : (
-                    selectedFile.issues.data.map((issue) => (
-                        <article
-                            key={issue.id}
-                            className="grid grid-cols-[auto_1fr] gap-3 rounded-lg border p-3"
-                        >
-                            <IssueIcon issue={issue} />
-                            <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={(event) => {
+                        event.preventDefault();
+                        openIssues();
+                    }}
+                >
+                    <ListChecks className="size-3" />
+                    Ver incidencias
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] overflow-hidden p-0 sm:max-w-3xl lg:max-w-5xl">
+                <DialogHeader className="border-b px-6 pt-6 pr-12 pb-4">
+                    <DialogTitle>Incidencias de {file.name}</DialogTitle>
+                    <DialogDescription>
+                        Versión {file.version}. Revisa los hallazgos antes de
+                        continuar con este archivo.
+                    </DialogDescription>
+                    <div
+                        className="flex flex-wrap gap-2 pt-1"
+                        aria-label="Conteos por gravedad"
+                    >
+                        {Object.entries(file.issue_counts).map(
+                            ([severity, count]) => (
+                                <Badge key={severity} variant="outline">
+                                    {
+                                        severityLabels[
+                                            severity as keyof typeof severityLabels
+                                        ]
+                                    }
+                                    : {count}
+                                </Badge>
+                            ),
+                        )}
+                    </div>
+                </DialogHeader>
+
+                <div className="grid max-h-[calc(90vh-12rem)] gap-3 overflow-y-auto px-4 pb-6 sm:px-6">
+                    {!issues || issues.data.length === 0 ? (
+                        <p className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+                            No se encontraron problemas.
+                        </p>
+                    ) : (
+                        issues.data.map((issue) => (
+                            <article
+                                key={issue.id}
+                                className="grid grid-cols-[auto_1fr] gap-3 rounded-lg border p-3"
+                            >
+                                <IssueIcon issue={issue} />
+                                <div className="min-w-0">
                                     <p className="text-sm font-medium">
                                         {issue.message}
                                     </p>
-                                    <Badge variant="outline">
-                                        {issue.code}
-                                    </Badge>
+                                    <details className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs">
+                                        <summary className="cursor-pointer font-medium text-muted-foreground">
+                                            Más información
+                                        </summary>
+                                        <div className="mt-2 grid gap-2">
+                                            <p>
+                                                <span className="text-muted-foreground">
+                                                    Código interno:{' '}
+                                                </span>
+                                                {issue.code}
+                                            </p>
+                                            {issue.field && (
+                                                <p>
+                                                    <span className="text-muted-foreground">
+                                                        Campo:{' '}
+                                                    </span>
+                                                    {issue.field}
+                                                </p>
+                                            )}
+                                            {Object.keys(issue.context).length >
+                                                0 && (
+                                                <dl className="grid gap-2 sm:grid-cols-2">
+                                                    {Object.entries(
+                                                        issue.context,
+                                                    ).map(([key, value]) => (
+                                                        <div
+                                                            key={key}
+                                                            className="min-w-0"
+                                                        >
+                                                            <dt className="text-muted-foreground">
+                                                                {contextLabels[
+                                                                    key
+                                                                ] ?? key}
+                                                            </dt>
+                                                            <dd className="font-medium break-words">
+                                                                {String(value)}
+                                                            </dd>
+                                                        </div>
+                                                    ))}
+                                                </dl>
+                                            )}
+                                        </div>
+                                    </details>
                                 </div>
-                                {issue.field && (
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                        Campo: {issue.field}
-                                    </p>
-                                )}
-                                {Object.keys(issue.context).length > 0 && (
-                                    <dl className="mt-2 grid gap-1 rounded-md bg-muted/50 p-2 text-xs sm:grid-cols-2">
-                                        {Object.entries(issue.context).map(
-                                            ([key, value]) => (
-                                                <div
-                                                    key={key}
-                                                    className="min-w-0"
-                                                >
-                                                    <dt className="text-muted-foreground">
-                                                        {contextLabels[key] ??
-                                                            key}
-                                                    </dt>
-                                                    <dd className="font-medium break-words">
-                                                        {String(value)}
-                                                    </dd>
-                                                </div>
-                                            ),
-                                        )}
-                                    </dl>
-                                )}
-                            </div>
-                        </article>
-                    ))
-                )}
+                            </article>
+                        ))
+                    )}
 
-                {selectedFile && selectedFile.issues.last_page > 1 && (
-                    <nav
-                        className="flex items-center justify-between gap-2"
-                        aria-label="Páginas de incidencias"
-                    >
-                        {selectedFile.issues.current_page > 1 ? (
-                            <Button asChild size="sm" variant="outline">
-                                <Link
-                                    href={show(budgetId, {
-                                        query: queryFor(
-                                            currentUrl,
-                                            selectedFile.id,
-                                            selectedFile.issues.current_page -
-                                                1,
-                                        ),
-                                    })}
-                                    preserveScroll
-                                >
+                    {issues && issues.last_page > 1 && (
+                        <nav
+                            className="flex items-center justify-between gap-2"
+                            aria-label="Páginas de incidencias"
+                        >
+                            {issues.current_page > 1 ? (
+                                <Button asChild size="sm" variant="outline">
+                                    <Link
+                                        href={show(budgetId, {
+                                            query: queryFor(
+                                                currentUrl,
+                                                file.id,
+                                                issues.current_page - 1,
+                                            ),
+                                        })}
+                                        preserveScroll
+                                        preserveState
+                                    >
+                                        Anterior
+                                    </Link>
+                                </Button>
+                            ) : (
+                                <Button size="sm" variant="outline" disabled>
                                     Anterior
-                                </Link>
-                            </Button>
-                        ) : (
-                            <Button size="sm" variant="outline" disabled>
-                                Anterior
-                            </Button>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                            Página {selectedFile.issues.current_page} de{' '}
-                            {selectedFile.issues.last_page}
-                        </span>
-                        {selectedFile.issues.has_more ? (
-                            <Button asChild size="sm" variant="outline">
-                                <Link
-                                    href={show(budgetId, {
-                                        query: queryFor(
-                                            currentUrl,
-                                            selectedFile.id,
-                                            selectedFile.issues.current_page +
-                                                1,
-                                        ),
-                                    })}
-                                    preserveScroll
-                                >
+                                </Button>
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                                Página {issues.current_page} de{' '}
+                                {issues.last_page}
+                            </span>
+                            {issues.has_more ? (
+                                <Button asChild size="sm" variant="outline">
+                                    <Link
+                                        href={show(budgetId, {
+                                            query: queryFor(
+                                                currentUrl,
+                                                file.id,
+                                                issues.current_page + 1,
+                                            ),
+                                        })}
+                                        preserveScroll
+                                        preserveState
+                                    >
+                                        Siguiente
+                                    </Link>
+                                </Button>
+                            ) : (
+                                <Button size="sm" variant="outline" disabled>
                                     Siguiente
-                                </Link>
-                            </Button>
-                        ) : (
-                            <Button size="sm" variant="outline" disabled>
-                                Siguiente
-                            </Button>
-                        )}
-                    </nav>
-                )}
-            </CardContent>
-        </Card>
+                                </Button>
+                            )}
+                        </nav>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }

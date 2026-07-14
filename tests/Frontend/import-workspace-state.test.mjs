@@ -3,12 +3,94 @@ import test from 'node:test';
 import {
     failImportMutation,
     finishImportMutation,
+    importFilePresentation,
     importDecisionRememberKey,
     initialImportMutation,
     resolveFailedUpload,
     startImportMutation,
     takeNextUpload,
 } from '../../resources/js/components/finance/own-revenue/imports/import-workspace-state.js';
+
+test('file statuses use operational language and expose only available ABPRE actions', () => {
+    const expectedLabels = {
+        uploaded: 'Listo para analizar',
+        analyzing: 'Analizando',
+        needs_correction: 'Requiere atención',
+        ready: 'Listo para revisar',
+        confirmed: 'Confirmado',
+        failed: 'No se pudo analizar',
+        parser_pending: 'Revisión automática aún no disponible',
+        replaced: 'Reemplazado por otra versión',
+        discarded: 'Descartado',
+    };
+
+    for (const [status, label] of Object.entries(expectedLabels)) {
+        const presentation = importFilePresentation({
+            status,
+            format: status === 'parser_pending' ? 'fuel' : 'abpre',
+            analyzed: ['ready', 'confirmed', 'needs_correction'].includes(
+                status,
+            ),
+            issueCount: status === 'needs_correction' ? 2 : 0,
+        });
+
+        assert.equal(presentation.label, label);
+        assert.doesNotMatch(presentation.label, /parser/i);
+    }
+
+    assert.deepEqual(
+        importFilePresentation({
+            status: 'uploaded',
+            format: 'abpre',
+            analyzed: false,
+            issueCount: 0,
+        }),
+        {
+            label: 'Listo para analizar',
+            canAnalyze: true,
+            canViewIssues: false,
+            canViewPreview: false,
+        },
+    );
+    assert.equal(
+        importFilePresentation({
+            status: 'ready',
+            format: 'abpre',
+            analyzed: true,
+            issueCount: 0,
+        }).canViewIssues,
+        true,
+        'analyzed files keep their empty issue report available',
+    );
+    assert.deepEqual(
+        importFilePresentation({
+            status: 'needs_correction',
+            format: 'abpre',
+            analyzed: true,
+            issueCount: 2,
+        }),
+        {
+            label: 'Requiere atención',
+            canAnalyze: true,
+            canViewIssues: true,
+            canViewPreview: true,
+        },
+    );
+    assert.deepEqual(
+        importFilePresentation({
+            status: 'parser_pending',
+            format: 'fuel',
+            analyzed: false,
+            issueCount: 0,
+        }),
+        {
+            label: 'Revisión automática aún no disponible',
+            canAnalyze: false,
+            canViewIssues: false,
+            canViewPreview: false,
+        },
+    );
+});
 
 test('mutation feedback clears stale errors and exposes validation failures', () => {
     const started = startImportMutation(
