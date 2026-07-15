@@ -16,6 +16,7 @@ use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
+use App\Http\Controllers\Finance\OwnRevenuePlanningController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCreationController;
 use App\Http\Controllers\Finance\OwnRevenueProposalFuelNeedController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTechnicalNeedController;
@@ -118,6 +119,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::put('own-revenue/budgets/{budget}', [OwnRevenueBudgetController::class, 'update'])
             ->name('own-revenue.budgets.update');
+
+        Route::get('own-revenue/budgets/{budget}/planning', OwnRevenuePlanningController::class)
+            ->name('own-revenue.budgets.planning.show');
 
         Route::post('own-revenue/budgets/{budget}/cog/confirm', OwnRevenueCogConfirmationController::class)
             ->name('own-revenue.budgets.cog.confirm');
