@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, CheckCircle2, ListChecks } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, ListChecks, LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 import OwnRevenueActivityExceptionController from '@/actions/App/Http/Controllers/Finance/OwnRevenueActivityExceptionController';
 import OwnRevenueActivityReconciliationController from '@/actions/App/Http/Controllers/Finance/OwnRevenueActivityReconciliationController';
@@ -240,6 +240,109 @@ function RecordExceptionForm({
     );
 }
 
+interface ReconciliationGroupRowProps {
+    group: OwnRevenueActivityReconciliationGroup;
+    budgetId: number;
+    format: OwnRevenueSupportingFormat;
+    snapshots: OwnRevenueActivityReconciliationProps['snapshots'];
+    openGroup: (hash: string) => void;
+    permissions: OwnRevenueActivityReconciliationProps['permissions'];
+}
+
+function ReconciliationGroupRow({
+    group,
+    budgetId,
+    format,
+    snapshots,
+    openGroup,
+    permissions,
+}: ReconciliationGroupRowProps) {
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const handleActivityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = event.target.value;
+        if (value === '') {
+            return;
+        }
+
+        const newActivityId = Number(value);
+        setIsProcessing(true);
+
+        router.post(
+            OwnRevenueActivityRuleController.url(budgetId),
+            {
+                format,
+                group_hash: group.hash,
+                activity_id: newActivityId,
+                justification: 'description_classification',
+                justification_note: '',
+                expected_work_sheet_file_id: snapshots.work_sheet_file_id ?? 0,
+                expected_supporting_file_id: snapshots.supporting_file_ids[format] ?? 0,
+            },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                onFinish: () => setIsProcessing(false),
+            },
+        );
+    };
+
+    return (
+        <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+                <p className="font-medium">{group.label}</p>
+                <p className="text-sm text-muted-foreground">
+                    {group.record_count}{' '}
+                    {group.record_count === 1 ? 'registro' : 'registros'} ·{' '}
+                    {formatCents(group.detail_cents)}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge variant={group.summary.complete ? 'default' : 'outline'}>
+                        {reconciliationStatusLabel(group.summary)}
+                    </Badge>
+                    {group.current_activity && (
+                        <Badge variant="secondary">
+                            {group.current_activity.code} · {group.current_activity.name}
+                        </Badge>
+                    )}
+                </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+                {permissions.manage && group.candidates.length > 0 && (
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={group.current_activity?.id ?? ''}
+                            onChange={handleActivityChange}
+                            disabled={isProcessing}
+                            className="h-9 w-56 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+                        >
+                            <option value="" disabled>
+                                Asignar actividad...
+                            </option>
+                            {group.candidates.map((activity) => (
+                                <option key={activity.id} value={activity.id}>
+                                    {activity.code} · {activity.name}
+                                </option>
+                            ))}
+                        </select>
+                        {isProcessing && (
+                            <LoaderCircle className="size-4 animate-spin text-muted-foreground" />
+                        )}
+                    </div>
+                )}
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => openGroup(group.hash)}
+                >
+                    <ListChecks className="size-4" />
+                    Ver detalle
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 export default function OwnRevenueActivityReconciliation(
     props: OwnRevenueActivityReconciliationProps,
 ) {
@@ -387,57 +490,15 @@ export default function OwnRevenueActivityReconciliation(
                             </p>
                         ) : (
                             groups.data.map((group) => (
-                                <div
+                                <ReconciliationGroupRow
                                     key={group.hash}
-                                    className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                    <div className="min-w-0">
-                                        <p className="font-medium">
-                                            {group.label}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">
-                                            {group.record_count}{' '}
-                                            {group.record_count === 1
-                                                ? 'registro'
-                                                : 'registros'}{' '}
-                                            · {formatCents(group.detail_cents)}
-                                        </p>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            <Badge
-                                                variant={
-                                                    group.summary.complete
-                                                        ? 'default'
-                                                        : 'outline'
-                                                }
-                                            >
-                                                {reconciliationStatusLabel(
-                                                    group.summary,
-                                                )}
-                                            </Badge>
-                                            {group.current_activity && (
-                                                <Badge variant="secondary">
-                                                    {
-                                                        group.current_activity
-                                                            .code
-                                                    }{' '}
-                                                    ·{' '}
-                                                    {
-                                                        group.current_activity
-                                                            .name
-                                                    }
-                                                </Badge>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() => openGroup(group.hash)}
-                                    >
-                                        <ListChecks className="size-4" />
-                                        Ver detalle
-                                    </Button>
-                                </div>
+                                    group={group}
+                                    budgetId={budget.id}
+                                    format={selectedFormat}
+                                    snapshots={snapshots}
+                                    openGroup={openGroup}
+                                    permissions={permissions}
+                                />
                             ))
                         )}
                         {groups.last_page > 1 && (
