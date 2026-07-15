@@ -16,8 +16,9 @@ use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Services\Finance\OwnRevenue\Imports\OwnRevenueActivityGroupKey;
 use App\Services\Finance\OwnRevenue\Imports\OwnRevenueActivityReconciliationViewData;
+use App\Services\Finance\OwnRevenue\Imports\PortableIntegerAmount;
 
-function reconciliationFile(
+function activityReconciliationFile(
     OwnRevenueBudget $budget,
     OwnRevenueImportFormat $format,
     int $version = 1,
@@ -34,7 +35,7 @@ function reconciliationFile(
     ]);
 }
 
-function reconciliationClassification(OwnRevenueBudget $budget, string $specificItemCode): ExpenseClassification
+function activityReconciliationClassification(OwnRevenueBudget $budget, string $specificItemCode): ExpenseClassification
 {
     return ExpenseClassification::query()->firstOrCreate([
         'fiscal_year' => $budget->fiscal_year,
@@ -52,7 +53,7 @@ function reconciliationClassification(OwnRevenueBudget $budget, string $specific
     ]);
 }
 
-function reconciliationWorkSheetLine(
+function activityReconciliationWorkSheetLine(
     OwnRevenueBudget $budget,
     OwnRevenueImportFile $file,
     OwnRevenueActivity $activity,
@@ -64,7 +65,7 @@ function reconciliationWorkSheetLine(
         'own_revenue_import_file_id' => $file->id,
         'own_revenue_budget_id' => $budget->id,
         'own_revenue_activity_id' => $activity->id,
-        'expense_classification_id' => reconciliationClassification($budget, $specificItemCode)->id,
+        'expense_classification_id' => activityReconciliationClassification($budget, $specificItemCode)->id,
         'activity_code' => $activity->code,
         'activity_name' => $activity->name,
         'specific_item_code' => $specificItemCode,
@@ -82,7 +83,7 @@ function reconciliationWorkSheetLine(
 }
 
 /** @return array<string, mixed> */
-function reconciliationPersistentState(OwnRevenueBudget $budget): array
+function activityReconciliationPersistentState(OwnRevenueBudget $budget): array
 {
     return [
         'files' => $budget->importFiles()->orderBy('id')->get()->map(fn (OwnRevenueImportFile $file): array => [
@@ -125,26 +126,26 @@ test('it groups current supporting records and builds exact reconciliation candi
         'sort_order' => 3,
     ]);
 
-    $oldWorkSheet = reconciliationFile($budget, OwnRevenueImportFormat::WorkSheet, 1);
-    reconciliationWorkSheetLine($budget, $oldWorkSheet, $activityA02, '26101', '999999', [4 => '999999']);
-    $workSheet = reconciliationFile($budget, OwnRevenueImportFormat::WorkSheet, 2);
+    $oldWorkSheet = activityReconciliationFile($budget, OwnRevenueImportFormat::WorkSheet, 1);
+    activityReconciliationWorkSheetLine($budget, $oldWorkSheet, $activityA02, '26101', '999999', [4 => '999999']);
+    $workSheet = activityReconciliationFile($budget, OwnRevenueImportFormat::WorkSheet, 2);
 
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA02, '26101', '120000', [4 => '120000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '26101', '80000', [4 => '80000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA02, '37501', '50000', [4 => '50000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '37501', '70000', [4 => '70000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '37101', '30000', [4 => '30000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA02, '21101', '40000', [4 => '40000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA03, '21101', '25000', [4 => '25000']);
-    reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '21101', '60000', [4 => '0', 5 => '60000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA02, '26101', '120000', [4 => '120000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA04, '26101', '80000', [4 => '80000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA02, '37501', '50000', [4 => '50000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA04, '37501', '70000', [4 => '70000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA04, '37101', '30000', [4 => '30000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA02, '21101', '40000', [4 => '40000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA03, '21101', '25000', [4 => '25000']);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $activityA04, '21101', '60000', [4 => '0', 5 => '60000']);
 
-    $oldFuelFile = reconciliationFile($budget, OwnRevenueImportFormat::Fuel, 1);
+    $oldFuelFile = activityReconciliationFile($budget, OwnRevenueImportFormat::Fuel, 1);
     OwnRevenueFuelPlan::factory()->recycle([$budget, $oldFuelFile])->create([
         'own_revenue_import_file_id' => $oldFuelFile->id,
         'reason' => 'Visita técnica',
         'amount_cents' => '999999',
     ]);
-    $fuelFile = reconciliationFile($budget, OwnRevenueImportFormat::Fuel, 2);
+    $fuelFile = activityReconciliationFile($budget, OwnRevenueImportFormat::Fuel, 2);
     $firstFuelPlan = OwnRevenueFuelPlan::factory()->recycle([$budget, $fuelFile])->create([
         'own_revenue_import_file_id' => $fuelFile->id,
         'reason' => '  Visita   técnica ',
@@ -166,10 +167,10 @@ test('it groups current supporting records and builds exact reconciliation candi
         ->recycle([$budget, $activityA02, $fuelFile, $fuelRule])
         ->create();
 
-    $technicalFile = reconciliationFile($budget, OwnRevenueImportFormat::TechnicalSheet);
+    $technicalFile = activityReconciliationFile($budget, OwnRevenueImportFormat::TechnicalSheet);
     $firstNeed = OwnRevenueTechnicalSheetNeed::factory()->recycle([$budget, $technicalFile])->create([
         'own_revenue_import_file_id' => $technicalFile->id,
-        'expense_classification_id' => reconciliationClassification($budget, '21101')->id,
+        'expense_classification_id' => activityReconciliationClassification($budget, '21101')->id,
         'specific_item_code' => '21101',
         'description' => '  Lápices   azules ',
         'amount_cents' => '20000',
@@ -177,14 +178,14 @@ test('it groups current supporting records and builds exact reconciliation candi
     ]);
     OwnRevenueTechnicalSheetNeed::factory()->recycle([$budget, $technicalFile])->create([
         'own_revenue_import_file_id' => $technicalFile->id,
-        'expense_classification_id' => reconciliationClassification($budget, '21101')->id,
+        'expense_classification_id' => activityReconciliationClassification($budget, '21101')->id,
         'specific_item_code' => '21101',
         'description' => 'LAPICES AZULES',
         'amount_cents' => '15000',
         'budget_month' => 4,
     ]);
 
-    $travelFile = reconciliationFile($budget, OwnRevenueImportFormat::TravelExpenses);
+    $travelFile = activityReconciliationFile($budget, OwnRevenueImportFormat::TravelExpenses);
     $commission = OwnRevenueTravelCommission::factory()->recycle([$budget, $travelFile])->create([
         'own_revenue_import_file_id' => $travelFile->id,
         'reason' => 'Reunión académica',
@@ -194,9 +195,9 @@ test('it groups current supporting records and builds exact reconciliation candi
         'flight_amount_cents' => '30000',
     ]);
 
-    $stateBefore = reconciliationPersistentState($budget);
+    $stateBefore = activityReconciliationPersistentState($budget);
     $data = app(OwnRevenueActivityReconciliationViewData::class)->forBudget($budget);
-    $stateAfter = reconciliationPersistentState($budget);
+    $stateAfter = activityReconciliationPersistentState($budget);
     $groupKeys = app(OwnRevenueActivityGroupKey::class);
 
     expect($data['summary'])->toBe([
@@ -263,4 +264,69 @@ test('it returns deterministic empty states without persisting reconciliation da
         'supporting' => 'No hay archivos complementarios confirmados para conciliar.',
     ])->and($budget->activityRules()->count())->toBe(0)
         ->and($budget->activityAssignments()->count())->toBe(0);
+});
+
+test('technical candidates require nonzero work sheet evidence in every month of the group', function () {
+    $budget = OwnRevenueBudget::factory()->create();
+    $aprilOnly = OwnRevenueActivity::factory()->for($budget, 'budget')->create([
+        'code' => 'A01',
+        'sort_order' => 1,
+    ]);
+    $bothMonths = OwnRevenueActivity::factory()->for($budget, 'budget')->create([
+        'code' => 'A02',
+        'sort_order' => 2,
+    ]);
+    $workSheet = activityReconciliationFile($budget, OwnRevenueImportFormat::WorkSheet);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $aprilOnly, '21101', '10000', [
+        4 => '10000',
+        5 => '0',
+    ]);
+    activityReconciliationWorkSheetLine($budget, $workSheet, $bothMonths, '21101', '20000', [
+        4 => '10000',
+        5 => '10000',
+    ]);
+    $technicalFile = activityReconciliationFile($budget, OwnRevenueImportFormat::TechnicalSheet);
+    foreach ([4, 5] as $month) {
+        OwnRevenueTechnicalSheetNeed::factory()->recycle([$budget, $technicalFile])->create([
+            'own_revenue_import_file_id' => $technicalFile->id,
+            'expense_classification_id' => activityReconciliationClassification($budget, '21101')->id,
+            'specific_item_code' => '21101',
+            'description' => 'Material multimes',
+            'amount_cents' => '5000',
+            'budget_month' => $month,
+        ]);
+    }
+
+    $data = app(OwnRevenueActivityReconciliationViewData::class)->forBudget($budget);
+
+    expect($data['formats']['technical_sheet']['groups'][0]['month_evidence'])->toBe([4, 5])
+        ->and($data['formats']['technical_sheet']['groups'][0]['candidate_activity_codes'])->toBe(['A02']);
+});
+
+test('format aggregation throws when portable integer addition overflows', function () {
+    $budget = OwnRevenueBudget::factory()->create();
+    $fuelFile = activityReconciliationFile($budget, OwnRevenueImportFormat::Fuel);
+    foreach ([PortableIntegerAmount::MAXIMUM, '1'] as $amountCents) {
+        OwnRevenueFuelPlan::factory()->recycle([$budget, $fuelFile])->create([
+            'own_revenue_import_file_id' => $fuelFile->id,
+            'reason' => 'Traslado con importe extremo',
+            'amount_cents' => $amountCents,
+        ]);
+    }
+
+    expect(fn () => app(OwnRevenueActivityReconciliationViewData::class)->forBudget($budget))
+        ->toThrow(OverflowException::class, 'El importe acumulado de conciliación excede el máximo portable.');
+});
+
+test('travel record aggregation throws when portable integer addition overflows', function () {
+    $budget = OwnRevenueBudget::factory()->create();
+    $travelFile = activityReconciliationFile($budget, OwnRevenueImportFormat::TravelExpenses);
+    OwnRevenueTravelCommission::factory()->recycle([$budget, $travelFile])->create([
+        'own_revenue_import_file_id' => $travelFile->id,
+        'total_amount_cents' => PortableIntegerAmount::MAXIMUM,
+        'flight_amount_cents' => '1',
+    ]);
+
+    expect(fn () => app(OwnRevenueActivityReconciliationViewData::class)->forBudget($budget))
+        ->toThrow(OverflowException::class, 'El importe del registro de viáticos excede el máximo portable.');
 });

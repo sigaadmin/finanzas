@@ -16,6 +16,7 @@ use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use OverflowException;
 
 class OwnRevenueActivityReconciliationViewData
 {
@@ -222,9 +223,10 @@ class OwnRevenueActivityReconciliationViewData
         $candidateLines = $workSheetLines->whereIn('specific_item_code', $itemCodes);
         if ($format === OwnRevenueImportFormat::TechnicalSheet) {
             $months = $records->pluck('budget_month')->map(fn ($month): int => (int) $month)->unique();
-            $candidateLines = $candidateLines->filter(fn (OwnRevenueWorkSheetLine $line): bool => $line->months
-                ->whereIn('month', $months)
-                ->contains(fn ($month): bool => $this->rawAmount($month, 'amount_cents') !== '0'));
+            $candidateLines = $candidateLines->filter(fn (OwnRevenueWorkSheetLine $line): bool => $months
+                ->every(fn (int $month): bool => $line->months
+                    ->where('month', $month)
+                    ->contains(fn ($monthAmount): bool => $this->rawAmount($monthAmount, 'amount_cents') !== '0')));
         }
 
         return $candidateLines
@@ -300,10 +302,15 @@ class OwnRevenueActivityReconciliationViewData
         OwnRevenueTechnicalSheetNeed|OwnRevenueFuelPlan|OwnRevenueTravelCommission $record,
     ): string {
         if ($format === OwnRevenueImportFormat::TravelExpenses) {
-            return $this->amounts->add(
+            $amount = $this->amounts->add(
                 $this->rawAmount($record, 'total_amount_cents'),
                 $this->rawAmount($record, 'flight_amount_cents'),
-            ) ?? '0';
+            );
+            if ($amount === null) {
+                throw new OverflowException('El importe del registro de viáticos excede el máximo portable.');
+            }
+
+            return $amount;
         }
 
         return $this->rawAmount($record, 'amount_cents');
@@ -380,7 +387,12 @@ class OwnRevenueActivityReconciliationViewData
     /** @param Collection<int, string> $values */
     private function sum(Collection $values): string
     {
-        return $this->amounts->sum($values->values()->all()) ?? '0';
+        $amount = $this->amounts->sum($values->values()->all());
+        if ($amount === null) {
+            throw new OverflowException('El importe acumulado de conciliación excede el máximo portable.');
+        }
+
+        return $amount;
     }
 
     private function rawAmount(object $model, string $attribute): string
