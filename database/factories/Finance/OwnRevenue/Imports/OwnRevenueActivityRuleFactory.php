@@ -27,7 +27,13 @@ class OwnRevenueActivityRuleFactory extends Factory
                 ->findOrFail($attributes['own_revenue_activity_id'])->own_revenue_budget_id,
             'format' => OwnRevenueImportFormat::TechnicalSheet,
             'group_key' => 'specific_item_code:21101',
-            'group_hash' => fake()->sha256(),
+            'group_hash' => function (array $attributes): string {
+                $format = $attributes['format'] instanceof OwnRevenueImportFormat
+                    ? $attributes['format']
+                    : OwnRevenueImportFormat::from($attributes['format']);
+
+                return hash('sha256', $format->value.'|'.$attributes['group_key']);
+            },
             'group_payload' => ['specific_item_code' => '21101'],
             'activity_code' => fn (array $attributes): string => OwnRevenueActivity::query()
                 ->findOrFail($attributes['own_revenue_activity_id'])->code,
