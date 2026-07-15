@@ -45,7 +45,7 @@ class OwnRevenueActivityReconciliationController extends Controller
             $page,
             ['path' => $request->url(), 'pageName' => 'group_page'],
         );
-        $paginator->appends($request->except('group_page'));
+        $paginator->appends($request->except(['group_page', 'group']));
 
         return Inertia::render('finance/own-revenue/imports/reconciliation', [
             'budget' => $this->imports->budget($budget),
