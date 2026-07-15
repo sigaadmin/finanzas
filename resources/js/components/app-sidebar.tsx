@@ -25,7 +25,7 @@ import finance from '@/routes/finance';
 import * as ownRevenueBudgets from '@/routes/finance/own-revenue/budgets';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const portalItems: NavItem[] = [
     {
         title: 'Inicio',
         href: dashboard(),
@@ -47,19 +47,22 @@ const mainNavItems: NavItem[] = [
         icon: TableProperties,
     },
     {
-        title: 'Presupuesto U300',
+        title: 'Recibos',
+        href: finance.receipts.index(),
+        icon: ReceiptText,
+    },
+];
+
+const budgetItems: NavItem[] = [
+    {
+        title: 'U300',
         href: finance.u300.programs.index(),
         icon: Landmark,
     },
     {
-        title: 'Presupuesto de Ingresos Propios',
+        title: 'Ingresos propios',
         href: ownRevenueBudgets.index(),
         icon: HandCoins,
-    },
-    {
-        title: 'Recibos',
-        href: finance.receipts.index(),
-        icon: ReceiptText,
     },
 ];
 
@@ -79,7 +82,8 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain label="Portal" items={portalItems} />
+                <NavMain label="Presupuesto" items={budgetItems} className="px-2 py-0 mt-4" />
             </SidebarContent>
 
             <SidebarFooter>
