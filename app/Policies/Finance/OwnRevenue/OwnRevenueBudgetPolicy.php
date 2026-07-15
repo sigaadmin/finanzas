@@ -72,6 +72,12 @@ class OwnRevenueBudgetPolicy
         return $this->manageImports($user, $ownRevenueBudget);
     }
 
+    public function createProposal(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::Draft
+            && $this->canAdministrate($user);
+    }
+
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()
