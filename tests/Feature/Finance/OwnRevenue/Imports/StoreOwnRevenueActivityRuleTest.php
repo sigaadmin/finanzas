@@ -268,9 +268,11 @@ test('an exception while creating assignments rolls back the rule and prior reco
     ]);
     $groupKeys = app(OwnRevenueActivityGroupKey::class);
     $groupHash = $groupKeys->hash(OwnRevenueImportFormat::Fuel, $groupKeys->forFuelPlan($plans->first()));
-    $eventName = 'eloquent.creating: '.OwnRevenueActivityAssignment::class;
-    $dispatcher = OwnRevenueActivityAssignment::getEventDispatcher();
-    $originalListeners = $dispatcher?->getListeners($eventName) ?? [];
+    $originalDispatcher = OwnRevenueActivityAssignment::getEventDispatcher();
+    if ($originalDispatcher === null) {
+        throw new LogicException('Eloquent no tiene un dispatcher de eventos configurado.');
+    }
+    OwnRevenueActivityAssignment::setEventDispatcher(clone $originalDispatcher);
     $intermediateStateObserved = false;
 
     OwnRevenueActivityAssignment::creating(function () use ($budget, $activity, &$intermediateStateObserved): void {
@@ -293,10 +295,7 @@ test('an exception while creating assignments rolls back the rule and prior reco
             validActivityRulePayload($workSheet, $fuelFile, $activity, $groupHash),
         ))->toThrow(RuntimeException::class, 'Fallo inducido al crear la asignación.');
     } finally {
-        $dispatcher?->forget($eventName);
-        foreach ($originalListeners as $listener) {
-            $dispatcher?->listen($eventName, $listener);
-        }
+        OwnRevenueActivityAssignment::setEventDispatcher($originalDispatcher);
     }
 
     expect($intermediateStateObserved)->toBeTrue()
