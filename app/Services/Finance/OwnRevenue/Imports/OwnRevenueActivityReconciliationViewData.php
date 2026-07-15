@@ -219,8 +219,15 @@ class OwnRevenueActivityReconciliationViewData
             default => [],
         };
 
-        return $workSheetLines
-            ->whereIn('specific_item_code', $itemCodes)
+        $candidateLines = $workSheetLines->whereIn('specific_item_code', $itemCodes);
+        if ($format === OwnRevenueImportFormat::TechnicalSheet) {
+            $months = $records->pluck('budget_month')->map(fn ($month): int => (int) $month)->unique();
+            $candidateLines = $candidateLines->filter(fn (OwnRevenueWorkSheetLine $line): bool => $line->months
+                ->whereIn('month', $months)
+                ->contains(fn ($month): bool => $this->rawAmount($month, 'amount_cents') !== '0'));
+        }
+
+        return $candidateLines
             ->pluck('activity')
             ->filter()
             ->unique('id')

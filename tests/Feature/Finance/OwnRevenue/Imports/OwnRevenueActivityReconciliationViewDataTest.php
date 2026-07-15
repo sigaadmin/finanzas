@@ -3,6 +3,7 @@
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
@@ -80,6 +81,32 @@ function reconciliationWorkSheetLine(
     return $line;
 }
 
+/** @return array<string, mixed> */
+function reconciliationPersistentState(OwnRevenueBudget $budget): array
+{
+    return [
+        'files' => $budget->importFiles()->orderBy('id')->get()->map(fn (OwnRevenueImportFile $file): array => [
+            'id' => $file->id,
+            'status' => $file->status->value,
+            'replaced_by_file_id' => $file->replaced_by_file_id,
+        ])->all(),
+        'rules' => $budget->activityRules()->orderBy('id')->get()->map(fn (OwnRevenueActivityRule $rule): array => [
+            'id' => $rule->id,
+            'activity_id' => $rule->own_revenue_activity_id,
+            'is_active' => $rule->is_active,
+        ])->all(),
+        'assignments' => $budget->activityAssignments()->orderBy('id')->get()->map(fn (OwnRevenueActivityAssignment $assignment): array => [
+            'id' => $assignment->id,
+            'activity_id' => $assignment->own_revenue_activity_id,
+            'assignable_type' => $assignment->assignable_type,
+            'assignable_id' => $assignment->assignable_id,
+        ])->all(),
+        'technical_activity_ids' => $budget->technicalSheetNeeds()->orderBy('id')->pluck('own_revenue_activity_id', 'id')->all(),
+        'fuel_activity_ids' => $budget->fuelPlans()->orderBy('id')->pluck('own_revenue_activity_id', 'id')->all(),
+        'travel_activity_ids' => $budget->travelCommissions()->orderBy('id')->pluck('own_revenue_activity_id', 'id')->all(),
+    ];
+}
+
 test('it groups current supporting records and builds exact reconciliation candidates and amounts', function () {
     $budget = OwnRevenueBudget::factory()->create(['fuel_budget_month' => 4]);
     $activityA02 = OwnRevenueActivity::factory()->for($budget, 'budget')->create([
@@ -92,6 +119,11 @@ test('it groups current supporting records and builds exact reconciliation candi
         'name' => 'Vinculación institucional',
         'sort_order' => 4,
     ]);
+    $activityA03 = OwnRevenueActivity::factory()->for($budget, 'budget')->create([
+        'code' => 'A03',
+        'name' => 'Desarrollo académico',
+        'sort_order' => 3,
+    ]);
 
     $oldWorkSheet = reconciliationFile($budget, OwnRevenueImportFormat::WorkSheet, 1);
     reconciliationWorkSheetLine($budget, $oldWorkSheet, $activityA02, '26101', '999999', [4 => '999999']);
@@ -103,6 +135,7 @@ test('it groups current supporting records and builds exact reconciliation candi
     reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '37501', '70000', [4 => '70000']);
     reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '37101', '30000', [4 => '30000']);
     reconciliationWorkSheetLine($budget, $workSheet, $activityA02, '21101', '40000', [4 => '40000']);
+    reconciliationWorkSheetLine($budget, $workSheet, $activityA03, '21101', '25000', [4 => '25000']);
     reconciliationWorkSheetLine($budget, $workSheet, $activityA04, '21101', '60000', [4 => '0', 5 => '60000']);
 
     $oldFuelFile = reconciliationFile($budget, OwnRevenueImportFormat::Fuel, 1);
@@ -122,11 +155,16 @@ test('it groups current supporting records and builds exact reconciliation candi
         'reason' => 'VISITA TECNICA',
         'amount_cents' => '50000',
     ]);
-    OwnRevenueActivityRule::factory()->recycle([$budget, $activityA02])->create([
+    $fuelRule = OwnRevenueActivityRule::factory()->recycle([$budget, $activityA02])->create([
         'format' => OwnRevenueImportFormat::Fuel,
         'group_key' => 'VISITA TECNICA',
         'group_payload' => ['reason' => 'Visita técnica'],
     ]);
+    $firstFuelPlan->update(['own_revenue_activity_id' => $activityA02->id]);
+    OwnRevenueActivityAssignment::factory()
+        ->for($firstFuelPlan, 'assignable')
+        ->recycle([$budget, $activityA02, $fuelFile, $fuelRule])
+        ->create();
 
     $technicalFile = reconciliationFile($budget, OwnRevenueImportFormat::TechnicalSheet);
     $firstNeed = OwnRevenueTechnicalSheetNeed::factory()->recycle([$budget, $technicalFile])->create([
@@ -156,13 +194,15 @@ test('it groups current supporting records and builds exact reconciliation candi
         'flight_amount_cents' => '30000',
     ]);
 
+    $stateBefore = reconciliationPersistentState($budget);
     $data = app(OwnRevenueActivityReconciliationViewData::class)->forBudget($budget);
+    $stateAfter = reconciliationPersistentState($budget);
     $groupKeys = app(OwnRevenueActivityGroupKey::class);
 
     expect($data['summary'])->toBe([
         'total' => 5,
-        'assigned' => 0,
-        'pending' => 5,
+        'assigned' => 1,
+        'pending' => 4,
         'complete' => false,
     ])->and($data['snapshots'])->toBe([
         'work_sheet_file_id' => $workSheet->id,
@@ -173,14 +213,15 @@ test('it groups current supporting records and builds exact reconciliation candi
         ],
     ])->and($data['formats']['fuel']['summary'])->toBe([
         'total' => 2,
-        'assigned' => 0,
-        'pending' => 2,
+        'assigned' => 1,
+        'pending' => 1,
         'complete' => false,
     ])->and($data['formats']['fuel']['groups'])->toHaveCount(1)
         ->and($data['formats']['fuel']['groups'][0]['record_count'])->toBe(2)
         ->and($data['formats']['fuel']['groups'][0]['label'])->toBe('Visita técnica')
         ->and($data['formats']['fuel']['groups'][0]['candidate_activity_codes'])->toBe(['A02', 'A04'])
-        ->and($data['formats']['fuel']['groups'][0]['current_activity'])->toBeNull()
+        ->and($data['formats']['fuel']['groups'][0]['current_activity']['code'])->toBe('A02')
+        ->and($data['formats']['fuel']['groups'][0]['records'][0]['latest_assignment']['activity_code'])->toBe('A02')
         ->and($data['formats']['fuel']['groups'][0]['active_rule']['activity']['code'])->toBe('A02')
         ->and($data['formats']['fuel']['groups'][0]['hash'])->toBe(
             hash('sha256', 'fuel|VISITA TECNICA'),
@@ -189,11 +230,11 @@ test('it groups current supporting records and builds exact reconciliation candi
         ->and($data['formats']['fuel']['difference_cents'])->toBe('-50000')
         ->and($data['formats']['technical_sheet']['groups'])->toHaveCount(1)
         ->and($data['formats']['technical_sheet']['groups'][0]['record_count'])->toBe(2)
-        ->and($data['formats']['technical_sheet']['groups'][0]['candidate_activity_codes'])->toBe(['A02', 'A04'])
+        ->and($data['formats']['technical_sheet']['groups'][0]['candidate_activity_codes'])->toBe(['A02', 'A03'])
         ->and($data['formats']['technical_sheet']['groups'][0]['month_evidence'])->toBe([4])
         ->and($data['formats']['technical_sheet']['detail_cents'])->toBe('35000')
-        ->and($data['formats']['technical_sheet']['work_sheet_cents'])->toBe('40000')
-        ->and($data['formats']['technical_sheet']['difference_cents'])->toBe('-5000')
+        ->and($data['formats']['technical_sheet']['work_sheet_cents'])->toBe('65000')
+        ->and($data['formats']['technical_sheet']['difference_cents'])->toBe('-30000')
         ->and($data['formats']['travel_expenses']['groups'])->toHaveCount(1)
         ->and($data['formats']['travel_expenses']['groups'][0]['candidate_activity_codes'])->toBe(['A02', 'A04'])
         ->and($data['formats']['travel_expenses']['detail_cents'])->toBe('120000')
@@ -204,7 +245,7 @@ test('it groups current supporting records and builds exact reconciliation candi
         ->and($groupKeys->forTravelCommission($commission))->toBe('REUNION ACADEMICA')
         ->and($groupKeys->hash(OwnRevenueImportFormat::Fuel, 'VISITA TECNICA'))->toBe(
             hash('sha256', 'fuel|VISITA TECNICA'),
-        );
+        )->and($stateAfter)->toBe($stateBefore);
 });
 
 test('it returns deterministic empty states without persisting reconciliation data', function () {
