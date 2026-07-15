@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/card';
 import { show as showBudget } from '@/routes/finance/own-revenue/budgets';
 import { show as showImports } from '@/routes/finance/own-revenue/budgets/imports';
+import { show as showReconciliation } from '@/routes/finance/own-revenue/budgets/imports/reconciliation';
 import type {
     OwnRevenueImportFormat,
     OwnRevenueImportWorkspaceProps,
@@ -54,6 +55,16 @@ export default function OwnRevenueImportShow({
         (slot) => slot.format !== 'work_sheet' && slot.has_parser_pending,
     ).length;
     const missingCount = slots.filter((slot) => slot.is_missing).length;
+    const canReconcile =
+        slots.some(
+            (slot) => slot.format === 'work_sheet' && slot.has_confirmed,
+        ) &&
+        slots.some(
+            (slot) =>
+                ['technical_sheet', 'fuel', 'travel_expenses'].includes(
+                    slot.format,
+                ) && slot.has_confirmed,
+        );
     const [mutationFeedback, setMutationFeedback] = useState(
         initialImportMutation,
     );
@@ -107,12 +118,21 @@ export default function OwnRevenueImportShow({
                                 {budget.fiscal_year}.
                             </p>
                         </div>
-                        <Badge variant="outline" className="w-fit">
-                            <ShieldCheck className="size-3" />
-                            {permissions.manage
-                                ? 'Gestión habilitada'
-                                : 'Sólo consulta'}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {canReconcile && (
+                                <Button asChild>
+                                    <Link href={showReconciliation(budget.id)}>
+                                        Conciliar actividades
+                                    </Link>
+                                </Button>
+                            )}
+                            <Badge variant="outline" className="w-fit">
+                                <ShieldCheck className="size-3" />
+                                {permissions.manage
+                                    ? 'Gestión habilitada'
+                                    : 'Sólo consulta'}
+                            </Badge>
+                        </div>
                     </div>
                 </header>
 

@@ -290,3 +290,98 @@ export type OwnRevenueImportDecision = {
     resolved_value: string | boolean | null;
     justification: string | null;
 };
+
+export type OwnRevenueSupportingFormat =
+    | 'technical_sheet'
+    | 'fuel'
+    | 'travel_expenses';
+
+export type OwnRevenueActivitySummary = {
+    total: number;
+    assigned: number;
+    pending: number;
+    complete: boolean;
+};
+
+export type OwnRevenueReconciliationActivity = {
+    id: number;
+    code: string;
+    name: string;
+};
+
+export type OwnRevenueActivityAssignmentSummary = {
+    id: number;
+    mode: 'group_rule' | 'automatic_rule' | 'individual_exception';
+    activity_code: string;
+    activity_name: string;
+    justification:
+        | 'work_sheet_match'
+        | 'description_classification'
+        | 'administrative_criterion'
+        | 'other';
+    justification_note: string | null;
+    assigned_at: string | null;
+};
+
+export type OwnRevenueActivityReconciliationRecord = {
+    id: number;
+    label: string;
+    amount_cents: string;
+    activity: OwnRevenueReconciliationActivity | null;
+    latest_assignment: OwnRevenueActivityAssignmentSummary | null;
+};
+
+export type OwnRevenueActivityRuleSummary = {
+    id: number;
+    activity: OwnRevenueReconciliationActivity | null;
+    justification: OwnRevenueActivityAssignmentSummary['justification'];
+    justification_note: string | null;
+};
+
+export type OwnRevenueActivityReconciliationGroup = {
+    hash: string;
+    label: string;
+    record_count: number;
+    summary: OwnRevenueActivitySummary;
+    detail_cents: string;
+    work_sheet_cents: string;
+    difference_cents: string;
+    month_evidence: number[];
+    candidate_activity_codes: string[];
+    candidates: OwnRevenueReconciliationActivity[];
+    suggested_activity_id: number | null;
+    current_activity: OwnRevenueReconciliationActivity | null;
+    active_rule: OwnRevenueActivityRuleSummary | null;
+    records?: OwnRevenueActivityReconciliationRecord[];
+};
+
+export type OwnRevenueActivityReconciliationFormat = {
+    format: OwnRevenueSupportingFormat;
+    label: string;
+    file_id: number | null;
+    summary: OwnRevenueActivitySummary;
+    detail_cents: string;
+    work_sheet_cents: string;
+    difference_cents: string;
+};
+
+export type OwnRevenueActivityReconciliationProps = {
+    budget: OwnRevenueImportBudget;
+    summary: OwnRevenueActivitySummary;
+    snapshots: {
+        work_sheet_file_id: number | null;
+        supporting_file_ids: Partial<
+            Record<OwnRevenueSupportingFormat, number>
+        >;
+    };
+    activities: OwnRevenueReconciliationActivity[];
+    formats: Record<
+        OwnRevenueSupportingFormat,
+        OwnRevenueActivityReconciliationFormat
+    >;
+    selected_format: OwnRevenueSupportingFormat;
+    groups: LengthAwarePaginator<OwnRevenueActivityReconciliationGroup>;
+    selected_group: OwnRevenueActivityReconciliationGroup | null;
+    empty_reasons: Record<string, string>;
+    permissions: { view: boolean; manage: boolean };
+};
