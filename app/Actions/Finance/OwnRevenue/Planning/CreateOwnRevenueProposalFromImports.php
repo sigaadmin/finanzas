@@ -13,6 +13,7 @@ use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalTravelCommission;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueTravelRate;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Planning\FixedDecimal;
 use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalReadiness;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,10 @@ use Illuminate\Validation\ValidationException;
 
 class CreateOwnRevenueProposalFromImports
 {
-    public function __construct(private readonly OwnRevenueProposalReadiness $readiness) {}
+    public function __construct(
+        private readonly OwnRevenueProposalReadiness $readiness,
+        private readonly FixedDecimal $decimal,
+    ) {}
 
     /** @param array<string, int> $expectedFileIds */
     public function handle(
@@ -143,7 +147,11 @@ class CreateOwnRevenueProposalFromImports
                     'is_active' => true,
                 ]);
                 $returnKilometers = $source->return_kilometers ?? '0';
-                $totalKilometers = bcadd((string) $source->outbound_kilometers, (string) $returnKilometers, 4);
+                $totalKilometers = $this->decimal->add(
+                    (string) $source->outbound_kilometers,
+                    (string) $returnKilometers,
+                    4,
+                );
 
                 $proposal->fuelNeeds()->create([
                     'own_revenue_budget_id' => $proposal->own_revenue_budget_id,
