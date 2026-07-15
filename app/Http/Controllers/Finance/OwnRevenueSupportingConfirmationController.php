@@ -21,7 +21,7 @@ class OwnRevenueSupportingConfirmationController extends Controller
         abort_unless($importFile->own_revenue_budget_id === $budget->id, 404);
         $confirmImport->handle($importFile, $request->user(), $request->validated('analysis_revision'));
 
-        Inertia::flash('success', 'Archivo confirmado correctamente. La actividad se asignará durante la conciliación.');
+        Inertia::flash('success', 'Archivo confirmado correctamente. Las reglas de actividad disponibles fueron aplicadas.');
 
         return to_route('finance.own-revenue.budgets.imports.files.preview', [
             'budget' => $budget,

@@ -1,15 +1,21 @@
 <?php
 
 use App\Actions\Finance\OwnRevenue\Imports\CaptureOwnRevenueImportAnalysisSnapshot;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignmentMode;
+use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueActivityJustification;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
+use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
+use App\Services\Finance\OwnRevenue\Imports\OwnRevenueActivityGroupKey;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -98,6 +104,17 @@ function readySupportingFile(User $manager, OwnRevenueImportFormat $format): arr
     ])->save();
 
     return ['file' => $file->fresh(), 'source_row_id' => $source->id, 'payload' => $payload];
+}
+
+function refreshSupportingConfirmationSnapshot(OwnRevenueImportFile $file): OwnRevenueImportFile
+{
+    $budget = $file->budget->fresh();
+    $file->forceFill([
+        'budget_updated_at_at_analysis' => $budget->updated_at,
+        'analysis_fingerprint' => app(CaptureOwnRevenueImportAnalysisSnapshot::class)->handle($budget)->fingerprint,
+    ])->save();
+
+    return $file->fresh();
 }
 
 test('a supporting file without an analysis fingerprint cannot be confirmed', function () {
@@ -219,7 +236,7 @@ test('a ready supporting file can be confirmed without inventing an activity', f
             'budget' => $file->budget,
             'importFile' => $file,
         ]))
-        ->assertInertiaFlash('success', 'Archivo confirmado correctamente. La actividad se asignará durante la conciliación.');
+        ->assertInertiaFlash('success', 'Archivo confirmado correctamente. Las reglas de actividad disponibles fueron aplicadas.');
 
     $this->assertDatabaseHas($table, [
         'own_revenue_import_file_id' => $file->id,
@@ -241,3 +258,97 @@ test('a ready supporting file can be confirmed without inventing an activity', f
         ->and($line->own_revenue_activity_id)->toBeNull()
         ->and($line->source_row_id)->toBe($sourceRowId);
 })->with('supporting confirmation formats');
+
+test('active activity rules are applied while confirming every supporting format', function (OwnRevenueImportFormat $format, string $table) {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, $format);
+    $activity = OwnRevenueActivity::factory()->for($file->budget, 'budget')->create(['code' => 'A02']);
+    $groupKey = match ($format) {
+        OwnRevenueImportFormat::TechnicalSheet => '21101|MATERIAL',
+        OwnRevenueImportFormat::Fuel, OwnRevenueImportFormat::TravelExpenses => 'COMISION',
+        default => throw new LogicException('Formato no compatible.'),
+    };
+    $rule = OwnRevenueActivityRule::factory()->recycle([$file->budget, $activity, $manager])->create([
+        'format' => $format,
+        'group_key' => $groupKey,
+        'group_hash' => app(OwnRevenueActivityGroupKey::class)->hash($format, $groupKey),
+        'group_payload' => ['label' => $groupKey],
+        'justification' => OwnRevenueActivityJustification::DescriptionClassification,
+    ]);
+    $file = refreshSupportingConfirmationSnapshot($file);
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [
+        $file->budget, $file,
+    ]), ['analysis_revision' => $file->analysis_revision])->assertSessionHasNoErrors();
+
+    $record = DB::table($table)->where('own_revenue_import_file_id', $file->id)->sole();
+    $assignment = OwnRevenueActivityAssignment::query()->sole();
+
+    expect($record->own_revenue_activity_id)->toBe($activity->id)
+        ->and($assignment->own_revenue_activity_rule_id)->toBe($rule->id)
+        ->and($assignment->own_revenue_activity_id)->toBe($activity->id)
+        ->and($assignment->previous_activity_id)->toBeNull()
+        ->and($assignment->mode)->toBe(OwnRevenueActivityAssignmentMode::AutomaticRule)
+        ->and($assignment->assigned_by)->toBe($manager->id)
+        ->and($assignment->group_key)->toBe($groupKey);
+})->with([
+    'ficha técnica' => [OwnRevenueImportFormat::TechnicalSheet, 'own_revenue_technical_sheet_needs'],
+    'combustible' => [OwnRevenueImportFormat::Fuel, 'own_revenue_fuel_plans'],
+    'viáticos' => [OwnRevenueImportFormat::TravelExpenses, 'own_revenue_travel_commissions'],
+]);
+
+test('inactive and foreign activity rules are ignored during confirmation', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::Fuel);
+    $activity = OwnRevenueActivity::factory()->for($file->budget, 'budget')->create();
+    $groupKey = 'COMISION';
+    $groupHash = app(OwnRevenueActivityGroupKey::class)->hash(OwnRevenueImportFormat::Fuel, $groupKey);
+    OwnRevenueActivityRule::factory()->recycle([$file->budget, $activity, $manager])->create([
+        'format' => OwnRevenueImportFormat::Fuel,
+        'group_key' => $groupKey,
+        'group_hash' => $groupHash,
+        'is_active' => false,
+    ]);
+    $foreignBudget = OwnRevenueBudget::factory()->create();
+    $foreignActivity = OwnRevenueActivity::factory()->for($foreignBudget, 'budget')->create();
+    OwnRevenueActivityRule::factory()->recycle([$foreignBudget, $foreignActivity, $manager])->create([
+        'format' => OwnRevenueImportFormat::Fuel,
+        'group_key' => $groupKey,
+        'group_hash' => $groupHash,
+    ]);
+    $file = refreshSupportingConfirmationSnapshot($file);
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [
+        $file->budget, $file,
+    ]), ['analysis_revision' => $file->analysis_revision])->assertSessionHasNoErrors();
+
+    expect(DB::table('own_revenue_fuel_plans')->where('own_revenue_import_file_id', $file->id)->value('own_revenue_activity_id'))->toBeNull()
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(0);
+});
+
+test('an invalid rule activity rolls back records and confirmation', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::Fuel);
+    $foreignBudget = OwnRevenueBudget::factory()->create();
+    $foreignActivity = OwnRevenueActivity::factory()->for($foreignBudget, 'budget')->create();
+    $groupKey = 'COMISION';
+    OwnRevenueActivityRule::factory()->recycle([$file->budget, $foreignActivity, $manager])->create([
+        'own_revenue_budget_id' => $file->own_revenue_budget_id,
+        'own_revenue_activity_id' => $foreignActivity->id,
+        'format' => OwnRevenueImportFormat::Fuel,
+        'group_key' => $groupKey,
+        'group_hash' => app(OwnRevenueActivityGroupKey::class)->hash(OwnRevenueImportFormat::Fuel, $groupKey),
+    ]);
+    $file = refreshSupportingConfirmationSnapshot($file);
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [
+        $file->budget, $file,
+    ]), ['analysis_revision' => $file->analysis_revision])->assertSessionHasErrors('file');
+
+    expect($file->fresh()->status)->toBe(OwnRevenueImportFileStatus::Ready)
+        ->and(DB::table('own_revenue_fuel_plans')->where('own_revenue_import_file_id', $file->id)->count())->toBe(0)
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(0);
+});

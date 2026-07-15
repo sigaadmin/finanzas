@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\CanonicalJson;
 use App\Services\Finance\OwnRevenue\Imports\PortableIntegerAmount;
 use App\Services\Finance\OwnRevenue\Imports\StoredImportFileHasher;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -34,6 +35,7 @@ class ConfirmOwnRevenueSupportingImport
         private readonly CanonicalJson $canonicalJson,
         private readonly PortableIntegerAmount $amounts,
         private readonly StoredImportFileHasher $fileHasher,
+        private readonly ApplyOwnRevenueActivityRule $applyActivityRule,
     ) {}
 
     public function handle(OwnRevenueImportFile $file, User $user, string $analysisRevision): OwnRevenueImportFile
@@ -58,7 +60,8 @@ class ConfirmOwnRevenueSupportingImport
             }
 
             foreach ($rows as $row) {
-                $this->createRecord($lockedFile, $budget, $row);
+                $record = $this->createRecord($lockedFile, $budget, $row);
+                $this->applyActivityRule->handle($record, $lockedFile->format, $lockedFile, $user);
             }
 
             OwnRevenueImportFile::query()
@@ -146,7 +149,7 @@ class ConfirmOwnRevenueSupportingImport
         }
     }
 
-    private function createRecord(OwnRevenueImportFile $file, OwnRevenueBudget $budget, OwnRevenueImportRow $row): void
+    private function createRecord(OwnRevenueImportFile $file, OwnRevenueBudget $budget, OwnRevenueImportRow $row): Model
     {
         $payload = $row->normalized_payload;
         if (! is_array($payload) || ! hash_equals($row->row_hash, $this->canonicalJson->hash($payload))) {
@@ -168,7 +171,8 @@ class ConfirmOwnRevenueSupportingImport
             'source_row_id' => $sourceRow->id,
             'sort_order' => $row->row_number,
         ];
-        match ($file->format) {
+
+        return match ($file->format) {
             OwnRevenueImportFormat::TechnicalSheet => $this->createTechnicalSheetNeed($base, $budget, $payload),
             OwnRevenueImportFormat::Fuel => OwnRevenueFuelPlan::query()->create([
                 ...$base,
