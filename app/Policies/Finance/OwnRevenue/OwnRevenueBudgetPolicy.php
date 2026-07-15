@@ -78,6 +78,12 @@ class OwnRevenueBudgetPolicy
             && $this->canAdministrate($user);
     }
 
+    public function editProposal(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::Draft
+            && ($this->canAdministrate($user) || $user->isFinanceAssistant());
+    }
+
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()
