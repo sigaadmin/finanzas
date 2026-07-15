@@ -6,6 +6,8 @@ use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
@@ -154,5 +156,17 @@ class OwnRevenueBudget extends Model
     public function travelCommissions(): HasMany
     {
         return $this->hasMany(OwnRevenueTravelCommission::class);
+    }
+
+    /** @return HasMany<OwnRevenueActivityRule, $this> */
+    public function activityRules(): HasMany
+    {
+        return $this->hasMany(OwnRevenueActivityRule::class);
+    }
+
+    /** @return HasMany<OwnRevenueActivityAssignment, $this> */
+    public function activityAssignments(): HasMany
+    {
+        return $this->hasMany(OwnRevenueActivityAssignment::class);
     }
 }

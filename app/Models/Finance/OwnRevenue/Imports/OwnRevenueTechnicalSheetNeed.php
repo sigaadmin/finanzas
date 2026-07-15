@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
     'own_revenue_budget_id', 'own_revenue_import_file_id', 'own_revenue_activity_id', 'source_row_id',
@@ -52,5 +53,11 @@ class OwnRevenueTechnicalSheetNeed extends Model
     public function expenseClassification(): BelongsTo
     {
         return $this->belongsTo(ExpenseClassification::class);
+    }
+
+    /** @return MorphMany<OwnRevenueActivityAssignment, $this> */
+    public function activityAssignments(): MorphMany
+    {
+        return $this->morphMany(OwnRevenueActivityAssignment::class, 'assignable');
     }
 }
