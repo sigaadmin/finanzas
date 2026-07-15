@@ -17,8 +17,10 @@ use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\OwnRevenuePlanningController;
+use App\Http\Controllers\Finance\OwnRevenueProposalCalculationController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCreationController;
 use App\Http\Controllers\Finance\OwnRevenueProposalFuelNeedController;
+use App\Http\Controllers\Finance\OwnRevenueProposalRevisionController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTechnicalNeedController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTravelCommissionController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTravelParticipantController;
@@ -128,6 +130,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::post('own-revenue/budgets/{budget}/proposals/from-imports', OwnRevenueProposalCreationController::class)
             ->name('own-revenue.budgets.proposals.from-imports.store');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/calculate', OwnRevenueProposalCalculationController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.calculate');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/revisions', OwnRevenueProposalRevisionController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.revisions.store');
 
         Route::post('own-revenue/budgets/{budget}/planning-routes', [OwnRevenueRouteController::class, 'store'])
             ->name('own-revenue.budgets.planning-routes.store');

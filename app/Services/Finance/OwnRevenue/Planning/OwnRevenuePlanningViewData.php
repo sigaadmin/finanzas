@@ -18,7 +18,10 @@ class OwnRevenuePlanningViewData
 
     private const SECTIONS = ['technical', 'fuel', 'travel'];
 
-    public function __construct(private readonly OwnRevenueProposalReadiness $readiness) {}
+    public function __construct(
+        private readonly OwnRevenueProposalReadiness $readiness,
+        private readonly OwnRevenueProposalFingerprint $fingerprint,
+    ) {}
 
     /** @return array<string, mixed> */
     public function forBudget(OwnRevenueBudget $budget, Request $request): array
@@ -55,6 +58,12 @@ class OwnRevenuePlanningViewData
                 'create' => Gate::allows('createProposal', $budget),
                 'edit' => Gate::allows('editProposal', $budget)
                     && ($proposal === null || $proposal->status === OwnRevenueProposalStatus::Draft),
+                'calculate' => $proposal !== null
+                    && $proposal->status === OwnRevenueProposalStatus::Draft
+                    && Gate::allows('calculateProposal', $budget),
+                'revise' => $proposal !== null
+                    && in_array($proposal->status, [OwnRevenueProposalStatus::Calculated, OwnRevenueProposalStatus::Adjusted], true)
+                    && Gate::allows('createProposalRevision', $budget),
             ],
         ];
     }
@@ -84,6 +93,7 @@ class OwnRevenuePlanningViewData
             'total_amount_cents' => (string) $proposal->getRawOriginal('total_amount_cents'),
             'created_at' => $proposal->created_at?->toISOString(),
             'calculated_at' => $proposal->calculated_at?->toISOString(),
+            'fingerprint' => $this->fingerprint->forProposal($proposal),
             'sources' => [
                 'ABPRE' => $this->sourceLabel($proposal->sourceAbpreFile),
                 'Hoja de trabajo' => $this->sourceLabel($proposal->sourceWorkSheetFile),

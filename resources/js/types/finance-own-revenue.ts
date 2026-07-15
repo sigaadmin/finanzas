@@ -153,6 +153,7 @@ export type PlanningProposal = {
     total_amount_cents: string;
     created_at: string | null;
     calculated_at: string | null;
+    fingerprint: string;
     sources: Record<string, string | null>;
 };
 

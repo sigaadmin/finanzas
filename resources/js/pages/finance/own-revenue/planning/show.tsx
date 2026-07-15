@@ -3,7 +3,9 @@ import {
     ArrowLeft,
     CheckCircle2,
     CircleAlert,
+    CopyPlus,
     FileSpreadsheet,
+    ShieldCheck,
 } from 'lucide-react';
 import CorrectionDialog from '@/components/finance/own-revenue/planning/correction-dialog';
 import FuelNeedForm from '@/components/finance/own-revenue/planning/fuel-need-form';
@@ -28,7 +30,9 @@ import {
 } from '@/components/ui/card';
 import budgets from '@/routes/finance/own-revenue/budgets';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
+import proposals from '@/routes/finance/own-revenue/budgets/proposals';
 import fromImports from '@/routes/finance/own-revenue/budgets/proposals/from-imports';
+import proposalRevisions from '@/routes/finance/own-revenue/budgets/proposals/revisions';
 import type {
     PlanningBudget,
     PlanningCatalogs,
@@ -51,7 +55,12 @@ type Props = {
     rows: PlanningPaginator;
     selected_detail: PlanningSelectedDetail;
     catalogs: PlanningCatalogs;
-    permissions: { create: boolean; edit: boolean };
+    permissions: {
+        create: boolean;
+        edit: boolean;
+        calculate: boolean;
+        revise: boolean;
+    };
 };
 
 const sectionLabels: Record<PlanningSection, string> = {
@@ -120,6 +129,69 @@ export default function OwnRevenuePlanningShow({
                                     Versión {proposal.version_number}
                                 </Badge>
                                 <Badge>{statusLabels[proposal.status]}</Badge>
+                                {permissions.calculate && (
+                                    <Form
+                                        action={
+                                            proposals.calculate([
+                                                budget.id,
+                                                proposal.id,
+                                            ]).url
+                                        }
+                                        method="post"
+                                    >
+                                        {({ processing, errors }) => (
+                                            <div className="grid gap-1">
+                                                <input
+                                                    type="hidden"
+                                                    name="proposal_fingerprint"
+                                                    value={proposal.fingerprint}
+                                                />
+                                                <Button
+                                                    type="submit"
+                                                    size="sm"
+                                                    disabled={processing}
+                                                >
+                                                    <ShieldCheck className="size-4" />
+                                                    {processing
+                                                        ? 'Calculando…'
+                                                        : 'Calcular propuesta'}
+                                                </Button>
+                                                {(errors.proposal_fingerprint ||
+                                                    errors.proposal) && (
+                                                    <p className="max-w-72 text-xs text-destructive">
+                                                        {errors.proposal_fingerprint ??
+                                                            errors.proposal}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </Form>
+                                )}
+                                {permissions.revise && (
+                                    <Form
+                                        action={
+                                            proposalRevisions.store([
+                                                budget.id,
+                                                proposal.id,
+                                            ]).url
+                                        }
+                                        method="post"
+                                    >
+                                        {({ processing }) => (
+                                            <Button
+                                                type="submit"
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={processing}
+                                            >
+                                                <CopyPlus className="size-4" />
+                                                {processing
+                                                    ? 'Creando…'
+                                                    : 'Crear versión editable'}
+                                            </Button>
+                                        )}
+                                    </Form>
+                                )}
                             </div>
                         )}
                     </div>
