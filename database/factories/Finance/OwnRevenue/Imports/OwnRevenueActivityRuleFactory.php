@@ -6,7 +6,6 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueActivityJustification;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
-use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -23,14 +22,13 @@ class OwnRevenueActivityRuleFactory extends Factory
     public function definition(): array
     {
         return [
-            'own_revenue_budget_id' => OwnRevenueBudget::factory(),
+            'own_revenue_activity_id' => OwnRevenueActivity::factory(),
+            'own_revenue_budget_id' => fn (array $attributes): int => OwnRevenueActivity::query()
+                ->findOrFail($attributes['own_revenue_activity_id'])->own_revenue_budget_id,
             'format' => OwnRevenueImportFormat::TechnicalSheet,
             'group_key' => 'specific_item_code:21101',
             'group_hash' => fake()->sha256(),
             'group_payload' => ['specific_item_code' => '21101'],
-            'own_revenue_activity_id' => fn (array $attributes): int => OwnRevenueActivity::factory()->create([
-                'own_revenue_budget_id' => $attributes['own_revenue_budget_id'],
-            ])->id,
             'activity_code' => fn (array $attributes): string => OwnRevenueActivity::query()
                 ->findOrFail($attributes['own_revenue_activity_id'])->code,
             'activity_name' => fn (array $attributes): string => OwnRevenueActivity::query()
