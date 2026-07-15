@@ -5,11 +5,14 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFileStatus;
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeed;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTravelCommission;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
@@ -49,7 +52,7 @@ function validActivityRulePayload(
     string $groupHash,
 ): array {
     return [
-        'format' => OwnRevenueImportFormat::Fuel->value,
+        'format' => $supporting->format->value,
         'group_hash' => $groupHash,
         'activity_id' => $activity->id,
         'justification' => OwnRevenueActivityJustification::DescriptionClassification->value,
@@ -132,6 +135,175 @@ test('a finance manager applies and revises an auditable rule only on the curren
         ->and(OwnRevenueActivityAssignment::query()->latest('id')->take(2)->pluck('previous_activity_id')->all())
         ->toBe([$firstActivity->id, $firstActivity->id])
         ->and($historicalPlan->fresh()->own_revenue_activity_id)->toBeNull();
+});
+
+test('a technical sheet rule only applies to the composite normalized item and description group', function () {
+    $manager = activityRuleUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $activity = OwnRevenueActivity::factory()->for($budget, 'budget')->create();
+    $workSheet = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::WorkSheet);
+    $technicalFile = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::TechnicalSheet);
+    $classification = ExpenseClassification::query()->create([
+        'fiscal_year' => $budget->fiscal_year,
+        'chapter_code' => '2000',
+        'chapter_name' => 'Materiales y suministros',
+        'concept_code' => '2100',
+        'concept_name' => 'Materiales de administración',
+        'generic_item_code' => '21100',
+        'generic_item_name' => 'Materiales de oficina',
+        'specific_item_code' => '21101',
+        'specific_item_name' => 'Material didáctico',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
+    $matchingNeeds = OwnRevenueTechnicalSheetNeed::factory()
+        ->count(2)
+        ->recycle([$budget, $technicalFile])
+        ->sequence(
+            ['description' => 'Material didáctico'],
+            ['description' => '  MATERIAL   DIDÁCTICO '],
+        )->create([
+            'own_revenue_import_file_id' => $technicalFile->id,
+            'expense_classification_id' => $classification->id,
+            'specific_item_code' => '21101',
+        ]);
+    $differentDescription = OwnRevenueTechnicalSheetNeed::factory()->recycle([$budget, $technicalFile])->create([
+        'own_revenue_import_file_id' => $technicalFile->id,
+        'expense_classification_id' => $classification->id,
+        'specific_item_code' => '21101',
+        'description' => 'Material de oficina',
+    ]);
+    $differentItem = OwnRevenueTechnicalSheetNeed::factory()->recycle([$budget, $technicalFile])->create([
+        'own_revenue_import_file_id' => $technicalFile->id,
+        'expense_classification_id' => $classification->id,
+        'specific_item_code' => '21201',
+        'description' => 'Material didáctico',
+    ]);
+    $groupKeys = app(OwnRevenueActivityGroupKey::class);
+    $groupHash = $groupKeys->hash(
+        OwnRevenueImportFormat::TechnicalSheet,
+        $groupKeys->forTechnicalSheetNeed($matchingNeeds->first()),
+    );
+
+    $this->actingAs($manager)
+        ->post(activityRuleUrl($budget), validActivityRulePayload($workSheet, $technicalFile, $activity, $groupHash))
+        ->assertSessionHasNoErrors();
+
+    expect($matchingNeeds->pluck('id')->map(fn (int $id): ?int => OwnRevenueTechnicalSheetNeed::query()->findOrFail($id)->own_revenue_activity_id)->all())
+        ->toBe([$activity->id, $activity->id])
+        ->and($differentDescription->fresh()->own_revenue_activity_id)->toBeNull()
+        ->and($differentItem->fresh()->own_revenue_activity_id)->toBeNull()
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(2);
+});
+
+test('a travel expenses rule applies only to the normalized reason group', function () {
+    $manager = activityRuleUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $activity = OwnRevenueActivity::factory()->for($budget, 'budget')->create();
+    $workSheet = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::WorkSheet);
+    $travelFile = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::TravelExpenses);
+    $matchingCommissions = OwnRevenueTravelCommission::factory()
+        ->count(2)
+        ->recycle([$budget, $travelFile])
+        ->sequence(
+            ['reason' => 'Reunión académica'],
+            ['reason' => '  REUNIÓN   ACADÉMICA '],
+        )->create(['own_revenue_import_file_id' => $travelFile->id]);
+    $differentCommission = OwnRevenueTravelCommission::factory()->recycle([$budget, $travelFile])->create([
+        'own_revenue_import_file_id' => $travelFile->id,
+        'reason' => 'Entrega de documentación',
+    ]);
+    $groupKeys = app(OwnRevenueActivityGroupKey::class);
+    $groupHash = $groupKeys->hash(
+        OwnRevenueImportFormat::TravelExpenses,
+        $groupKeys->forTravelCommission($matchingCommissions->first()),
+    );
+
+    $this->actingAs($manager)
+        ->post(activityRuleUrl($budget), validActivityRulePayload($workSheet, $travelFile, $activity, $groupHash))
+        ->assertSessionHasNoErrors();
+
+    expect($matchingCommissions->pluck('id')->map(fn (int $id): ?int => OwnRevenueTravelCommission::query()->findOrFail($id)->own_revenue_activity_id)->all())
+        ->toBe([$activity->id, $activity->id])
+        ->and($differentCommission->fresh()->own_revenue_activity_id)->toBeNull()
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(2);
+});
+
+test('an unknown group hash is rejected without changes', function () {
+    $manager = activityRuleUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $activity = OwnRevenueActivity::factory()->for($budget, 'budget')->create();
+    $workSheet = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::WorkSheet);
+    $fuelFile = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::Fuel);
+    $plan = OwnRevenueFuelPlan::factory()->recycle([$budget, $fuelFile])->create([
+        'own_revenue_import_file_id' => $fuelFile->id,
+        'reason' => 'Visita técnica',
+    ]);
+
+    $this->actingAs($manager)
+        ->post(activityRuleUrl($budget), validActivityRulePayload(
+            $workSheet,
+            $fuelFile,
+            $activity,
+            str_repeat('f', 64),
+        ))
+        ->assertSessionHasErrors([
+            'group_hash' => 'Los archivos confirmados cambiaron; actualiza la página antes de continuar.',
+        ]);
+
+    expect(OwnRevenueActivityRule::query()->count())->toBe(0)
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(0)
+        ->and($plan->fresh()->own_revenue_activity_id)->toBeNull();
+});
+
+test('an exception while creating assignments rolls back the rule and prior record updates', function () {
+    $manager = activityRuleUser();
+    $budget = OwnRevenueBudget::factory()->create();
+    $activity = OwnRevenueActivity::factory()->for($budget, 'budget')->create();
+    $workSheet = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::WorkSheet);
+    $fuelFile = confirmedActivityRuleFile($budget, OwnRevenueImportFormat::Fuel);
+    $plans = OwnRevenueFuelPlan::factory()->count(2)->recycle([$budget, $fuelFile])->create([
+        'own_revenue_import_file_id' => $fuelFile->id,
+        'reason' => 'Visita técnica',
+    ]);
+    $groupKeys = app(OwnRevenueActivityGroupKey::class);
+    $groupHash = $groupKeys->hash(OwnRevenueImportFormat::Fuel, $groupKeys->forFuelPlan($plans->first()));
+    $eventName = 'eloquent.creating: '.OwnRevenueActivityAssignment::class;
+    $dispatcher = OwnRevenueActivityAssignment::getEventDispatcher();
+    $originalListeners = $dispatcher?->getListeners($eventName) ?? [];
+    $intermediateStateObserved = false;
+
+    OwnRevenueActivityAssignment::creating(function () use ($budget, $activity, &$intermediateStateObserved): void {
+        $intermediateStateObserved = OwnRevenueActivityRule::query()
+            ->where('own_revenue_budget_id', $budget->id)
+            ->count() === 1
+            && OwnRevenueFuelPlan::query()
+                ->where('own_revenue_budget_id', $budget->id)
+                ->where('own_revenue_activity_id', $activity->id)
+                ->count() === 1;
+
+        throw new RuntimeException('Fallo inducido al crear la asignación.');
+    });
+
+    $this->withoutExceptionHandling();
+
+    try {
+        expect(fn () => $this->actingAs($manager)->post(
+            activityRuleUrl($budget),
+            validActivityRulePayload($workSheet, $fuelFile, $activity, $groupHash),
+        ))->toThrow(RuntimeException::class, 'Fallo inducido al crear la asignación.');
+    } finally {
+        $dispatcher?->forget($eventName);
+        foreach ($originalListeners as $listener) {
+            $dispatcher?->listen($eventName, $listener);
+        }
+    }
+
+    expect($intermediateStateObserved)->toBeTrue()
+        ->and(OwnRevenueActivityRule::query()->count())->toBe(0)
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(0)
+        ->and($plans->pluck('id')->map(fn (int $id): ?int => OwnRevenueFuelPlan::query()->findOrFail($id)->own_revenue_activity_id)->all())
+        ->toBe([null, null]);
 });
 
 test('other justification requires a note', function () {
