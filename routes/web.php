@@ -7,6 +7,7 @@ use App\Http\Controllers\Finance\ExpenseClassificationImportController;
 use App\Http\Controllers\Finance\OfficialFeeConceptController;
 use App\Http\Controllers\Finance\OwnRevenueAbpreConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueAbprePreviewController;
+use App\Http\Controllers\Finance\OwnRevenueActivityRuleController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
@@ -144,6 +145,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/imports/files/{importFile}/supporting/confirm', OwnRevenueSupportingConfirmationController::class)
             ->scopeBindings()
             ->name('own-revenue.budgets.imports.files.supporting.confirm');
+
+        Route::post('own-revenue/budgets/{budget}/imports/reconciliation/rules', OwnRevenueActivityRuleController::class)
+            ->name('own-revenue.budgets.imports.reconciliation.rules.store');
 
         Route::get('own-revenue/budgets/{budget}/imports/files/{importFile}/download', [OwnRevenueImportFileController::class, 'download'])
             ->scopeBindings()
