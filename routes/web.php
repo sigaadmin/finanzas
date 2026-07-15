@@ -19,8 +19,12 @@ use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCreationController;
 use App\Http\Controllers\Finance\OwnRevenueProposalFuelNeedController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTechnicalNeedController;
+use App\Http\Controllers\Finance\OwnRevenueProposalTravelCommissionController;
+use App\Http\Controllers\Finance\OwnRevenueProposalTravelParticipantController;
 use App\Http\Controllers\Finance\OwnRevenueRouteController;
 use App\Http\Controllers\Finance\OwnRevenueSupportingConfirmationController;
+use App\Http\Controllers\Finance\OwnRevenueTravelDestinationController;
+use App\Http\Controllers\Finance\OwnRevenueTravelRateController;
 use App\Http\Controllers\Finance\OwnRevenueWorkSheetConfirmationController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
 use App\Http\Controllers\Finance\PaymentRegistrationController;
@@ -132,6 +136,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->scopeBindings()
             ->name('own-revenue.budgets.planning-routes.destroy');
 
+        Route::post('own-revenue/budgets/{budget}/travel-destinations', [OwnRevenueTravelDestinationController::class, 'store'])
+            ->name('own-revenue.budgets.travel-destinations.store');
+
+        Route::put('own-revenue/budgets/{budget}/travel-destinations/{travelDestination}', [OwnRevenueTravelDestinationController::class, 'update'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.travel-destinations.update');
+
+        Route::delete('own-revenue/budgets/{budget}/travel-destinations/{travelDestination}', [OwnRevenueTravelDestinationController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.travel-destinations.destroy');
+
+        Route::post('own-revenue/budgets/{budget}/travel-rates', [OwnRevenueTravelRateController::class, 'store'])
+            ->name('own-revenue.budgets.travel-rates.store');
+
+        Route::put('own-revenue/budgets/{budget}/travel-rates/{travelRate}', [OwnRevenueTravelRateController::class, 'update'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.travel-rates.update');
+
+        Route::delete('own-revenue/budgets/{budget}/travel-rates/{travelRate}', [OwnRevenueTravelRateController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.travel-rates.destroy');
+
         Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/technical-needs', [OwnRevenueProposalTechnicalNeedController::class, 'store'])
             ->scopeBindings()
             ->name('own-revenue.budgets.proposals.technical-needs.store');
@@ -155,6 +181,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('own-revenue/budgets/{budget}/proposals/{proposal}/fuel-needs/{fuelNeed}', [OwnRevenueProposalFuelNeedController::class, 'destroy'])
             ->scopeBindings()
             ->name('own-revenue.budgets.proposals.fuel-needs.destroy');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/travel-commissions', [OwnRevenueProposalTravelCommissionController::class, 'store'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.travel-commissions.store');
+
+        Route::put('own-revenue/budgets/{budget}/proposals/{proposal}/travel-commissions/{travelCommission}', [OwnRevenueProposalTravelCommissionController::class, 'update'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.travel-commissions.update');
+
+        Route::delete('own-revenue/budgets/{budget}/proposals/{proposal}/travel-commissions/{travelCommission}', [OwnRevenueProposalTravelCommissionController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.travel-commissions.destroy');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/travel-commissions/{travelCommission}/participants', [OwnRevenueProposalTravelParticipantController::class, 'store'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.travel-commissions.participants.store');
+
+        Route::put('own-revenue/budgets/{budget}/proposals/{proposal}/travel-commissions/{travelCommission}/participants/{participant}', [OwnRevenueProposalTravelParticipantController::class, 'update'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.travel-commissions.participants.update');
+
+        Route::delete('own-revenue/budgets/{budget}/proposals/{proposal}/travel-commissions/{travelCommission}/participants/{participant}', [OwnRevenueProposalTravelParticipantController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.travel-commissions.participants.destroy');
 
         Route::get('own-revenue/budgets/{budget}/imports', [OwnRevenueImportController::class, 'show'])
             ->name('own-revenue.budgets.imports.show');
