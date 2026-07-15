@@ -17,7 +17,9 @@ use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCreationController;
+use App\Http\Controllers\Finance\OwnRevenueProposalFuelNeedController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTechnicalNeedController;
+use App\Http\Controllers\Finance\OwnRevenueRouteController;
 use App\Http\Controllers\Finance\OwnRevenueSupportingConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueWorkSheetConfirmationController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
@@ -119,6 +121,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/proposals/from-imports', OwnRevenueProposalCreationController::class)
             ->name('own-revenue.budgets.proposals.from-imports.store');
 
+        Route::post('own-revenue/budgets/{budget}/planning-routes', [OwnRevenueRouteController::class, 'store'])
+            ->name('own-revenue.budgets.planning-routes.store');
+
+        Route::put('own-revenue/budgets/{budget}/planning-routes/{planningRoute}', [OwnRevenueRouteController::class, 'update'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.planning-routes.update');
+
+        Route::delete('own-revenue/budgets/{budget}/planning-routes/{planningRoute}', [OwnRevenueRouteController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.planning-routes.destroy');
+
         Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/technical-needs', [OwnRevenueProposalTechnicalNeedController::class, 'store'])
             ->scopeBindings()
             ->name('own-revenue.budgets.proposals.technical-needs.store');
@@ -130,6 +143,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('own-revenue/budgets/{budget}/proposals/{proposal}/technical-needs/{technicalNeed}', [OwnRevenueProposalTechnicalNeedController::class, 'destroy'])
             ->scopeBindings()
             ->name('own-revenue.budgets.proposals.technical-needs.destroy');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/fuel-needs', [OwnRevenueProposalFuelNeedController::class, 'store'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.fuel-needs.store');
+
+        Route::put('own-revenue/budgets/{budget}/proposals/{proposal}/fuel-needs/{fuelNeed}', [OwnRevenueProposalFuelNeedController::class, 'update'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.fuel-needs.update');
+
+        Route::delete('own-revenue/budgets/{budget}/proposals/{proposal}/fuel-needs/{fuelNeed}', [OwnRevenueProposalFuelNeedController::class, 'destroy'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.fuel-needs.destroy');
 
         Route::get('own-revenue/budgets/{budget}/imports', [OwnRevenueImportController::class, 'show'])
             ->name('own-revenue.budgets.imports.show');
