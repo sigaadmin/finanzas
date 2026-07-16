@@ -21,6 +21,7 @@ class OwnRevenuePlanningViewData
     public function __construct(
         private readonly OwnRevenueProposalReadiness $readiness,
         private readonly OwnRevenueProposalFingerprint $fingerprint,
+        private readonly OwnRevenueCutReconciliation $reconciliation,
     ) {}
 
     /** @return array<string, mixed> */
@@ -31,6 +32,9 @@ class OwnRevenuePlanningViewData
             : 'technical';
         $proposal = $this->selectedProposal($budget, $request->integer('proposal_version'));
         $readiness = $this->readiness->forBudget($budget);
+        $authorization = $proposal?->status === OwnRevenueProposalStatus::Adjusted
+            ? $this->reconciliation->forProposal($proposal)
+            : null;
 
         return [
             'budget' => [
@@ -54,6 +58,10 @@ class OwnRevenuePlanningViewData
             'rows' => $proposal === null ? $this->emptyRows() : $this->rows($proposal, $section),
             'selected_detail' => $proposal === null ? null : $this->selectedDetail($proposal, $section, $request->integer('detail_id')),
             'catalogs' => $this->catalogs($budget),
+            'authorization' => $authorization === null ? null : [
+                'ready' => $authorization['ready'], 'blockers' => $authorization['blockers'],
+                'fingerprint' => $authorization['fingerprint'],
+            ],
             'permissions' => [
                 'create' => Gate::allows('createProposal', $budget),
                 'edit' => Gate::allows('editProposal', $budget)
@@ -64,6 +72,8 @@ class OwnRevenuePlanningViewData
                 'revise' => $proposal !== null
                     && in_array($proposal->status, [OwnRevenueProposalStatus::Calculated, OwnRevenueProposalStatus::Adjusted], true)
                     && Gate::allows('createProposalRevision', $budget),
+                'authorize' => $proposal !== null && $proposal->status === OwnRevenueProposalStatus::Adjusted
+                    && Gate::allows('authorizeInitialBudget', $budget),
             ],
         ];
     }

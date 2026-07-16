@@ -30,6 +30,7 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import budgets from '@/routes/finance/own-revenue/budgets';
+import initialAuthorization from '@/routes/finance/own-revenue/budgets/initial-authorization';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
 import proposals from '@/routes/finance/own-revenue/budgets/proposals';
 import proposalCuts from '@/routes/finance/own-revenue/budgets/proposals/cuts';
@@ -37,6 +38,7 @@ import fromImports from '@/routes/finance/own-revenue/budgets/proposals/from-imp
 import proposalRevisions from '@/routes/finance/own-revenue/budgets/proposals/revisions';
 import type {
     PlanningBudget,
+    PlanningAuthorization,
     PlanningCatalogs,
     PlanningPaginator,
     PlanningProposal,
@@ -57,11 +59,13 @@ type Props = {
     rows: PlanningPaginator;
     selected_detail: PlanningSelectedDetail;
     catalogs: PlanningCatalogs;
+    authorization: PlanningAuthorization | null;
     permissions: {
         create: boolean;
         edit: boolean;
         calculate: boolean;
         revise: boolean;
+        authorize: boolean;
     };
 };
 
@@ -93,6 +97,7 @@ export default function OwnRevenuePlanningShow({
     rows,
     selected_detail: selectedDetail,
     catalogs,
+    authorization,
     permissions,
 }: Props) {
     const currentUrl =
@@ -205,6 +210,17 @@ export default function OwnRevenuePlanningShow({
                                                     : 'Crear versión editable'}
                                             </Button>
                                         )}
+                                    </Form>
+                                )}
+                                {permissions.authorize && authorization && (
+                                    <Form action={initialAuthorization.store([budget.id, proposal.id]).url} method="post">
+                                        {({ processing }) => <>
+                                            <input type="hidden" name="authorization_fingerprint" value={authorization.fingerprint} />
+                                            <Button type="submit" size="sm" disabled={processing || !authorization.ready}>
+                                                <ShieldCheck className="size-4" />
+                                                {processing ? 'Autorizando…' : 'Autorizar presupuesto inicial'}
+                                            </Button>
+                                        </>}
                                     </Form>
                                 )}
                             </div>
