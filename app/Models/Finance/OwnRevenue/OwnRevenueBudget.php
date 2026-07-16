@@ -14,6 +14,10 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeed;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTravelCommission;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueRoute;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueTravelDestination;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueTravelRate;
 use App\Models\User;
 use Database\Factories\Finance\OwnRevenue\OwnRevenueBudgetFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -168,5 +172,29 @@ class OwnRevenueBudget extends Model
     public function activityAssignments(): HasMany
     {
         return $this->hasMany(OwnRevenueActivityAssignment::class);
+    }
+
+    /** @return HasMany<OwnRevenueProposal, $this> */
+    public function proposals(): HasMany
+    {
+        return $this->hasMany(OwnRevenueProposal::class);
+    }
+
+    /** @return HasMany<OwnRevenueRoute, $this> */
+    public function planningRoutes(): HasMany
+    {
+        return $this->hasMany(OwnRevenueRoute::class);
+    }
+
+    /** @return HasMany<OwnRevenueTravelDestination, $this> */
+    public function travelDestinations(): HasMany
+    {
+        return $this->hasMany(OwnRevenueTravelDestination::class);
+    }
+
+    /** @return HasMany<OwnRevenueTravelRate, $this> */
+    public function travelRates(): HasMany
+    {
+        return $this->hasMany(OwnRevenueTravelRate::class);
     }
 }

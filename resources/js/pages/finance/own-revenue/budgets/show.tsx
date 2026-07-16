@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
+    ClipboardList,
     Copy,
     Database,
     FileSpreadsheet,
@@ -26,6 +27,7 @@ import {
 import { create, index } from '@/routes/finance/own-revenue/budgets';
 import { confirm as confirmCog } from '@/routes/finance/own-revenue/budgets/cog';
 import imports from '@/routes/finance/own-revenue/budgets/imports';
+import planning from '@/routes/finance/own-revenue/budgets/planning';
 import type {
     AnnualValueStatus,
     CogCatalogStatus,
@@ -335,6 +337,26 @@ export default function OwnRevenueBudgetShow({
                         </CardContent>
                     </Card>
                 )}
+
+                <Card>
+                    <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <ClipboardList className="size-5" />
+                                Planeación editable
+                            </CardTitle>
+                            <CardDescription>
+                                Revisa y captura Ficha técnica, Combustible y
+                                Viáticos sin salir del sistema.
+                            </CardDescription>
+                        </div>
+                        <Button asChild>
+                            <Link href={planning.show(budget.id)}>
+                                Abrir Planeación
+                            </Link>
+                        </Button>
+                    </CardHeader>
+                </Card>
 
                 <Card>
                     <CardHeader>

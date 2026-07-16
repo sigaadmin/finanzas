@@ -72,6 +72,38 @@ class OwnRevenueBudgetPolicy
         return $this->manageImports($user, $ownRevenueBudget);
     }
 
+    public function createProposal(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::Draft
+            && $this->canAdministrate($user);
+    }
+
+    public function editProposal(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::Draft
+            && ($this->canAdministrate($user) || $user->isFinanceAssistant());
+    }
+
+    public function calculateProposal(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::Draft
+            && $this->canAdministrate($user);
+    }
+
+    public function createProposalRevision(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return in_array($ownRevenueBudget->status, [
+            OwnRevenueBudgetStatus::ProposalCalculated,
+            OwnRevenueBudgetStatus::ProposalAdjusted,
+        ], true) && $this->canAdministrate($user);
+    }
+
+    public function manageProposalCuts(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::ProposalCalculated
+            && $this->canAdministrate($user);
+    }
+
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()
