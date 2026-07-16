@@ -104,6 +104,12 @@ class OwnRevenueBudgetPolicy
             && $this->canAdministrate($user);
     }
 
+    public function authorizeInitialBudget(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::ProposalAdjusted
+            && $this->canAdministrate($user);
+    }
+
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()

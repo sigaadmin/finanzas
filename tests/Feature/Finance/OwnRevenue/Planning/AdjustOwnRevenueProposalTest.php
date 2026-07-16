@@ -254,3 +254,33 @@ test('cuts workspace exposes operational totals and permissions', function () {
         'reconciliation_fingerprint' => str_repeat('a', 64), 'cuts' => [],
     ])->assertForbidden();
 });
+
+test('an adjusted proposal can be authorized into an immutable initial budget snapshot', function () {
+    ['budget' => $budget, 'proposal' => $proposal, 'manager' => $manager, 'first' => $first, 'second' => $second] = cutFixture();
+    $reconciliation = app(OwnRevenueCutReconciliation::class)->forProposal($proposal);
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.proposals.cuts.store', [$budget, $proposal]), [
+        'reconciliation_fingerprint' => $reconciliation['fingerprint'],
+        'cuts' => [
+            ['target_type' => 'technical', 'target_id' => $first->id, 'stable_key' => 'technical:a', 'specific_item_code' => '21101', 'amount_cents' => '280'],
+            ['target_type' => 'technical', 'target_id' => $second->id, 'stable_key' => 'technical:b', 'specific_item_code' => '21101', 'amount_cents' => '120'],
+        ],
+    ])->assertSessionHasNoErrors();
+    $fingerprint = app(OwnRevenueCutReconciliation::class)->forProposal($proposal->fresh())['fingerprint'];
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.proposals.adjust', [$budget, $proposal]), [
+        'reconciliation_fingerprint' => $fingerprint,
+    ])->assertSessionHasNoErrors();
+    $adjusted = OwnRevenueProposal::query()->where('status', OwnRevenueProposalStatus::Adjusted)->sole();
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.initial-authorization.store', [$budget, $adjusted]), [
+        'authorization_fingerprint' => app(OwnRevenueCutReconciliation::class)->forProposal($adjusted)['fingerprint'],
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    $this->assertDatabaseHas('own_revenue_initial_budgets', [
+        'own_revenue_budget_id' => $budget->id,
+        'own_revenue_proposal_id' => $adjusted->id,
+        'total_amount_cents' => 600,
+        'authorized_by' => $manager->id,
+    ]);
+    expect($budget->fresh()->status)->toBe(OwnRevenueBudgetStatus::InitialAuthorized);
+});

@@ -16,6 +16,7 @@ use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
+use App\Http\Controllers\Finance\OwnRevenueInitialAuthorizationController;
 use App\Http\Controllers\Finance\OwnRevenuePlanningController;
 use App\Http\Controllers\Finance\OwnRevenueProposalAdjustmentController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCalculationController;
@@ -152,6 +153,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/adjust', OwnRevenueProposalAdjustmentController::class)
             ->scopeBindings()
             ->name('own-revenue.budgets.proposals.adjust');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/initial-authorization', OwnRevenueInitialAuthorizationController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.initial-authorization.store');
 
         Route::post('own-revenue/budgets/{budget}/planning-routes', [OwnRevenueRouteController::class, 'store'])
             ->name('own-revenue.budgets.planning-routes.store');
