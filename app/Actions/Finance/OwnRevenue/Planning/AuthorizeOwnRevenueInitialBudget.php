@@ -59,7 +59,7 @@ class AuthorizeOwnRevenueInitialBudget
                 'total_amount_cents' => $lockedProposal->getRawOriginal('total_amount_cents'),
                 'source_fingerprint' => $lockedProposal->source_fingerprint,
                 'authorization_fingerprint' => $reconciliation['fingerprint'],
-                'snapshot' => ['reconciliation' => $reconciliation],
+                'snapshot' => $this->snapshot($lockedBudget, $lockedProposal, $reconciliation),
                 'authorized_by' => $user->id,
                 'authorized_at' => now(),
             ]);
@@ -67,5 +67,47 @@ class AuthorizeOwnRevenueInitialBudget
 
             return $initialBudget;
         }, attempts: 3);
+    }
+
+    /** @param array<string, mixed> $reconciliation @return array<string, mixed> */
+    private function snapshot(OwnRevenueBudget $budget, OwnRevenueProposal $proposal, array $reconciliation): array
+    {
+        return [
+            'budget' => [
+                'fiscal_year' => $budget->fiscal_year,
+                'region_code' => $budget->region_code,
+                'region_name' => $budget->region_name,
+                'uma_value' => $budget->uma_value,
+                'fuel_price_per_liter' => $budget->fuel_price_per_liter,
+            ],
+            'sources' => [
+                'abpre' => $proposal->source_abpre_file_id,
+                'work_sheet' => $proposal->source_work_sheet_file_id,
+                'technical_sheet' => $proposal->source_technical_sheet_file_id,
+                'fuel' => $proposal->source_fuel_file_id,
+                'travel_expenses' => $proposal->source_travel_expenses_file_id,
+            ],
+            'reconciliation' => $reconciliation,
+            'technical_needs' => $proposal->technicalNeeds()->with('activity')->orderBy('sort_order')->get()->map(fn ($need): array => [
+                'stable_key' => $need->stable_key, 'activity' => $need->activity->code,
+                'item' => $need->specific_item_code, 'month' => $need->budget_month,
+                'amount_cents' => (string) $need->getRawOriginal('budget_amount_cents'),
+            ])->all(),
+            'fuel_needs' => $proposal->fuelNeeds()->with('activity')->orderBy('sort_order')->get()->map(fn ($need): array => [
+                'stable_key' => $need->stable_key, 'activity' => $need->activity->code,
+                'item' => '26101', 'month' => $need->budget_month,
+                'amount_cents' => (string) $need->getRawOriginal('budget_amount_cents'),
+            ])->all(),
+            'travel_commissions' => $proposal->travelCommissions()->with(['activity', 'participants'])->orderBy('sort_order')->get()->map(fn ($commission): array => [
+                'stable_key' => $commission->stable_key, 'activity' => $commission->activity->code,
+                'month' => $commission->budget_month,
+                'flight_amount_cents' => (string) $commission->getRawOriginal('flight_amount_cents'),
+                'participants_amount_cents' => (string) $commission->getRawOriginal('participants_amount_cents'),
+                'participants' => $commission->participants->map(fn ($participant): array => [
+                    'stable_key' => $participant->stable_key,
+                    'amount_cents' => (string) $participant->getRawOriginal('total_amount_cents'),
+                ])->all(),
+            ])->all(),
+        ];
     }
 }

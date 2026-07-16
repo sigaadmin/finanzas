@@ -16,6 +16,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\OwnRevenueSignatory;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalCut;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalTechnicalNeed;
@@ -282,5 +283,8 @@ test('an adjusted proposal can be authorized into an immutable initial budget sn
         'total_amount_cents' => 600,
         'authorized_by' => $manager->id,
     ]);
+    $snapshot = OwnRevenueInitialBudget::query()->sole()->snapshot;
+    expect($snapshot['technical_needs'])->toHaveCount(2)
+        ->and($snapshot['technical_needs'][0])->toMatchArray(['activity' => 'A01', 'item' => '21101', 'month' => 5, 'amount_cents' => '420']);
     expect($budget->fresh()->status)->toBe(OwnRevenueBudgetStatus::InitialAuthorized);
 });
