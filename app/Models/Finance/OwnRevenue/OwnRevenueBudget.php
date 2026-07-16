@@ -14,6 +14,7 @@ use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeed;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTravelCommission;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueRoute;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueTravelDestination;
@@ -178,6 +179,12 @@ class OwnRevenueBudget extends Model
     public function proposals(): HasMany
     {
         return $this->hasMany(OwnRevenueProposal::class);
+    }
+
+    /** @return HasMany<OwnRevenueInitialBudget, $this> */
+    public function initialBudgets(): HasMany
+    {
+        return $this->hasMany(OwnRevenueInitialBudget::class);
     }
 
     /** @return HasMany<OwnRevenueRoute, $this> */

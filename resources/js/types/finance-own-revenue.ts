@@ -146,6 +146,8 @@ export type PlanningReadiness = {
     source_fingerprint: string;
 };
 
+export type PlanningAuthorization = { ready: boolean; blockers: string[]; fingerprint: string };
+
 export type PlanningProposal = {
     id: number;
     version_number: number;
