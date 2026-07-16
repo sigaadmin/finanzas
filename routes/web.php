@@ -31,6 +31,7 @@ use App\Http\Controllers\Finance\OwnRevenueRouteController;
 use App\Http\Controllers\Finance\OwnRevenueSupportingConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueTravelDestinationController;
 use App\Http\Controllers\Finance\OwnRevenueTravelRateController;
+use App\Http\Controllers\Finance\OwnRevenueWorkbookExportController;
 use App\Http\Controllers\Finance\OwnRevenueWorkSheetConfirmationController;
 use App\Http\Controllers\Finance\PaymentProcedureController;
 use App\Http\Controllers\Finance\PaymentRegistrationController;
@@ -157,6 +158,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/initial-authorization', OwnRevenueInitialAuthorizationController::class)
             ->scopeBindings()
             ->name('own-revenue.budgets.initial-authorization.store');
+
+        Route::get('own-revenue/workbook-exports/{workbookExport}', [OwnRevenueWorkbookExportController::class, 'download'])
+            ->name('own-revenue.workbook-exports.download');
 
         Route::post('own-revenue/budgets/{budget}/planning-routes', [OwnRevenueRouteController::class, 'store'])
             ->name('own-revenue.budgets.planning-routes.store');
