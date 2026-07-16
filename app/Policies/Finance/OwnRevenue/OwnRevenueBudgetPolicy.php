@@ -98,6 +98,12 @@ class OwnRevenueBudgetPolicy
         ], true) && $this->canAdministrate($user);
     }
 
+    public function manageProposalCuts(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::ProposalCalculated
+            && $this->canAdministrate($user);
+    }
+
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()

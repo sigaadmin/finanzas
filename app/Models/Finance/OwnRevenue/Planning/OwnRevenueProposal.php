@@ -115,4 +115,10 @@ class OwnRevenueProposal extends Model
     {
         return $this->hasMany(OwnRevenuePlanningCorrection::class);
     }
+
+    /** @return HasMany<OwnRevenueProposalCut, $this> */
+    public function cuts(): HasMany
+    {
+        return $this->hasMany(OwnRevenueProposalCut::class);
+    }
 }

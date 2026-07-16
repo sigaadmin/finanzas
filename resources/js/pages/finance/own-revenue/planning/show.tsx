@@ -5,6 +5,7 @@ import {
     CircleAlert,
     CopyPlus,
     FileSpreadsheet,
+    Scale,
     ShieldCheck,
 } from 'lucide-react';
 import CorrectionDialog from '@/components/finance/own-revenue/planning/correction-dialog';
@@ -31,6 +32,7 @@ import {
 import budgets from '@/routes/finance/own-revenue/budgets';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
 import proposals from '@/routes/finance/own-revenue/budgets/proposals';
+import proposalCuts from '@/routes/finance/own-revenue/budgets/proposals/cuts';
 import fromImports from '@/routes/finance/own-revenue/budgets/proposals/from-imports';
 import proposalRevisions from '@/routes/finance/own-revenue/budgets/proposals/revisions';
 import type {
@@ -129,6 +131,19 @@ export default function OwnRevenuePlanningShow({
                                     Versión {proposal.version_number}
                                 </Badge>
                                 <Badge>{statusLabels[proposal.status]}</Badge>
+                                {proposal.status === 'calculated' && (
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link
+                                            href={proposalCuts.show([
+                                                budget.id,
+                                                proposal.id,
+                                            ])}
+                                        >
+                                            <Scale className="size-4" />
+                                            Distribuir reducciones
+                                        </Link>
+                                    </Button>
+                                )}
                                 {permissions.calculate && (
                                     <Form
                                         action={

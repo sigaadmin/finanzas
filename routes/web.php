@@ -17,8 +17,10 @@ use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\OwnRevenuePlanningController;
+use App\Http\Controllers\Finance\OwnRevenueProposalAdjustmentController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCalculationController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCreationController;
+use App\Http\Controllers\Finance\OwnRevenueProposalCutController;
 use App\Http\Controllers\Finance\OwnRevenueProposalFuelNeedController;
 use App\Http\Controllers\Finance\OwnRevenueProposalRevisionController;
 use App\Http\Controllers\Finance\OwnRevenueProposalTechnicalNeedController;
@@ -138,6 +140,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/revisions', OwnRevenueProposalRevisionController::class)
             ->scopeBindings()
             ->name('own-revenue.budgets.proposals.revisions.store');
+
+        Route::get('own-revenue/budgets/{budget}/proposals/{proposal}/cuts', [OwnRevenueProposalCutController::class, 'show'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.cuts.show');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/cuts', [OwnRevenueProposalCutController::class, 'store'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.cuts.store');
+
+        Route::post('own-revenue/budgets/{budget}/proposals/{proposal}/adjust', OwnRevenueProposalAdjustmentController::class)
+            ->scopeBindings()
+            ->name('own-revenue.budgets.proposals.adjust');
 
         Route::post('own-revenue/budgets/{budget}/planning-routes', [OwnRevenueRouteController::class, 'store'])
             ->name('own-revenue.budgets.planning-routes.store');
