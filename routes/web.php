@@ -162,6 +162,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('own-revenue/workbook-exports/{workbookExport}', [OwnRevenueWorkbookExportController::class, 'download'])
             ->name('own-revenue.workbook-exports.download');
 
+        Route::post('own-revenue/budgets/{budget}/initial-budgets/{initialBudget}/workbook-exports', [OwnRevenueWorkbookExportController::class, 'store'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.workbook-exports.store');
+
         Route::post('own-revenue/budgets/{budget}/planning-routes', [OwnRevenueRouteController::class, 'store'])
             ->name('own-revenue.budgets.planning-routes.store');
 

@@ -36,10 +36,13 @@ import proposals from '@/routes/finance/own-revenue/budgets/proposals';
 import proposalCuts from '@/routes/finance/own-revenue/budgets/proposals/cuts';
 import fromImports from '@/routes/finance/own-revenue/budgets/proposals/from-imports';
 import proposalRevisions from '@/routes/finance/own-revenue/budgets/proposals/revisions';
+import budgetWorkbookExports from '@/routes/finance/own-revenue/budgets/workbook-exports';
+import workbookExports from '@/routes/finance/own-revenue/workbook-exports';
 import type {
     PlanningBudget,
     PlanningAuthorization,
     PlanningCatalogs,
+    PlanningInitialBudget,
     PlanningPaginator,
     PlanningProposal,
     PlanningReadiness,
@@ -47,6 +50,7 @@ import type {
     PlanningSelectedDetail,
     PlanningSummary,
     PlanningVersion,
+    PlanningWorkbookFormat,
 } from '@/types/finance-own-revenue';
 
 type Props = {
@@ -60,12 +64,14 @@ type Props = {
     selected_detail: PlanningSelectedDetail;
     catalogs: PlanningCatalogs;
     authorization: PlanningAuthorization | null;
+    initial_budget: PlanningInitialBudget | null;
     permissions: {
         create: boolean;
         edit: boolean;
         calculate: boolean;
         revise: boolean;
         authorize: boolean;
+        generate_exports: boolean;
     };
 };
 
@@ -79,6 +85,14 @@ const statusLabels = {
     calculated: 'Calculada',
     adjusted: 'Ajustada',
 };
+const workbookLabels: Record<PlanningWorkbookFormat, string> = {
+    abpre: 'ABPRE',
+    work_sheet: 'Hoja de trabajo',
+    technical_sheet: 'Ficha técnica',
+    fuel: 'Combustible',
+    travel_expenses: 'Viáticos',
+};
+const workbookFormats = Object.keys(workbookLabels) as PlanningWorkbookFormat[];
 
 function money(cents: string): string {
     const value = cents.padStart(3, '0');
@@ -98,6 +112,7 @@ export default function OwnRevenuePlanningShow({
     selected_detail: selectedDetail,
     catalogs,
     authorization,
+    initial_budget: initialBudget,
     permissions,
 }: Props) {
     const currentUrl =
@@ -213,20 +228,151 @@ export default function OwnRevenuePlanningShow({
                                     </Form>
                                 )}
                                 {permissions.authorize && authorization && (
-                                    <Form action={initialAuthorization.store([budget.id, proposal.id]).url} method="post">
-                                        {({ processing }) => <>
-                                            <input type="hidden" name="authorization_fingerprint" value={authorization.fingerprint} />
-                                            <Button type="submit" size="sm" disabled={processing || !authorization.ready}>
-                                                <ShieldCheck className="size-4" />
-                                                {processing ? 'Autorizando…' : 'Autorizar presupuesto inicial'}
-                                            </Button>
-                                        </>}
+                                    <Form
+                                        action={
+                                            initialAuthorization.store([
+                                                budget.id,
+                                                proposal.id,
+                                            ]).url
+                                        }
+                                        method="post"
+                                    >
+                                        {({ processing }) => (
+                                            <>
+                                                <input
+                                                    type="hidden"
+                                                    name="authorization_fingerprint"
+                                                    value={
+                                                        authorization.fingerprint
+                                                    }
+                                                />
+                                                <Button
+                                                    type="submit"
+                                                    size="sm"
+                                                    disabled={
+                                                        processing ||
+                                                        !authorization.ready
+                                                    }
+                                                >
+                                                    <ShieldCheck className="size-4" />
+                                                    {processing
+                                                        ? 'Autorizando…'
+                                                        : 'Autorizar presupuesto inicial'}
+                                                </Button>
+                                            </>
+                                        )}
                                     </Form>
                                 )}
                             </div>
                         )}
                     </div>
                 </header>
+
+                {initialBudget && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>
+                                Archivos del presupuesto autorizado
+                            </CardTitle>
+                            <CardDescription>
+                                Genera los formatos con la información
+                                autorizada. Cada versión queda registrada y
+                                puede descargarse aquí mismo.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-5">
+                            {permissions.generate_exports && (
+                                <div className="flex flex-wrap gap-2">
+                                    {workbookFormats.map((format) => (
+                                        <Form
+                                            key={format}
+                                            action={
+                                                budgetWorkbookExports.store([
+                                                    budget.id,
+                                                    initialBudget.id,
+                                                ]).url
+                                            }
+                                            method="post"
+                                        >
+                                            {({ processing }) => (
+                                                <>
+                                                    <input
+                                                        type="hidden"
+                                                        name="format"
+                                                        value={format}
+                                                    />
+                                                    <Button
+                                                        type="submit"
+                                                        size="sm"
+                                                        disabled={processing}
+                                                    >
+                                                        <FileSpreadsheet className="size-4" />
+                                                        {processing
+                                                            ? 'Generando…'
+                                                            : `Generar ${workbookLabels[format]}`}
+                                                    </Button>
+                                                </>
+                                            )}
+                                        </Form>
+                                    ))}
+                                </div>
+                            )}
+                            {initialBudget.exports.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    Aún no se ha generado ningún archivo.
+                                </p>
+                            ) : (
+                                <div className="grid gap-2">
+                                    {initialBudget.exports.map((item) => (
+                                        <div
+                                            key={item.id}
+                                            className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                            <div>
+                                                <p className="font-medium">
+                                                    {
+                                                        workbookLabels[
+                                                            item.format
+                                                        ]
+                                                    }
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {item.generated_by_name} ·{' '}
+                                                    {item.generated_at
+                                                        ? new Date(
+                                                              item.generated_at,
+                                                          ).toLocaleString(
+                                                              'es-MX',
+                                                          )
+                                                        : 'Fecha no disponible'}{' '}
+                                                    ·{' '}
+                                                    {money(
+                                                        item.total_amount_cents,
+                                                    )}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                asChild
+                                                size="sm"
+                                                variant="outline"
+                                            >
+                                                <a
+                                                    href={
+                                                        workbookExports.download(
+                                                            item.id,
+                                                        ).url
+                                                    }
+                                                >
+                                                    Descargar
+                                                </a>
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {!proposal && (
                     <Card>

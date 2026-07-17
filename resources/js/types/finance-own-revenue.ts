@@ -146,7 +146,32 @@ export type PlanningReadiness = {
     source_fingerprint: string;
 };
 
-export type PlanningAuthorization = { ready: boolean; blockers: string[]; fingerprint: string };
+export type PlanningAuthorization = {
+    ready: boolean;
+    blockers: string[];
+    fingerprint: string;
+};
+
+export type PlanningWorkbookFormat =
+    | 'abpre'
+    | 'work_sheet'
+    | 'technical_sheet'
+    | 'fuel'
+    | 'travel_expenses';
+
+export type PlanningInitialBudget = {
+    id: number;
+    total_amount_cents: string;
+    authorized_at: string | null;
+    exports: Array<{
+        id: number;
+        format: PlanningWorkbookFormat;
+        file_name: string;
+        total_amount_cents: string;
+        generated_by_name: string;
+        generated_at: string | null;
+    }>;
+};
 
 export type PlanningProposal = {
     id: number;

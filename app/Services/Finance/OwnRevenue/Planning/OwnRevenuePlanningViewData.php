@@ -5,6 +5,7 @@ namespace App\Services\Finance\OwnRevenue\Planning;
 use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenuePlanningCorrection;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use Illuminate\Database\Eloquent\Model;
@@ -35,6 +36,9 @@ class OwnRevenuePlanningViewData
         $authorization = $proposal?->status === OwnRevenueProposalStatus::Adjusted
             ? $this->reconciliation->forProposal($proposal)
             : null;
+        $initialBudget = $budget->initialBudgets()->with([
+            'workbookExports' => fn ($query) => $query->with('generator:id,name')->latest('generated_at')->latest('id'),
+        ])->latest('authorized_at')->first();
 
         return [
             'budget' => [
@@ -62,6 +66,7 @@ class OwnRevenuePlanningViewData
                 'ready' => $authorization['ready'], 'blockers' => $authorization['blockers'],
                 'fingerprint' => $authorization['fingerprint'],
             ],
+            'initial_budget' => $initialBudget === null ? null : $this->initialBudget($initialBudget),
             'permissions' => [
                 'create' => Gate::allows('createProposal', $budget),
                 'edit' => Gate::allows('editProposal', $budget)
@@ -74,7 +79,26 @@ class OwnRevenuePlanningViewData
                     && Gate::allows('createProposalRevision', $budget),
                 'authorize' => $proposal !== null && $proposal->status === OwnRevenueProposalStatus::Adjusted
                     && Gate::allows('authorizeInitialBudget', $budget),
+                'generate_exports' => $initialBudget !== null && Gate::allows('generateWorkbookExports', $budget),
             ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function initialBudget(OwnRevenueInitialBudget $initialBudget): array
+    {
+        return [
+            'id' => $initialBudget->id,
+            'total_amount_cents' => (string) $initialBudget->getRawOriginal('total_amount_cents'),
+            'authorized_at' => $initialBudget->authorized_at?->toISOString(),
+            'exports' => $initialBudget->workbookExports->map(fn ($export): array => [
+                'id' => $export->id,
+                'format' => $export->format,
+                'file_name' => $export->file_name,
+                'total_amount_cents' => (string) $export->getRawOriginal('total_amount_cents'),
+                'generated_by_name' => $export->generator->name,
+                'generated_at' => $export->generated_at?->toISOString(),
+            ])->all(),
         ];
     }
 

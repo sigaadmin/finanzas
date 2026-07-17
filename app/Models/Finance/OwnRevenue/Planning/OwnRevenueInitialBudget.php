@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'own_revenue_budget_id', 'own_revenue_proposal_id', 'total_amount_cents',
@@ -41,5 +42,11 @@ class OwnRevenueInitialBudget extends Model
     public function authorizer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'authorized_by');
+    }
+
+    /** @return HasMany<OwnRevenueWorkbookExport, $this> */
+    public function workbookExports(): HasMany
+    {
+        return $this->hasMany(OwnRevenueWorkbookExport::class);
     }
 }

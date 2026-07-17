@@ -285,6 +285,11 @@ test('an adjusted proposal can be authorized into an immutable initial budget sn
     ]);
     $snapshot = OwnRevenueInitialBudget::query()->sole()->snapshot;
     expect($snapshot['technical_needs'])->toHaveCount(2)
-        ->and($snapshot['technical_needs'][0])->toMatchArray(['activity' => 'A01', 'item' => '21101', 'month' => 5, 'amount_cents' => '420']);
+        ->and($snapshot['technical_needs'][0])->toMatchArray([
+            'activity' => 'A01', 'activity_name' => 'Actividad uno', 'item' => '21101',
+            'item_name' => 'Materiales y útiles de oficina', 'quantity' => '1.0000',
+            'unit_price_cents' => '700', 'month' => 5, 'amount_cents' => '420',
+            'region_code' => '02-001', 'region_name' => 'Felipe Carrillo Puerto',
+        ]);
     expect($budget->fresh()->status)->toBe(OwnRevenueBudgetStatus::InitialAuthorized);
 });

@@ -16,7 +16,19 @@ class TechnicalSheetWorkbookExporter
     private function rows(array $snapshot): array
     {
         return collect($snapshot['technical_needs'] ?? [])->map(fn (array $row): array => [
-            'Actividad' => $row['activity'], 'Partida' => $row['item'], 'Mes' => $row['month'], 'Importe' => ((int) $row['amount_cents']) / 100,
+            'Actividad' => $row['activity'],
+            'Nombre de la actividad' => $row['activity_name'] ?? '',
+            'Partida' => $row['item'],
+            'Nombre de la partida' => $row['item_name'] ?? '',
+            'Descripción' => $row['description'] ?? '',
+            'Cantidad' => (float) ($row['quantity'] ?? 0),
+            'Unidad' => $row['unit'] ?? '',
+            'Precio unitario' => ((int) ($row['unit_price_cents'] ?? 0)) / 100,
+            'Importe' => ((int) $row['amount_cents']) / 100,
+            'Mes' => (int) $row['month'],
+            'Impacto en metas / justificación' => $row['impact_on_goals'] ?? '',
+            'Región' => '02-001',
+            'Nombre de la región' => 'Felipe Carrillo Puerto',
         ])->all();
     }
 }
