@@ -5,6 +5,8 @@ namespace App\Models\Finance\OwnRevenue;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueBudgetModification;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
@@ -185,6 +187,18 @@ class OwnRevenueBudget extends Model
     public function initialBudgets(): HasMany
     {
         return $this->hasMany(OwnRevenueInitialBudget::class);
+    }
+
+    /** @return HasMany<OwnRevenueModifiedBudgetLine, $this> */
+    public function modifiedBudgetLines(): HasMany
+    {
+        return $this->hasMany(OwnRevenueModifiedBudgetLine::class);
+    }
+
+    /** @return HasMany<OwnRevenueBudgetModification, $this> */
+    public function budgetModifications(): HasMany
+    {
+        return $this->hasMany(OwnRevenueBudgetModification::class);
     }
 
     /** @return HasMany<OwnRevenueRoute, $this> */

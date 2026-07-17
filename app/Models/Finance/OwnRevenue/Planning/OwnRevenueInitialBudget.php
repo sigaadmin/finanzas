@@ -2,6 +2,7 @@
 
 namespace App\Models\Finance\OwnRevenue\Planning;
 
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use Database\Factories\Finance\OwnRevenue\Planning\OwnRevenueInitialBudgetFactory;
@@ -48,5 +49,11 @@ class OwnRevenueInitialBudget extends Model
     public function workbookExports(): HasMany
     {
         return $this->hasMany(OwnRevenueWorkbookExport::class);
+    }
+
+    /** @return HasMany<OwnRevenueModifiedBudgetLine, $this> */
+    public function modifiedBudgetLines(): HasMany
+    {
+        return $this->hasMany(OwnRevenueModifiedBudgetLine::class);
     }
 }

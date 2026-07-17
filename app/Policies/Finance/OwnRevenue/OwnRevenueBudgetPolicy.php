@@ -112,8 +112,20 @@ class OwnRevenueBudgetPolicy
 
     public function generateWorkbookExports(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
-        return $ownRevenueBudget->status === OwnRevenueBudgetStatus::InitialAuthorized
+        return in_array($ownRevenueBudget->status, [
+            OwnRevenueBudgetStatus::InitialAuthorized,
+            OwnRevenueBudgetStatus::InExecution,
+            OwnRevenueBudgetStatus::Closed,
+        ], true)
             && $this->canAdministrate($user);
+    }
+
+    public function manageExecution(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return in_array($ownRevenueBudget->status, [
+            OwnRevenueBudgetStatus::InitialAuthorized,
+            OwnRevenueBudgetStatus::InExecution,
+        ], true) && $this->canAdministrate($user);
     }
 
     private function canAdministrate(User $user): bool
