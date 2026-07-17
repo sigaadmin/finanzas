@@ -62,11 +62,23 @@ export type BudgetModification = {
 export type ExpenseDossier = {
     id: number;
     folio: string;
-    status: 'draft' | 'sufficiency_requested' | 'sufficiency_confirmed';
+    status:
+        | 'draft'
+        | 'sufficiency_requested'
+        | 'sufficiency_confirmed'
+        | 'purchase_in_progress'
+        | 'payment_requested'
+        | 'finance_authorized'
+        | 'budget_office_authorized'
+        | 'paid'
+        | 'rejected'
+        | 'cancelled';
     concept: string;
     amount_cents: string;
     purchase_responsibility: 'cren' | 'seq';
     external_reference: string | null;
+    purchase_reference: string | null;
+    payment_request_reference: string | null;
     notes: string | null;
     line: {
         specific_item_code: string;
@@ -76,4 +88,13 @@ export type ExpenseDossier = {
     requested_by_name: string;
     sufficiency_requested_at: string | null;
     sufficiency_confirmed_at: string | null;
+    purchase_started_at: string | null;
+    payment_requested_at: string | null;
+    documents: Array<{
+        id: number;
+        original_name: string;
+        mime_type: string;
+        size_bytes: number;
+        uploaded_at: string | null;
+    }>;
 };

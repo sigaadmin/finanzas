@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Finance;
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\InitializeOwnRevenueModifiedBudget;
+use App\Actions\Finance\OwnRevenue\Execution\RequestExpensePayment;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpenseSufficiency;
+use App\Actions\Finance\OwnRevenue\Execution\StartExpensePurchase;
 use App\Actions\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModification;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Finance\OwnRevenue\Execution\RequestExpensePaymentRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\StartExpensePurchaseRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModificationRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StoreOwnRevenueExpenseDossierRequest;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
@@ -85,5 +89,36 @@ class OwnRevenueBudgetExecutionController extends Controller
 
         return to_route('finance.own-revenue.budgets.execution.show', $budget)
             ->with('success', 'La suficiencia quedó confirmada y el importe fue comprometido.');
+    }
+
+    public function startPurchase(
+        StartExpensePurchaseRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        StartExpensePurchase $startPurchase,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $startPurchase->handle($expenseDossier, $request->user(), $request->validated('purchase_reference'));
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'La compra o contratación quedó registrada como iniciada.');
+    }
+
+    public function requestPayment(
+        RequestExpensePaymentRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        RequestExpensePayment $requestPayment,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $requestPayment->handle(
+            $expenseDossier,
+            $request->user(),
+            $request->validated('payment_request_reference'),
+            $request->file('documents', []),
+        );
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'La solicitud de pago y sus documentos quedaron registrados.');
     }
 }

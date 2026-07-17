@@ -48,6 +48,7 @@ class OwnRevenueExecutionViewData
                 'create_expense_dossier' => Gate::allows('createExpenseDossier', $budget),
                 'request_expense_sufficiency' => Gate::allows('requestExpenseSufficiency', $budget),
                 'confirm_expense_sufficiency' => Gate::allows('confirmExpenseSufficiency', $budget),
+                'manage_expense_purchase' => Gate::allows('manageExpensePurchase', $budget),
             ],
         ];
     }
@@ -129,7 +130,11 @@ class OwnRevenueExecutionViewData
     private function expenseDossiers(OwnRevenueBudget $budget): array
     {
         return $budget->expenseDossiers()
-            ->with(['budgetLine:id,specific_item_code,specific_item_name,month', 'requester:id,name'])
+            ->with([
+                'budgetLine:id,specific_item_code,specific_item_name,month',
+                'requester:id,name',
+                'documents:id,own_revenue_expense_dossier_id,original_name,mime_type,size_bytes,uploaded_at',
+            ])
             ->latest('id')
             ->get()
             ->map(fn ($dossier): array => [
@@ -140,6 +145,8 @@ class OwnRevenueExecutionViewData
                 'amount_cents' => (string) $dossier->getRawOriginal('amount_cents'),
                 'purchase_responsibility' => $dossier->purchase_responsibility->value,
                 'external_reference' => $dossier->external_reference,
+                'purchase_reference' => $dossier->purchase_reference,
+                'payment_request_reference' => $dossier->payment_request_reference,
                 'notes' => $dossier->notes,
                 'line' => [
                     'specific_item_code' => $dossier->budgetLine->specific_item_code,
@@ -149,6 +156,15 @@ class OwnRevenueExecutionViewData
                 'requested_by_name' => $dossier->requester->name,
                 'sufficiency_requested_at' => $dossier->sufficiency_requested_at?->toISOString(),
                 'sufficiency_confirmed_at' => $dossier->sufficiency_confirmed_at?->toISOString(),
+                'purchase_started_at' => $dossier->purchase_started_at?->toISOString(),
+                'payment_requested_at' => $dossier->payment_requested_at?->toISOString(),
+                'documents' => $dossier->documents->map(fn ($document): array => [
+                    'id' => $document->id,
+                    'original_name' => $document->original_name,
+                    'mime_type' => $document->mime_type,
+                    'size_bytes' => $document->size_bytes,
+                    'uploaded_at' => $document->uploaded_at?->toISOString(),
+                ])->all(),
             ])->all();
     }
 }

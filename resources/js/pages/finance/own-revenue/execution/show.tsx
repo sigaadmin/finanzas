@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { ArrowLeft, ArrowRightLeft, CalendarClock, FileText, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, CalendarClock, Download, FileText, Plus } from 'lucide-react';
 import type { FormEvent} from 'react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
@@ -19,6 +19,7 @@ import budgets from '@/routes/finance/own-revenue/budgets';
 import expenseDossierRoutes from '@/routes/finance/own-revenue/budgets/execution/expense-dossiers';
 import modifications from '@/routes/finance/own-revenue/budgets/execution/modifications';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
+import expenseDossierDocuments from '@/routes/finance/own-revenue/expense-dossier-documents';
 import type {
     BudgetModification,
     ExecutionBudget,
@@ -40,6 +41,7 @@ type Props = {
         create_expense_dossier: boolean;
         request_expense_sufficiency: boolean;
         confirm_expense_sufficiency: boolean;
+        manage_expense_purchase: boolean;
     };
 };
 
@@ -63,10 +65,22 @@ type ExpenseDossierForm = {
     notes: string;
 };
 
+type PaymentRequestForm = {
+    payment_request_reference: string;
+    documents: File[];
+};
+
 const dossierStatusLabels: Record<ExpenseDossier['status'], string> = {
     draft: 'Borrador',
     sufficiency_requested: 'Suficiencia solicitada',
     sufficiency_confirmed: 'Suficiencia confirmada',
+    purchase_in_progress: 'Compra en proceso',
+    payment_requested: 'Pago solicitado',
+    finance_authorized: 'Autorizado por Finanzas',
+    budget_office_authorized: 'Autorizado por Presupuesto',
+    paid: 'Pagado',
+    rejected: 'Rechazado',
+    cancelled: 'Cancelado',
 };
 
 const months = [
@@ -131,6 +145,8 @@ export default function OwnRevenueExecutionShow({
 }: Props) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+    const [purchaseDossier, setPurchaseDossier] = useState<ExpenseDossier | null>(null);
+    const [paymentDossier, setPaymentDossier] = useState<ExpenseDossier | null>(null);
     const usableLines = lines.filter(
         (line) => BigInt(line.available_amount_cents) > 0n,
     );
@@ -151,6 +167,11 @@ export default function OwnRevenueExecutionShow({
         purchase_responsibility: 'cren',
         external_reference: '',
         notes: '',
+    });
+    const purchaseForm = useForm({ purchase_reference: '' });
+    const paymentForm = useForm<PaymentRequestForm>({
+        payment_request_reference: '',
+        documents: [],
     });
     const selectedSource = lines.find(
         (line) => line.id.toString() === form.data.source_line_id,
@@ -255,6 +276,45 @@ export default function OwnRevenueExecutionShow({
             ? expenseDossierRoutes.sufficiencyRequest([budget.id, dossier.id])
             : expenseDossierRoutes.sufficiencyConfirmation([budget.id, dossier.id]);
         router.post(route.url, {}, { preserveScroll: true });
+    };
+
+    const openPurchaseForm = (dossier: ExpenseDossier): void => {
+        purchaseForm.reset();
+        purchaseForm.clearErrors();
+        setPurchaseDossier(dossier);
+    };
+
+    const submitPurchase = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+
+        if (purchaseDossier === null) {
+            return;
+        }
+
+        purchaseForm.post(expenseDossierRoutes.purchaseStart([budget.id, purchaseDossier.id]).url, {
+            preserveScroll: true,
+            onSuccess: () => setPurchaseDossier(null),
+        });
+    };
+
+    const openPaymentForm = (dossier: ExpenseDossier): void => {
+        paymentForm.reset();
+        paymentForm.clearErrors();
+        setPaymentDossier(dossier);
+    };
+
+    const submitPayment = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+
+        if (paymentDossier === null) {
+            return;
+        }
+
+        paymentForm.post(expenseDossierRoutes.paymentRequest([budget.id, paymentDossier.id]).url, {
+            preserveScroll: true,
+            forceFormData: true,
+            onSuccess: () => setPaymentDossier(null),
+        });
     };
 
     return (
@@ -382,6 +442,23 @@ export default function OwnRevenueExecutionShow({
                                     <p className="text-xs text-muted-foreground">
                                         {dossier.line.specific_item_code} · {months[dossier.line.month]} · {dossier.requested_by_name}
                                     </p>
+                                    {dossier.purchase_reference !== null && (
+                                        <p className="text-xs text-muted-foreground">Compra: {dossier.purchase_reference}</p>
+                                    )}
+                                    {dossier.payment_request_reference !== null && (
+                                        <p className="text-xs text-muted-foreground">Solicitud de pago: {dossier.payment_request_reference}</p>
+                                    )}
+                                    {dossier.documents.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 pt-1">
+                                            {dossier.documents.map((document) => (
+                                                <Button key={document.id} asChild variant="outline" size="sm">
+                                                    <a href={expenseDossierDocuments.download(document.id).url}>
+                                                        <Download className="size-3" /> {document.original_name}
+                                                    </a>
+                                                </Button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex flex-col items-end justify-between gap-2">
                                     <span className="font-semibold">{formatCents(dossier.amount_cents)}</span>
@@ -393,6 +470,16 @@ export default function OwnRevenueExecutionShow({
                                     {dossier.status === 'sufficiency_requested' && permissions.confirm_expense_sufficiency && (
                                         <Button type="button" size="sm" onClick={() => advanceDossier(dossier, 'confirm')}>
                                             Confirmar suficiencia
+                                        </Button>
+                                    )}
+                                    {dossier.status === 'sufficiency_confirmed' && permissions.manage_expense_purchase && (
+                                        <Button type="button" size="sm" onClick={() => openPurchaseForm(dossier)}>
+                                            Iniciar compra
+                                        </Button>
+                                    )}
+                                    {dossier.status === 'purchase_in_progress' && permissions.manage_expense_purchase && (
+                                        <Button type="button" size="sm" onClick={() => openPaymentForm(dossier)}>
+                                            Solicitar pago
                                         </Button>
                                     )}
                                 </div>
@@ -564,6 +651,66 @@ export default function OwnRevenueExecutionShow({
                             <textarea value={expenseForm.data.notes} onChange={(event) => expenseForm.setData('notes', event.target.value)} className={`${selectClassName} min-h-20 py-2`} maxLength={4000} />
                         </Field>
                         <Button type="submit" disabled={expenseForm.processing}>{expenseForm.processing ? 'Guardando…' : 'Guardar borrador'}</Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={purchaseDossier !== null} onOpenChange={(open) => !open && setPurchaseDossier(null)}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Iniciar compra o contratación</DialogTitle>
+                        <DialogDescription>
+                            Registra la orden, contrato o referencia que identifica el trámite de {purchaseDossier?.folio}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitPurchase} className="grid gap-4">
+                        <Field label="Referencia de compra" error={purchaseForm.errors.purchase_reference}>
+                            <Input
+                                value={purchaseForm.data.purchase_reference}
+                                onChange={(event) => purchaseForm.setData('purchase_reference', event.target.value)}
+                                maxLength={255}
+                                placeholder="Ej. OC-CREN-2026-001"
+                                required
+                            />
+                        </Field>
+                        <Button type="submit" disabled={purchaseForm.processing}>
+                            {purchaseForm.processing ? 'Registrando…' : 'Iniciar compra'}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={paymentDossier !== null} onOpenChange={(open) => !open && setPaymentDossier(null)}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Solicitar pago</DialogTitle>
+                        <DialogDescription>
+                            Registra la referencia y adjunta al menos un PDF, XML, imagen o XLSX de {paymentDossier?.folio}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitPayment} className="grid gap-4">
+                        <Field label="Referencia de la solicitud" error={paymentForm.errors.payment_request_reference}>
+                            <Input
+                                value={paymentForm.data.payment_request_reference}
+                                onChange={(event) => paymentForm.setData('payment_request_reference', event.target.value)}
+                                maxLength={255}
+                                placeholder="Ej. SP-CREN-2026-001"
+                                required
+                            />
+                        </Field>
+                        <Field label="Documentos" error={paymentForm.errors.documents}>
+                            <Input
+                                type="file"
+                                multiple
+                                accept=".pdf,.xml,.jpg,.jpeg,.png,.xlsx"
+                                onChange={(event) => paymentForm.setData('documents', Array.from(event.target.files ?? []))}
+                                required
+                            />
+                            <p className="text-xs text-muted-foreground">Hasta 10 archivos de 10 MB cada uno.</p>
+                        </Field>
+                        <Button type="submit" disabled={paymentForm.processing}>
+                            {paymentForm.processing ? 'Enviando…' : 'Registrar solicitud de pago'}
+                        </Button>
                     </form>
                 </DialogContent>
             </Dialog>

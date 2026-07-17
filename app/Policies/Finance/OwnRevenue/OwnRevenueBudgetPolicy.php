@@ -143,6 +143,11 @@ class OwnRevenueBudgetPolicy
         return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
     }
 
+    public function manageExpensePurchase(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->canManageExpenseDossiers($user, $ownRevenueBudget);
+    }
+
     private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->isExecutable($ownRevenueBudget)

@@ -42,11 +42,17 @@ class OwnRevenueExpenseDossierFactory extends Factory
             'amount_cents' => fake()->numberBetween(1_000, 8_000),
             'purchase_responsibility' => OwnRevenuePurchaseResponsibility::Cren,
             'external_reference' => null,
+            'purchase_reference' => null,
+            'payment_request_reference' => null,
             'notes' => fake()->optional()->sentence(),
             'requested_by' => User::factory(),
             'sufficiency_requested_at' => null,
             'sufficiency_confirmed_by' => null,
             'sufficiency_confirmed_at' => null,
+            'purchase_started_by' => null,
+            'purchase_started_at' => null,
+            'payment_requested_by' => null,
+            'payment_requested_at' => null,
         ];
     }
 }

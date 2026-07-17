@@ -16,8 +16,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'own_revenue_budget_id', 'own_revenue_modified_budget_line_id', 'sequence_number',
     'folio', 'status', 'concept', 'amount_cents', 'purchase_responsibility',
-    'external_reference', 'notes', 'requested_by', 'sufficiency_requested_at',
+    'external_reference', 'purchase_reference', 'payment_request_reference', 'notes',
+    'requested_by', 'sufficiency_requested_at',
     'sufficiency_confirmed_by', 'sufficiency_confirmed_at',
+    'purchase_started_by', 'purchase_started_at', 'payment_requested_by', 'payment_requested_at',
 ])]
 class OwnRevenueExpenseDossier extends Model
 {
@@ -34,6 +36,8 @@ class OwnRevenueExpenseDossier extends Model
             'purchase_responsibility' => OwnRevenuePurchaseResponsibility::class,
             'sufficiency_requested_at' => 'datetime',
             'sufficiency_confirmed_at' => 'datetime',
+            'purchase_started_at' => 'datetime',
+            'payment_requested_at' => 'datetime',
         ];
     }
 
@@ -61,9 +65,27 @@ class OwnRevenueExpenseDossier extends Model
         return $this->belongsTo(User::class, 'sufficiency_confirmed_by');
     }
 
+    /** @return BelongsTo<User, $this> */
+    public function purchaseStarter(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'purchase_started_by');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function paymentRequester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'payment_requested_by');
+    }
+
     /** @return HasMany<OwnRevenueExpenseDossierTransition, $this> */
     public function transitions(): HasMany
     {
         return $this->hasMany(OwnRevenueExpenseDossierTransition::class);
+    }
+
+    /** @return HasMany<OwnRevenueExpenseDossierDocument, $this> */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(OwnRevenueExpenseDossierDocument::class);
     }
 }

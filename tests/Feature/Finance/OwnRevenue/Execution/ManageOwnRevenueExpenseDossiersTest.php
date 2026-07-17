@@ -2,7 +2,9 @@
 
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
+use App\Actions\Finance\OwnRevenue\Execution\RequestExpensePayment;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpenseSufficiency;
+use App\Actions\Finance\OwnRevenue\Execution\StartExpensePurchase;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenuePurchaseResponsibility;
@@ -19,6 +21,8 @@ use App\Services\Finance\OwnRevenue\Execution\OwnRevenueBudgetBalance;
 use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExecutionViewData;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 uses(RefreshDatabase::class);
@@ -175,4 +179,60 @@ test('auditors cannot create or advance expense dossiers', function () {
     expect(fn () => app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $auditor, expenseDossierData()))
         ->toThrow(AuthorizationException::class);
     expect(OwnRevenueExpenseDossier::query()->count())->toBe(0);
+});
+
+test('an assistant starts the purchase from confirmed sufficiency with an audited reference', function () {
+    ['budget' => $budget, 'line' => $line, 'manager' => $manager, 'assistant' => $assistant] = expenseDossierFixture();
+    $dossier = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+    app(RequestExpenseSufficiency::class)->handle($dossier, $assistant);
+    app(ConfirmExpenseSufficiency::class)->handle($dossier, $manager);
+
+    app(StartExpensePurchase::class)->handle($dossier, $assistant, 'OC-CREN-2026-001');
+
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::PurchaseInProgress)
+        ->and($dossier->fresh()->purchase_reference)->toBe('OC-CREN-2026-001')
+        ->and($dossier->fresh()->purchase_started_at)->not->toBeNull()
+        ->and($dossier->transitions()->latest('id')->first()->to_status)->toBe(OwnRevenueExpenseDossierStatus::PurchaseInProgress)
+        ->and(app(OwnRevenueBudgetBalance::class)->committedCents($line->fresh()))->toBe(4_000)
+        ->and(app(OwnRevenueBudgetBalance::class)->availableCents($line->fresh()))->toBe(6_000);
+});
+
+test('requesting payment stores private evidence and keeps the amount committed', function () {
+    Storage::fake('local');
+    ['budget' => $budget, 'line' => $line, 'manager' => $manager, 'assistant' => $assistant] = expenseDossierFixture();
+    $dossier = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+    app(RequestExpenseSufficiency::class)->handle($dossier, $assistant);
+    app(ConfirmExpenseSufficiency::class)->handle($dossier, $manager);
+    app(StartExpensePurchase::class)->handle($dossier, $assistant, 'OC-CREN-2026-001');
+    $invoice = UploadedFile::fake()->create('factura.pdf', 120, 'application/pdf');
+
+    app(RequestExpensePayment::class)->handle($dossier, $assistant, 'SP-CREN-2026-001', [$invoice]);
+
+    $document = $dossier->documents()->sole();
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::PaymentRequested)
+        ->and($dossier->fresh()->payment_request_reference)->toBe('SP-CREN-2026-001')
+        ->and($dossier->fresh()->payment_requested_at)->not->toBeNull()
+        ->and($document->original_name)->toBe('factura.pdf')
+        ->and($document->mime_type)->toBe('application/pdf')
+        ->and($document->uploaded_by)->toBe($assistant->id)
+        ->and(app(OwnRevenueBudgetBalance::class)->committedCents($line->fresh()))->toBe(4_000);
+    Storage::disk('local')->assertExists($document->storage_path);
+});
+
+test('purchase and payment stages cannot be skipped and payment requires evidence', function () {
+    Storage::fake('local');
+    ['budget' => $budget, 'line' => $line, 'manager' => $manager, 'assistant' => $assistant] = expenseDossierFixture();
+    $dossier = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+    app(RequestExpenseSufficiency::class)->handle($dossier, $assistant);
+
+    expect(fn () => app(StartExpensePurchase::class)->handle($dossier, $assistant, 'OC-001'))
+        ->toThrow(ValidationException::class);
+    app(ConfirmExpenseSufficiency::class)->handle($dossier, $manager);
+    app(StartExpensePurchase::class)->handle($dossier, $assistant, 'OC-001');
+    expect(fn () => app(RequestExpensePayment::class)->handle($dossier, $assistant, 'SP-001', []))
+        ->toThrow(ValidationException::class);
+    expect(fn () => app(RequestExpensePayment::class)->handle($dossier, $assistant, 'SP-001', [
+        UploadedFile::fake()->create('factura.exe', 20, 'application/pdf'),
+    ]))->toThrow(ValidationException::class);
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::PurchaseInProgress);
 });

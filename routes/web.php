@@ -13,6 +13,7 @@ use App\Http\Controllers\Finance\OwnRevenueActivityRuleController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetExecutionController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
+use App\Http\Controllers\Finance\OwnRevenueExpenseDossierDocumentController;
 use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
@@ -146,6 +147,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/sufficiency-confirmation', [OwnRevenueBudgetExecutionController::class, 'confirmSufficiency'])
             ->scopeBindings()
             ->name('own-revenue.budgets.execution.expense-dossiers.sufficiency-confirmation');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/purchase-start', [OwnRevenueBudgetExecutionController::class, 'startPurchase'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.purchase-start');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/payment-request', [OwnRevenueBudgetExecutionController::class, 'requestPayment'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.payment-request');
+
+        Route::get('own-revenue/expense-dossier-documents/{expenseDossierDocument}', OwnRevenueExpenseDossierDocumentController::class)
+            ->name('own-revenue.expense-dossier-documents.download');
 
         Route::post('own-revenue/budgets/{budget}/cog/confirm', OwnRevenueCogConfirmationController::class)
             ->name('own-revenue.budgets.cog.confirm');

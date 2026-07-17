@@ -9,6 +9,8 @@ use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
@@ -164,6 +166,50 @@ test('expense dossiers can be created and their sufficiency advanced from the ex
             ->where('summary.committed_amount_cents', '4000')
             ->where('permissions.create_expense_dossier', true)
             ->where('permissions.confirm_expense_sufficiency', true));
+});
+
+test('purchase and payment request can advance with private downloadable evidence', function () {
+    Storage::fake('local');
+    $this->withoutVite();
+    ['budget' => $budget, 'manager' => $manager] = executionWorkspaceFixture();
+    $assistant = executionWorkspaceUser(UserRole::FinanceAssistant);
+    $this->actingAs($assistant)->get(route('finance.own-revenue.budgets.execution.show', $budget));
+    $line = $budget->modifiedBudgetLines()->sole();
+    $this->actingAs($assistant)->post(route('finance.own-revenue.budgets.execution.expense-dossiers.store', $budget), [
+        'own_revenue_modified_budget_line_id' => $line->id,
+        'concept' => 'Compra de material para actividades académicas',
+        'amount_cents' => 4_000,
+        'purchase_responsibility' => 'cren',
+    ]);
+    $dossier = $budget->expenseDossiers()->sole();
+    $this->actingAs($assistant)->post(route('finance.own-revenue.budgets.execution.expense-dossiers.sufficiency-request', [$budget, $dossier]));
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.execution.expense-dossiers.sufficiency-confirmation', [$budget, $dossier]));
+
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.purchase-start', [$budget, $dossier]), [
+            'purchase_reference' => 'OC-CREN-2026-001',
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget));
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.payment-request', [$budget, $dossier]), [
+            'payment_request_reference' => 'SP-CREN-2026-001',
+            'documents' => [UploadedFile::fake()->create('factura.pdf', 120, 'application/pdf')],
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget))
+        ->assertSessionHasNoErrors();
+
+    $document = $dossier->documents()->sole();
+    $this->actingAs($assistant)
+        ->get(route('finance.own-revenue.expense-dossier-documents.download', $document))
+        ->assertDownload('factura.pdf');
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.execution.show', $budget))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('expense_dossiers.0.status', 'payment_requested')
+            ->where('expense_dossiers.0.purchase_reference', 'OC-CREN-2026-001')
+            ->where('expense_dossiers.0.payment_request_reference', 'SP-CREN-2026-001')
+            ->has('expense_dossiers.0.documents', 1)
+            ->where('expense_dossiers.0.documents.0.original_name', 'factura.pdf'));
 });
 
 test('budgets without an authorized initial budget do not expose execution', function () {
