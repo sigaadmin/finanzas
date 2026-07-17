@@ -34,9 +34,9 @@ class OwnRevenueExecutionViewData
             'summary' => [
                 'initial_amount_cents' => (string) array_sum(array_column($lineData, 'initial_amount_cents')),
                 'modified_amount_cents' => (string) array_sum(array_column($lineData, 'modified_amount_cents')),
-                'reserved_amount_cents' => '0',
-                'committed_amount_cents' => '0',
-                'paid_amount_cents' => '0',
+                'reserved_amount_cents' => (string) array_sum(array_column($lineData, 'reserved_amount_cents')),
+                'committed_amount_cents' => (string) array_sum(array_column($lineData, 'committed_amount_cents')),
+                'paid_amount_cents' => (string) array_sum(array_column($lineData, 'paid_amount_cents')),
                 'available_amount_cents' => (string) array_sum(array_column($lineData, 'available_amount_cents')),
             ],
             'lines' => $lineData,
@@ -52,6 +52,9 @@ class OwnRevenueExecutionViewData
         $incoming = (int) ($line->incoming_modifications_sum_amount_cents ?? 0);
         $outgoing = (int) ($line->outgoing_modifications_sum_amount_cents ?? 0);
         $modified = $this->balances->modifiedCents($line);
+        $reserved = $this->balances->reservedCents($line);
+        $committed = $this->balances->committedCents($line);
+        $paid = $this->balances->paidCents($line);
 
         return [
             'id' => $line->id,
@@ -64,9 +67,9 @@ class OwnRevenueExecutionViewData
             'incoming_amount_cents' => (string) $incoming,
             'outgoing_amount_cents' => (string) $outgoing,
             'modified_amount_cents' => (string) $modified,
-            'reserved_amount_cents' => '0',
-            'committed_amount_cents' => '0',
-            'paid_amount_cents' => '0',
+            'reserved_amount_cents' => (string) $reserved,
+            'committed_amount_cents' => (string) $committed,
+            'paid_amount_cents' => (string) $paid,
             'available_amount_cents' => (string) $this->balances->availableCents($line),
         ];
     }

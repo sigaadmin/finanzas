@@ -128,6 +128,35 @@ class OwnRevenueBudgetPolicy
         ], true) && $this->canAdministrate($user);
     }
 
+    public function createExpenseDossier(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->canManageExpenseDossiers($user, $ownRevenueBudget);
+    }
+
+    public function requestExpenseSufficiency(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->canManageExpenseDossiers($user, $ownRevenueBudget);
+    }
+
+    public function confirmExpenseSufficiency(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
+    }
+
+    private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget)
+            && ($this->canAdministrate($user) || $user->isFinanceAssistant());
+    }
+
+    private function isExecutable(OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return in_array($ownRevenueBudget->status, [
+            OwnRevenueBudgetStatus::InitialAuthorized,
+            OwnRevenueBudgetStatus::InExecution,
+        ], true);
+    }
+
     private function canAdministrate(User $user): bool
     {
         return $user->isOwner()

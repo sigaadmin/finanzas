@@ -59,4 +59,10 @@ class OwnRevenueModifiedBudgetLine extends Model
     {
         return $this->hasMany(OwnRevenueBudgetModification::class, 'destination_line_id');
     }
+
+    /** @return HasMany<OwnRevenueExpenseDossier, $this> */
+    public function expenseDossiers(): HasMany
+    {
+        return $this->hasMany(OwnRevenueExpenseDossier::class);
+    }
 }

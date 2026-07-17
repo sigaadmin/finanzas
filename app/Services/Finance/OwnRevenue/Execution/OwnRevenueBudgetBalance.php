@@ -2,6 +2,7 @@
 
 namespace App\Services\Finance\OwnRevenue\Execution;
 
+use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 
 class OwnRevenueBudgetBalance
@@ -20,6 +21,41 @@ class OwnRevenueBudgetBalance
 
     public function availableCents(OwnRevenueModifiedBudgetLine $line): int
     {
-        return $this->modifiedCents($line);
+        return $this->modifiedCents($line)
+            - $this->reservedCents($line)
+            - $this->committedCents($line)
+            - $this->paidCents($line);
+    }
+
+    public function reservedCents(OwnRevenueModifiedBudgetLine $line): int
+    {
+        return $this->sumDossiers($line, [OwnRevenueExpenseDossierStatus::SufficiencyRequested]);
+    }
+
+    public function committedCents(OwnRevenueModifiedBudgetLine $line): int
+    {
+        return $this->sumDossiers($line, [
+            OwnRevenueExpenseDossierStatus::SufficiencyConfirmed,
+            OwnRevenueExpenseDossierStatus::PurchaseInProgress,
+            OwnRevenueExpenseDossierStatus::PaymentRequested,
+            OwnRevenueExpenseDossierStatus::FinanceAuthorized,
+            OwnRevenueExpenseDossierStatus::BudgetOfficeAuthorized,
+        ]);
+    }
+
+    public function paidCents(OwnRevenueModifiedBudgetLine $line): int
+    {
+        return $this->sumDossiers($line, [OwnRevenueExpenseDossierStatus::Paid]);
+    }
+
+    /** @param list<OwnRevenueExpenseDossierStatus> $statuses */
+    private function sumDossiers(OwnRevenueModifiedBudgetLine $line, array $statuses): int
+    {
+        return (int) $line->expenseDossiers()
+            ->whereIn('status', array_map(
+                static fn (OwnRevenueExpenseDossierStatus $status): string => $status->value,
+                $statuses,
+            ))
+            ->sum('amount_cents');
     }
 }
