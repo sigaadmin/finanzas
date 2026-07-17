@@ -4,6 +4,7 @@ namespace App\Actions\Finance\OwnRevenue\Planning;
 
 use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeed;
@@ -15,8 +16,11 @@ use App\Models\Finance\OwnRevenue\Planning\OwnRevenueTravelRate;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Planning\FixedDecimal;
 use App\Services\Finance\OwnRevenue\Planning\FuelNeedCalculator;
+use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalProjector;
 use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalReadiness;
+use App\Services\Finance\OwnRevenue\Planning\ProportionalAmountAllocator;
 use App\Services\Finance\OwnRevenue\Planning\TravelCommissionCalculator;
+use Brick\Math\BigInteger;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -30,6 +34,8 @@ class CreateOwnRevenueProposalFromImports
         private readonly FixedDecimal $decimal,
         private readonly FuelNeedCalculator $fuelCalculator,
         private readonly TravelCommissionCalculator $travelCalculator,
+        private readonly OwnRevenueProposalProjector $projector,
+        private readonly ProportionalAmountAllocator $allocator,
     ) {}
 
     /** @param array<string, int> $expectedFileIds */
@@ -76,6 +82,7 @@ class CreateOwnRevenueProposalFromImports
             $this->copyTechnicalNeeds($proposal);
             $this->copyFuelNeeds($proposal);
             $this->copyTravelCommissions($proposal);
+            $this->copyWorkSheetResiduals($proposal);
             $proposal->update([
                 'total_amount_cents' => $proposal->technicalNeeds()->sum('budget_amount_cents')
                     + $proposal->fuelNeeds()->sum('budget_amount_cents')
@@ -250,6 +257,151 @@ class CreateOwnRevenueProposalFromImports
                 'total_amount_cents' => $participantsAmount + $flightAmount,
             ]);
         });
+    }
+
+    private function copyWorkSheetResiduals(OwnRevenueProposal $proposal): void
+    {
+        $lines = $proposal->sourceWorkSheetFile->workSheetLines()
+            ->with(['activity', 'expenseClassification', 'months'])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+        $projected = collect($this->projector->project($proposal)['work_sheet'])->keyBy(
+            fn (array $line): string => $this->projectionKey(
+                (int) $line['activity_id'],
+                (string) $line['specific_item_code'],
+                (int) $line['month'],
+            ),
+        );
+        $lodgingTargets = $this->legacyLodgingTargets($proposal, $lines);
+        $lodgingClassification = $lodgingTargets === [] ? null : ExpenseClassification::query()
+            ->where('fiscal_year', $proposal->budget->fiscal_year)
+            ->where('specific_item_code', '37502')
+            ->first();
+        if ($lodgingTargets !== [] && ! $lodgingClassification instanceof ExpenseClassification) {
+            throw ValidationException::withMessages([
+                'source_fingerprint' => 'Falta la partida 37502 de hospedaje en el catálogo COG del ejercicio.',
+            ]);
+        }
+
+        foreach ($lines as $line) {
+            foreach ($line->months as $month) {
+                $projectedAmount = fn (string $item): BigInteger => BigInteger::of($projected->get(
+                    $this->projectionKey($line->own_revenue_activity_id, $item, $month->month),
+                    ['amount_cents' => '0'],
+                )['amount_cents']);
+                $coverage = $projectedAmount($line->specific_item_code);
+                $hasSeparateLodging = $line->specific_item_code === '37501'
+                    && $lines->contains(fn ($candidate): bool => $candidate->own_revenue_activity_id === $line->own_revenue_activity_id
+                        && $candidate->specific_item_code === '37502');
+                if ($line->specific_item_code === '37501' && ! $hasSeparateLodging) {
+                    $projectedLodging = $projectedAmount('37502');
+                    $coverage = $coverage->plus($projectedLodging);
+                    $lodgingTarget = BigInteger::of($lodgingTargets[$line->id.'|'.$month->month] ?? '0');
+                    if ($lodgingTarget->isGreaterThan($projectedLodging)) {
+                        $lodgingResidual = (string) $lodgingTarget->minus($projectedLodging);
+                        $this->createWorkSheetResidual(
+                            $proposal,
+                            $line,
+                            $month->month,
+                            $lodgingClassification,
+                            $lodgingResidual,
+                            '37502',
+                            $lodgingClassification->specific_item_name,
+                            ':lodging',
+                        );
+                        $coverage = $coverage->plus($lodgingResidual);
+                    }
+                }
+                $target = BigInteger::of((string) $month->getRawOriginal('amount_cents'));
+                if (! $target->isGreaterThan($coverage)) {
+                    continue;
+                }
+                $residual = (string) $target->minus($coverage);
+                $this->createWorkSheetResidual(
+                    $proposal,
+                    $line,
+                    $month->month,
+                    $line->expenseClassification,
+                    $residual,
+                    $line->specific_item_code,
+                    $line->item_name,
+                );
+            }
+        }
+    }
+
+    private function createWorkSheetResidual(
+        OwnRevenueProposal $proposal,
+        object $line,
+        int $month,
+        ExpenseClassification $classification,
+        string $amount,
+        string $itemCode,
+        string $itemName,
+        string $stableKeySuffix = '',
+    ): void {
+        $proposal->technicalNeeds()->create([
+            'own_revenue_budget_id' => $proposal->own_revenue_budget_id,
+            'own_revenue_activity_id' => $line->own_revenue_activity_id,
+            'expense_classification_id' => $classification->id,
+            'stable_key' => 'work-sheet:'.$line->id.':'.str_pad((string) $month, 2, '0', STR_PAD_LEFT).$stableKeySuffix,
+            'specific_item_code' => $itemCode,
+            'specific_item_name' => $classification->specific_item_name,
+            'chapter_code' => $classification->chapter_code,
+            'chapter_name' => $classification->chapter_name,
+            'quantity' => '1.0000',
+            'unit' => 'CONCEPTO',
+            'description' => 'Concepto incorporado desde la Hoja de trabajo: '.$itemName,
+            'unit_price_cents' => $amount,
+            'reference_amount_cents' => $amount,
+            'budget_amount_cents' => $amount,
+            'budget_month' => $month,
+            'region_code' => '02-001',
+            'region_name' => 'Felipe Carrillo Puerto',
+            'sort_order' => ($line->sort_order * 100) + $month,
+        ]);
+    }
+
+    /** @return array<string, string> */
+    private function legacyLodgingTargets(OwnRevenueProposal $proposal, Collection $lines): array
+    {
+        $lodgingByMonth = [];
+        foreach ($proposal->sourceAbpreFile->abpreLines()->where('specific_item_code', '37502')->with('months')->get() as $line) {
+            foreach ($line->months as $month) {
+                $lodgingByMonth[$month->month] = $this->decimal->add(
+                    $lodgingByMonth[$month->month] ?? '0',
+                    (string) $month->getRawOriginal('amount_cents'),
+                    0,
+                );
+            }
+        }
+
+        $weights = [];
+        foreach ($lines->where('specific_item_code', '37501') as $line) {
+            $hasSeparateLodging = $lines->contains(fn ($candidate): bool => $candidate->own_revenue_activity_id === $line->own_revenue_activity_id
+                && $candidate->specific_item_code === '37502');
+            if ($hasSeparateLodging) {
+                continue;
+            }
+            foreach ($line->months as $month) {
+                $weights[$month->month][$line->id.'|'.$month->month] = (string) $month->getRawOriginal('amount_cents');
+            }
+        }
+
+        $targets = [];
+        foreach ($lodgingByMonth as $month => $amount) {
+            foreach ($this->allocator->allocate($amount, $weights[$month] ?? []) as $key => $target) {
+                $targets[$key] = $target;
+            }
+        }
+
+        return $targets;
+    }
+
+    private function projectionKey(int $activityId, string $item, int $month): string
+    {
+        return $activityId.'|'.$item.'|'.str_pad((string) $month, 2, '0', STR_PAD_LEFT);
     }
 
     private function copyTravelParticipant(

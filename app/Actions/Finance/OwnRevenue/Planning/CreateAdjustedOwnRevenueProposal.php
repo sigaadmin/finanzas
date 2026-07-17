@@ -171,7 +171,8 @@ class CreateAdjustedOwnRevenueProposal
                 'technical' => $this->reduceAttribute($copies['technical'][$cut->target_id], 'budget_amount_cents', $amount),
                 'fuel' => $this->reduceAttribute($copies['fuel'][$cut->target_id], 'budget_amount_cents', $amount),
                 'travel_flight' => $this->reduceAttribute($copies['travel'][$cut->target_id], 'flight_amount_cents', $amount),
-                'travel_participants' => $this->reduceTravelParticipants($copies['travel'][$cut->target_id], $amount),
+                'travel_per_diem' => $this->reduceTravelParticipants($copies['travel'][$cut->target_id], 'per_diem_amount_cents', $amount),
+                'travel_lodging' => $this->reduceTravelParticipants($copies['travel'][$cut->target_id], 'lodging_amount_cents', $amount),
                 default => throw ValidationException::withMessages(['cuts' => 'Existe una reducción con un destino no reconocido.']),
             };
         }
@@ -186,26 +187,32 @@ class CreateAdjustedOwnRevenueProposal
         $model->update([$attribute => (string) $current->minus($cut)]);
     }
 
-    private function reduceTravelParticipants(OwnRevenueProposalTravelCommission $commission, BigInteger $cut): void
-    {
+    private function reduceTravelParticipants(
+        OwnRevenueProposalTravelCommission $commission,
+        string $attribute,
+        BigInteger $cut,
+    ): void {
         $participants = $commission->participants()->orderBy('stable_key')->get();
         $group = [[
             'required_cut_cents' => (string) $cut,
             'candidates' => $participants->map(fn ($participant): array => [
                 'stable_key' => $participant->stable_key,
-                'available_amount_cents' => (string) $participant->getRawOriginal('total_amount_cents'),
+                'available_amount_cents' => (string) $participant->getRawOriginal($attribute),
             ])->all(),
         ]];
         $suggestion = $this->suggestion->suggest($group);
         foreach ($participants as $participant) {
             $participantCut = BigInteger::of($suggestion[$participant->stable_key] ?? '0');
-            $lodging = BigInteger::of((string) $participant->getRawOriginal('lodging_amount_cents'));
-            $lodgingCut = $participantCut->isGreaterThan($lodging) ? $lodging : $participantCut;
-            $perDiemCut = $participantCut->minus($lodgingCut);
+            $remaining = BigInteger::of((string) $participant->getRawOriginal($attribute))->minus($participantCut);
+            $perDiem = $attribute === 'per_diem_amount_cents'
+                ? $remaining
+                : BigInteger::of((string) $participant->getRawOriginal('per_diem_amount_cents'));
+            $lodging = $attribute === 'lodging_amount_cents'
+                ? $remaining
+                : BigInteger::of((string) $participant->getRawOriginal('lodging_amount_cents'));
             $participant->update([
-                'lodging_amount_cents' => (string) $lodging->minus($lodgingCut),
-                'per_diem_amount_cents' => (string) BigInteger::of((string) $participant->getRawOriginal('per_diem_amount_cents'))->minus($perDiemCut),
-                'total_amount_cents' => (string) BigInteger::of((string) $participant->getRawOriginal('total_amount_cents'))->minus($participantCut),
+                $attribute => (string) $remaining,
+                'total_amount_cents' => (string) $perDiem->plus($lodging),
             ]);
         }
     }

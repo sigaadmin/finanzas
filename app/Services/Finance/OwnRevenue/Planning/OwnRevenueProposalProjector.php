@@ -18,6 +18,7 @@ class OwnRevenueProposalProjector
             'technicalNeeds.activity',
             'fuelNeeds.activity',
             'travelCommissions.activity',
+            'travelCommissions.participants',
         ]);
         $workSheet = [];
 
@@ -44,15 +45,30 @@ class OwnRevenueProposalProjector
             );
         }
         foreach ($proposal->travelCommissions as $commission) {
-            $this->addWorkSheetLine(
-                $workSheet,
-                $commission->activity->id,
-                $commission->activity->code,
-                $commission->activity->name,
-                '37501',
-                $commission->budget_month,
-                (string) $commission->getRawOriginal('participants_amount_cents'),
-            );
+            $perDiemAmount = (string) $commission->participants->sum('per_diem_amount_cents');
+            $lodgingAmount = (string) $commission->participants->sum('lodging_amount_cents');
+            if ($perDiemAmount !== '0') {
+                $this->addWorkSheetLine(
+                    $workSheet,
+                    $commission->activity->id,
+                    $commission->activity->code,
+                    $commission->activity->name,
+                    '37501',
+                    $commission->budget_month,
+                    $perDiemAmount,
+                );
+            }
+            if ($lodgingAmount !== '0') {
+                $this->addWorkSheetLine(
+                    $workSheet,
+                    $commission->activity->id,
+                    $commission->activity->code,
+                    $commission->activity->name,
+                    '37502',
+                    $commission->budget_month,
+                    $lodgingAmount,
+                );
+            }
             if ($commission->flight_amount_cents > 0) {
                 $this->addWorkSheetLine(
                     $workSheet,

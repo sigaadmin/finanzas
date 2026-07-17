@@ -29,7 +29,9 @@ class StoreOwnRevenueProposalCutsRequest extends FormRequest
         return [
             'reconciliation_fingerprint' => ['required', 'string', 'size:64', 'regex:/^[a-f0-9]{64}$/'],
             'cuts' => ['sometimes', 'array', 'max:10000'],
-            'cuts.*.target_type' => ['required', Rule::in(['technical', 'fuel', 'travel_participants', 'travel_flight'])],
+            'cuts.*.target_type' => ['required', Rule::in([
+                'technical', 'fuel', 'travel_per_diem', 'travel_lodging', 'travel_flight',
+            ])],
             'cuts.*.target_id' => ['required', 'integer', 'min:1'],
             'cuts.*.stable_key' => ['required', 'string', 'max:255'],
             'cuts.*.specific_item_code' => ['required', 'string', 'regex:/^\d{5}$/'],

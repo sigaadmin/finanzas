@@ -8,11 +8,13 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueFuelPlan;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportSession;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTechnicalSheetNeed;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueTravelCommission;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueWorkSheetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\OwnRevenueSignatory;
@@ -201,6 +203,113 @@ test('materialized calculated fields are current and retain an imported fuel ove
     )->assertSessionHasNoErrors();
 
     expect($proposal->fresh()->status)->toBe(OwnRevenueProposalStatus::Calculated);
+});
+
+test('work sheet concepts without a detailed format become auditable planning needs', function () {
+    ['budget' => $budget, 'manager' => $manager, 'activity' => $activity, 'files' => $files] = planningProposalFixture();
+    $classification = ExpenseClassification::query()->create([
+        'fiscal_year' => $budget->fiscal_year,
+        'chapter_code' => '3000',
+        'chapter_name' => 'Servicios generales',
+        'concept_code' => '3900',
+        'concept_name' => 'Otros servicios generales',
+        'generic_item_code' => '39900',
+        'generic_item_name' => 'Otros servicios generales',
+        'specific_item_code' => '39904',
+        'specific_item_name' => 'Otros servicios generales',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
+    $line = OwnRevenueWorkSheetLine::factory()
+        ->for($budget, 'budget')
+        ->for($activity, 'activity')
+        ->for($classification, 'expenseClassification')
+        ->create([
+            'own_revenue_import_file_id' => $files[OwnRevenueImportFormat::WorkSheet->value]->id,
+            'activity_code' => $activity->code,
+            'activity_name' => $activity->name,
+            'item_name' => $classification->specific_item_name,
+            'specific_item_code' => $classification->specific_item_code,
+            'annual_amount_cents' => 100_000,
+        ]);
+    $line->months()->create(['month' => 6, 'amount_cents' => 100_000]);
+    $readiness = app(OwnRevenueProposalReadiness::class)->forBudget($budget);
+
+    $this->actingAs($manager)->post(
+        route('finance.own-revenue.budgets.proposals.from-imports.store', $budget),
+        planningProposalPayload($files, $readiness->fingerprint),
+    )->assertSessionHasNoErrors();
+
+    $residual = OwnRevenueProposal::query()->sole()->technicalNeeds()
+        ->where('stable_key', 'work-sheet:'.$line->id.':06')
+        ->sole();
+
+    expect($residual->source_technical_sheet_need_id)->toBeNull()
+        ->and($residual->specific_item_code)->toBe('39904')
+        ->and($residual->description)->toBe('Concepto incorporado desde la Hoja de trabajo: Otros servicios generales')
+        ->and($residual->quantity)->toBe('1.0000')
+        ->and($residual->unit_price_cents)->toBe(100_000)
+        ->and($residual->reference_amount_cents)->toBe(100_000)
+        ->and($residual->budget_amount_cents)->toBe(100_000)
+        ->and($residual->budget_month)->toBe(6);
+});
+
+test('legacy work sheet travel totals are split into food and lodging using the ABPRE', function () {
+    ['budget' => $budget, 'manager' => $manager, 'activity' => $activity, 'files' => $files] = planningProposalFixture();
+    $food = ExpenseClassification::query()->where('fiscal_year', $budget->fiscal_year)
+        ->where('specific_item_code', '37501')->sole();
+    $lodging = ExpenseClassification::query()->create([
+        'fiscal_year' => $budget->fiscal_year,
+        'chapter_code' => '3000',
+        'chapter_name' => 'Servicios generales',
+        'concept_code' => '3700',
+        'concept_name' => 'Servicios de traslado y viáticos',
+        'generic_item_code' => '37500',
+        'generic_item_name' => 'Viáticos',
+        'specific_item_code' => '37502',
+        'specific_item_name' => 'Gastos de hospedaje',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
+    $workSheetLine = OwnRevenueWorkSheetLine::factory()
+        ->for($budget, 'budget')->for($activity, 'activity')->for($food, 'expenseClassification')
+        ->create([
+            'own_revenue_import_file_id' => $files['work_sheet']->id,
+            'activity_code' => $activity->code,
+            'activity_name' => $activity->name,
+            'item_name' => $food->specific_item_name,
+            'specific_item_code' => '37501',
+            'annual_amount_cents' => 300_000,
+        ]);
+    $workSheetLine->months()->create(['month' => 7, 'amount_cents' => 300_000]);
+    foreach ([[$food, 200_000], [$lodging, 100_000]] as [$classification, $amount]) {
+        $abpreLine = OwnRevenueAbpreLine::factory()
+            ->for($budget, 'budget')->for($classification, 'expenseClassification')
+            ->create([
+                'own_revenue_import_file_id' => $files['abpre']->id,
+                'specific_item_code' => $classification->specific_item_code,
+                'annual_amount_cents' => $amount,
+            ]);
+        $abpreLine->months()->create(['month' => 7, 'amount_cents' => $amount]);
+    }
+    $readiness = app(OwnRevenueProposalReadiness::class)->forBudget($budget);
+
+    $this->actingAs($manager)->post(
+        route('finance.own-revenue.budgets.proposals.from-imports.store', $budget),
+        planningProposalPayload($files, $readiness->fingerprint),
+    )->assertSessionHasNoErrors();
+
+    $residuals = OwnRevenueProposal::query()->sole()->technicalNeeds()
+        ->whereIn('stable_key', [
+            'work-sheet:'.$workSheetLine->id.':07',
+            'work-sheet:'.$workSheetLine->id.':07:lodging',
+        ])
+        ->orderBy('specific_item_code')
+        ->get();
+
+    expect($residuals)->toHaveCount(2)
+        ->and($residuals->pluck('specific_item_code')->all())->toBe(['37501', '37502'])
+        ->and($residuals->pluck('budget_amount_cents')->all())->toBe([200_000, 100_000]);
 });
 
 test('a stale import observation creates no partial proposal', function () {

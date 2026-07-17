@@ -13,6 +13,7 @@ class OwnRevenueCutReconciliation
         private readonly OwnRevenueProposalReadiness $readiness,
         private readonly OwnRevenueProposalFingerprint $proposalFingerprint,
         private readonly CanonicalJson $canonicalJson,
+        private readonly ProportionalAmountAllocator $allocator,
     ) {}
 
     /** @return array<string, mixed> */
@@ -25,6 +26,7 @@ class OwnRevenueCutReconciliation
             'technicalNeeds.activity',
             'fuelNeeds.activity',
             'travelCommissions.activity',
+            'travelCommissions.participants',
             'cuts',
         ]);
         $blockers = [];
@@ -42,13 +44,10 @@ class OwnRevenueCutReconciliation
             $blockers[] = $readiness->blockers[0] ?? 'Los archivos confirmados cambiaron; vuelve a calcular la propuesta.';
         }
 
-        $targets = $this->workSheetTargets($proposal);
+        $workSheet = $this->workSheetTargets($proposal);
         $abpre = $this->abpreTargets($proposal);
-        if ($this->aggregateTargetsByItem($targets) !== $abpre) {
-            $blockers[] = 'La Hoja de trabajo confirmada no coincide con el ABPRE final por partida y mes.';
-        }
-
         $candidates = $this->candidates($proposal);
+        $targets = $this->allocateAbpreTargets($workSheet, $abpre, $candidates, $blockers);
         $cuts = $proposal->cuts->keyBy(fn ($cut): string => $cut->target_type.'|'.$cut->target_id);
         foreach ($candidates as &$candidate) {
             $cut = $cuts->get($candidate['target_type'].'|'.$candidate['target_id']);
@@ -125,6 +124,7 @@ class OwnRevenueCutReconciliation
         $fingerprint = $this->canonicalJson->hash([
             'proposal' => $this->proposalFingerprint->forProposal($proposal),
             'current_sources' => $readiness->fileIds,
+            'work_sheet' => $workSheet,
             'targets' => $targets,
             'abpre' => $abpre,
             'candidates' => $candidates,
@@ -170,20 +170,6 @@ class OwnRevenueCutReconciliation
         return $targets;
     }
 
-    /** @param array<string, string> $targets @return array<string, string> */
-    private function aggregateTargetsByItem(array $targets): array
-    {
-        $result = [];
-        foreach ($targets as $key => $amount) {
-            [, $item, $month] = explode('|', $key);
-            $itemKey = $item.'|'.$month;
-            $result[$itemKey] = $this->add($result[$itemKey] ?? '0', $amount);
-        }
-        ksort($result);
-
-        return $result;
-    }
-
     /** @return list<array<string, int|string>> */
     private function candidates(OwnRevenueProposal $proposal): array
     {
@@ -201,10 +187,18 @@ class OwnRevenueCutReconciliation
             );
         }
         foreach ($proposal->travelCommissions as $commission) {
-            if ($commission->participants_amount_cents > 0) {
+            $perDiemAmount = (string) $commission->participants->sum('per_diem_amount_cents');
+            $lodgingAmount = (string) $commission->participants->sum('lodging_amount_cents');
+            if ($perDiemAmount !== '0') {
                 $candidates[] = $this->candidate(
-                    'travel_participants', $commission->id, $commission->stable_key.':participants', 'Viáticos', $commission->activity,
-                    '37501', $commission->budget_month, (string) $commission->getRawOriginal('participants_amount_cents'),
+                    'travel_per_diem', $commission->id, $commission->stable_key.':per-diem', 'Viáticos', $commission->activity,
+                    '37501', $commission->budget_month, $perDiemAmount,
+                );
+            }
+            if ($lodgingAmount !== '0') {
+                $candidates[] = $this->candidate(
+                    'travel_lodging', $commission->id, $commission->stable_key.':lodging', 'Viáticos', $commission->activity,
+                    '37502', $commission->budget_month, $lodgingAmount,
                 );
             }
             if ($commission->flight_amount_cents > 0) {
@@ -217,6 +211,47 @@ class OwnRevenueCutReconciliation
         usort($candidates, fn (array $left, array $right): int => [$left['group_key'], $left['stable_key']] <=> [$right['group_key'], $right['stable_key']]);
 
         return $candidates;
+    }
+
+    /**
+     * @param  array<string, string>  $workSheet
+     * @param  array<string, string>  $abpre
+     * @param  list<array<string, int|string>>  $candidates
+     * @param  list<string>  $blockers
+     * @return array<string, string>
+     */
+    private function allocateAbpreTargets(array $workSheet, array $abpre, array $candidates, array &$blockers): array
+    {
+        $workSheetWeights = [];
+        foreach ($workSheet as $groupKey => $amount) {
+            [, $item, $month] = explode('|', $groupKey);
+            $workSheetWeights[$item.'|'.$month][$groupKey] = $amount;
+        }
+        $candidateWeights = [];
+        foreach ($candidates as $candidate) {
+            $itemMonth = $candidate['specific_item_code'].'|'.str_pad((string) $candidate['month'], 2, '0', STR_PAD_LEFT);
+            $groupKey = (string) $candidate['group_key'];
+            $candidateWeights[$itemMonth][$groupKey] = $this->add(
+                $candidateWeights[$itemMonth][$groupKey] ?? '0',
+                (string) $candidate['available_amount_cents'],
+            );
+        }
+
+        $targets = [];
+        foreach ($abpre as $itemMonth => $amount) {
+            $weights = $workSheetWeights[$itemMonth] ?? $candidateWeights[$itemMonth] ?? [];
+            if ($weights === [] && $amount !== '0') {
+                $blockers[] = 'El ABPRE contiene un importe sin actividad compatible en la planeación.';
+
+                continue;
+            }
+            foreach ($this->allocator->allocate($amount, $weights) as $groupKey => $target) {
+                $targets[$groupKey] = $target;
+            }
+        }
+        ksort($targets);
+
+        return $targets;
     }
 
     /** @return array<string, int|string> */

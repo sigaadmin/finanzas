@@ -7,6 +7,7 @@ use App\Enums\Finance\OwnRevenue\Imports\OwnRevenueImportFormat;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
 use App\Enums\UserRole;
+use App\Http\Requests\Finance\OwnRevenue\Planning\StoreOwnRevenueProposalCutsRequest;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
@@ -24,6 +25,7 @@ use App\Models\User;
 use App\Services\Finance\OwnRevenue\Planning\OwnRevenueCutReconciliation;
 use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalReadiness;
 use App\Services\Finance\OwnRevenue\Planning\ProportionalCutSuggestion;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function cutUser(UserRole $role = UserRole::FinanceManager): User
@@ -149,6 +151,88 @@ test('reconciliation and proportional suggestion are exact and do not persist a 
         'technical:a' => '1',
         'technical:b' => '0',
     ])->and(OwnRevenueProposalCut::query()->count())->toBe(0);
+});
+
+test('ABPRE totals are allocated across work sheet activities when both confirmed formats differ', function () {
+    ['budget' => $budget, 'proposal' => $proposal, 'activity' => $activity, 'files' => $files] = cutFixture();
+    $classification = $proposal->technicalNeeds()->firstOrFail()->expenseClassification;
+    $secondActivity = OwnRevenueActivity::factory()->for($budget, 'budget')->create([
+        'code' => 'A02',
+        'name' => 'Actividad dos',
+    ]);
+    $secondLine = OwnRevenueWorkSheetLine::factory()
+        ->for($budget, 'budget')
+        ->for($secondActivity, 'activity')
+        ->for($classification, 'expenseClassification')
+        ->create([
+            'own_revenue_import_file_id' => $files['work_sheet']->id,
+            'activity_code' => $secondActivity->code,
+            'activity_name' => $secondActivity->name,
+            'specific_item_code' => '21101',
+            'annual_amount_cents' => 400,
+        ]);
+    $secondLine->months()->create(['month' => 5, 'amount_cents' => 400]);
+    $proposal->technicalNeeds()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'own_revenue_activity_id' => $secondActivity->id,
+        'expense_classification_id' => $classification->id,
+        'stable_key' => 'technical:c',
+        'specific_item_code' => '21101',
+        'specific_item_name' => $classification->specific_item_name,
+        'chapter_code' => $classification->chapter_code,
+        'chapter_name' => $classification->chapter_name,
+        'quantity' => '1.0000',
+        'unit' => 'LOTE',
+        'description' => 'Concepto de la actividad dos',
+        'unit_price_cents' => 400,
+        'reference_amount_cents' => 400,
+        'budget_amount_cents' => 400,
+        'budget_month' => 5,
+        'region_code' => '02-001',
+        'region_name' => 'Felipe Carrillo Puerto',
+    ]);
+    $abpreLine = $files['abpre']->abpreLines()->sole();
+    $abpreLine->update(['annual_amount_cents' => 700]);
+    $abpreLine->months()->sole()->update(['amount_cents' => 700]);
+    $proposal->update(['total_amount_cents' => 1_400]);
+
+    $reconciliation = app(OwnRevenueCutReconciliation::class)->forProposal($proposal->fresh());
+    $groups = collect($reconciliation['groups'])->keyBy('activity_code');
+
+    expect($reconciliation['ready'])->toBeTrue()
+        ->and($reconciliation['blockers'])->toBe([])
+        ->and($groups[$activity->code]['target_amount_cents'])->toBe('420')
+        ->and($groups[$activity->code]['required_cut_cents'])->toBe('580')
+        ->and($groups[$secondActivity->code]['target_amount_cents'])->toBe('280')
+        ->and($groups[$secondActivity->code]['required_cut_cents'])->toBe('120')
+        ->and($reconciliation['summary']['abpre_amount_cents'])->toBe('700')
+        ->and($reconciliation['summary']['required_cut_cents'])->toBe('700');
+});
+
+test('cut validation accepts separate food and lodging targets', function () {
+    $payload = [
+        'reconciliation_fingerprint' => str_repeat('a', 64),
+        'cuts' => [
+            [
+                'target_type' => 'travel_per_diem',
+                'target_id' => 1,
+                'stable_key' => 'travel:1:per-diem',
+                'specific_item_code' => '37501',
+                'amount_cents' => '100',
+            ],
+            [
+                'target_type' => 'travel_lodging',
+                'target_id' => 1,
+                'stable_key' => 'travel:1:lodging',
+                'specific_item_code' => '37502',
+                'amount_cents' => '50',
+            ],
+        ],
+    ];
+
+    $validator = Validator::make($payload, (new StoreOwnRevenueProposalCutsRequest)->rules());
+
+    expect($validator->passes())->toBeTrue();
 });
 
 test('manual or suggested cuts must be compatible and cannot exceed a need or required reduction', function (array $cuts, ?string $error) {

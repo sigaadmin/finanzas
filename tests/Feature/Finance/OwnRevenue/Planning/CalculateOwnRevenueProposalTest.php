@@ -138,12 +138,12 @@ test('projector creates canonical work sheet and abpre summaries with exact tota
 
     $projection = app(OwnRevenueProposalProjector::class)->project($proposal);
 
-    expect($projection['work_sheet'])->toHaveCount(4)
-        ->and(array_column($projection['work_sheet'], 'specific_item_code'))->toBe(['21101', '26101', '37101', '37501'])
-        ->and(array_column($projection['work_sheet'], 'month'))->toBe([5, 4, 8, 8])
-        ->and(array_column($projection['work_sheet'], 'amount_cents'))->toBe(['20000', '25000', '10000', '328468'])
+    expect($projection['work_sheet'])->toHaveCount(5)
+        ->and(array_column($projection['work_sheet'], 'specific_item_code'))->toBe(['21101', '26101', '37101', '37501', '37502'])
+        ->and(array_column($projection['work_sheet'], 'month'))->toBe([5, 4, 8, 8, 8])
+        ->and(array_column($projection['work_sheet'], 'amount_cents'))->toBe(['20000', '25000', '10000', '234620', '93848'])
         ->and(array_unique(array_column($projection['work_sheet'], 'region_code')))->toBe(['02-001'])
-        ->and($projection['abpre'])->toHaveCount(4)
+        ->and($projection['abpre'])->toHaveCount(5)
         ->and($projection['total_amount_cents'])->toBe('383468');
 });
 
