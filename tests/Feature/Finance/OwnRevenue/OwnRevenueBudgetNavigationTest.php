@@ -87,7 +87,8 @@ test('sidebar exposes the annual own revenue budget destination through wayfinde
     $sidebar = file_get_contents(resource_path('js/components/app-sidebar.tsx'));
 
     expect($sidebar)
-        ->toContain('Presupuesto de Ingresos Propios')
+        ->toContain("title: 'Ingresos propios'")
+        ->toContain('label="Presupuesto"')
         ->toContain('@/routes/finance/own-revenue/budgets')
         ->toContain('ownRevenueBudgets.index()');
 });

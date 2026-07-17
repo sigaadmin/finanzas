@@ -15,9 +15,10 @@ test('it creates an ABPRE workbook from authorized reconciliation lines', functi
     $sheet = IOFactory::load($path)->getActiveSheet();
     unlink($path);
 
-    expect($sheet->getTitle())->toBe('ABPRE')
-        ->and($sheet->getCell('A1')->getValue())->toBe('Presupuesto de Ingresos Propios 2026')
-        ->and($sheet->getCell('A4')->getValue())->toBe('21101')
-        ->and($sheet->getCell('B4')->getValue())->toBe(5)
-        ->and($sheet->getCell('C4')->getValue())->toBe(123.45);
+    expect($sheet->getTitle())->toBe('ABRPRE-01')
+        ->and($sheet->getCell('A1')->getValue())->toBe('PRESUPUESTO DE EGRESOS 2026')
+        ->and($sheet->getCell('I7')->getValue())->toBe('02-001')
+        ->and($sheet->getCell('L7')->getValue())->toBe('21101')
+        ->and($sheet->getCell('Q7')->getValue())->toBe(123.45)
+        ->and($sheet->getCell('Y7')->getValue())->toBe(123.45);
 });

@@ -67,7 +67,8 @@ test('sidebar links the U300 menu item to the program index', function () {
     $sidebar = file_get_contents(resource_path('js/components/app-sidebar.tsx'));
 
     expect($sidebar)
-        ->toContain("title: 'Presupuesto U300'")
+        ->toContain("title: 'U300'")
+        ->toContain('label="Presupuesto"')
         ->toContain('href: finance.u300.programs.index()')
         ->not->toContain('href: finance.u300.imports.create()');
 });
