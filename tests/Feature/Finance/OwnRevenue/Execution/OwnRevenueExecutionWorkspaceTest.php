@@ -126,6 +126,46 @@ test('a modification can be registered from the execution workspace', function (
     ]);
 });
 
+test('expense dossiers can be created and their sufficiency advanced from the execution workspace', function () {
+    $this->withoutVite();
+    ['budget' => $budget, 'manager' => $manager] = executionWorkspaceFixture();
+    $assistant = executionWorkspaceUser(UserRole::FinanceAssistant);
+    $this->actingAs($assistant)->get(route('finance.own-revenue.budgets.execution.show', $budget));
+    $line = $budget->modifiedBudgetLines()->sole();
+
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.store', $budget), [
+            'own_revenue_modified_budget_line_id' => $line->id,
+            'concept' => 'Compra de material para actividades académicas',
+            'amount_cents' => 4_000,
+            'purchase_responsibility' => 'cren',
+            'external_reference' => null,
+            'notes' => null,
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget))
+        ->assertSessionHasNoErrors();
+
+    $dossier = $budget->expenseDossiers()->sole();
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.sufficiency-request', [$budget, $dossier]))
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget));
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.sufficiency-confirmation', [$budget, $dossier]))
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget));
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.execution.show', $budget))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('expense_dossiers', 1)
+            ->where('expense_dossiers.0.folio', 'IP-2026-0001')
+            ->where('expense_dossiers.0.status', 'sufficiency_confirmed')
+            ->where('expense_dossiers.0.line.specific_item_code', '21101')
+            ->where('summary.committed_amount_cents', '4000')
+            ->where('permissions.create_expense_dossier', true)
+            ->where('permissions.confirm_expense_sufficiency', true));
+});
+
 test('budgets without an authorized initial budget do not expose execution', function () {
     $manager = executionWorkspaceUser(UserRole::FinanceManager);
     $budget = OwnRevenueBudget::factory()->create(['status' => OwnRevenueBudgetStatus::Draft]);

@@ -58,3 +58,22 @@ export type BudgetModification = {
     recorded_by_name: string;
     recorded_at: string | null;
 };
+
+export type ExpenseDossier = {
+    id: number;
+    folio: string;
+    status: 'draft' | 'sufficiency_requested' | 'sufficiency_confirmed';
+    concept: string;
+    amount_cents: string;
+    purchase_responsibility: 'cren' | 'seq';
+    external_reference: string | null;
+    notes: string | null;
+    line: {
+        specific_item_code: string;
+        specific_item_name: string;
+        month: number;
+    };
+    requested_by_name: string;
+    sufficiency_requested_at: string | null;
+    sufficiency_confirmed_at: string | null;
+};

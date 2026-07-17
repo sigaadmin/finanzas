@@ -136,6 +136,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/execution/modifications', [OwnRevenueBudgetExecutionController::class, 'store'])
             ->name('own-revenue.budgets.execution.modifications.store');
 
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers', [OwnRevenueBudgetExecutionController::class, 'storeExpenseDossier'])
+            ->name('own-revenue.budgets.execution.expense-dossiers.store');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/sufficiency-request', [OwnRevenueBudgetExecutionController::class, 'requestSufficiency'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.sufficiency-request');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/sufficiency-confirmation', [OwnRevenueBudgetExecutionController::class, 'confirmSufficiency'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.sufficiency-confirmation');
+
         Route::post('own-revenue/budgets/{budget}/cog/confirm', OwnRevenueCogConfirmationController::class)
             ->name('own-revenue.budgets.cog.confirm');
 

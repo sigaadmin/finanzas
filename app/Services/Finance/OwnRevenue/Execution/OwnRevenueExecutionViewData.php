@@ -42,7 +42,13 @@ class OwnRevenueExecutionViewData
             'lines' => $lineData,
             'classifications' => $this->classifications($budget),
             'modifications' => $this->modifications($budget),
-            'permissions' => ['manage' => Gate::allows('manageExecution', $budget)],
+            'expense_dossiers' => $this->expenseDossiers($budget),
+            'permissions' => [
+                'manage' => Gate::allows('manageExecution', $budget),
+                'create_expense_dossier' => Gate::allows('createExpenseDossier', $budget),
+                'request_expense_sufficiency' => Gate::allows('requestExpenseSufficiency', $budget),
+                'confirm_expense_sufficiency' => Gate::allows('confirmExpenseSufficiency', $budget),
+            ],
         ];
     }
 
@@ -116,6 +122,33 @@ class OwnRevenueExecutionViewData
                 ],
                 'recorded_by_name' => $modification->recordedBy->name,
                 'recorded_at' => $modification->recorded_at?->toISOString(),
+            ])->all();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function expenseDossiers(OwnRevenueBudget $budget): array
+    {
+        return $budget->expenseDossiers()
+            ->with(['budgetLine:id,specific_item_code,specific_item_name,month', 'requester:id,name'])
+            ->latest('id')
+            ->get()
+            ->map(fn ($dossier): array => [
+                'id' => $dossier->id,
+                'folio' => $dossier->folio,
+                'status' => $dossier->status->value,
+                'concept' => $dossier->concept,
+                'amount_cents' => (string) $dossier->getRawOriginal('amount_cents'),
+                'purchase_responsibility' => $dossier->purchase_responsibility->value,
+                'external_reference' => $dossier->external_reference,
+                'notes' => $dossier->notes,
+                'line' => [
+                    'specific_item_code' => $dossier->budgetLine->specific_item_code,
+                    'specific_item_name' => $dossier->budgetLine->specific_item_name,
+                    'month' => $dossier->budgetLine->month,
+                ],
+                'requested_by_name' => $dossier->requester->name,
+                'sufficiency_requested_at' => $dossier->sufficiency_requested_at?->toISOString(),
+                'sufficiency_confirmed_at' => $dossier->sufficiency_confirmed_at?->toISOString(),
             ])->all();
     }
 }

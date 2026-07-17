@@ -1,5 +1,5 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, ArrowRightLeft, CalendarClock, Plus } from 'lucide-react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { ArrowLeft, ArrowRightLeft, CalendarClock, FileText, Plus } from 'lucide-react';
 import type { FormEvent} from 'react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import budgets from '@/routes/finance/own-revenue/budgets';
+import expenseDossierRoutes from '@/routes/finance/own-revenue/budgets/execution/expense-dossiers';
 import modifications from '@/routes/finance/own-revenue/budgets/execution/modifications';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
 import type {
@@ -24,6 +25,7 @@ import type {
     ExecutionClassification,
     ExecutionLine,
     ExecutionSummary,
+    ExpenseDossier,
 } from '@/types/finance-own-revenue-execution';
 
 type Props = {
@@ -32,7 +34,13 @@ type Props = {
     lines: ExecutionLine[];
     classifications: ExecutionClassification[];
     modifications: BudgetModification[];
-    permissions: { manage: boolean };
+    expense_dossiers: ExpenseDossier[];
+    permissions: {
+        manage: boolean;
+        create_expense_dossier: boolean;
+        request_expense_sufficiency: boolean;
+        confirm_expense_sufficiency: boolean;
+    };
 };
 
 type ModificationForm = {
@@ -43,6 +51,22 @@ type ModificationForm = {
     amount_pesos: string;
     amount_cents: string;
     reason: string;
+};
+
+type ExpenseDossierForm = {
+    own_revenue_modified_budget_line_id: string;
+    concept: string;
+    amount_pesos: string;
+    amount_cents: string;
+    purchase_responsibility: 'cren' | 'seq';
+    external_reference: string;
+    notes: string;
+};
+
+const dossierStatusLabels: Record<ExpenseDossier['status'], string> = {
+    draft: 'Borrador',
+    sufficiency_requested: 'Suficiencia solicitada',
+    sufficiency_confirmed: 'Suficiencia confirmada',
 };
 
 const months = [
@@ -102,9 +126,11 @@ export default function OwnRevenueExecutionShow({
     lines,
     classifications,
     modifications: history,
+    expense_dossiers: expenseDossiers,
     permissions,
 }: Props) {
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
     const usableLines = lines.filter(
         (line) => BigInt(line.available_amount_cents) > 0n,
     );
@@ -116,6 +142,15 @@ export default function OwnRevenueExecutionShow({
         amount_pesos: '',
         amount_cents: '',
         reason: '',
+    });
+    const expenseForm = useForm<ExpenseDossierForm>({
+        own_revenue_modified_budget_line_id: usableLines[0]?.id.toString() ?? '',
+        concept: '',
+        amount_pesos: '',
+        amount_cents: '',
+        purchase_responsibility: 'cren',
+        external_reference: '',
+        notes: '',
     });
     const selectedSource = lines.find(
         (line) => line.id.toString() === form.data.source_line_id,
@@ -188,6 +223,40 @@ export default function OwnRevenueExecutionShow({
         });
     };
 
+    const openExpenseForm = (): void => {
+        expenseForm.reset();
+        expenseForm.clearErrors();
+        expenseForm.setData('own_revenue_modified_budget_line_id', usableLines[0]?.id.toString() ?? '');
+        setExpenseDialogOpen(true);
+    };
+
+    const submitExpense = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+        const cents = pesosToCents(expenseForm.data.amount_pesos);
+
+        if (cents === null || cents === '0') {
+            expenseForm.setError('amount_cents', 'Captura un importe válido mayor que cero.');
+
+            return;
+        }
+
+        expenseForm.transform((data) => ({ ...data, amount_cents: cents }));
+        expenseForm.post(expenseDossierRoutes.store(budget.id).url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setExpenseDialogOpen(false);
+                expenseForm.reset();
+            },
+        });
+    };
+
+    const advanceDossier = (dossier: ExpenseDossier, action: 'request' | 'confirm'): void => {
+        const route = action === 'request'
+            ? expenseDossierRoutes.sufficiencyRequest([budget.id, dossier.id])
+            : expenseDossierRoutes.sufficiencyConfirmation([budget.id, dossier.id]);
+        router.post(route.url, {}, { preserveScroll: true });
+    };
+
     return (
         <>
             <Head title={`Presupuesto modificado ${budget.fiscal_year}`} />
@@ -214,6 +283,12 @@ export default function OwnRevenueExecutionShow({
                                     Ver planeación
                                 </Link>
                             </Button>
+                            {permissions.create_expense_dossier && usableLines.length > 0 && (
+                                <Button type="button" variant="outline" onClick={openExpenseForm}>
+                                    <FileText className="size-4" />
+                                    Nuevo gasto
+                                </Button>
+                            )}
                             {permissions.manage && usableLines.length > 0 && (
                                 <Button type="button" onClick={() => openForm()}>
                                     <Plus className="size-4" />
@@ -239,7 +314,7 @@ export default function OwnRevenueExecutionShow({
                     </CardHeader>
                     <CardContent className="p-0">
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[980px] text-sm">
+                            <table className="w-full min-w-[1180px] text-sm">
                                 <thead className="border-y bg-muted/50 text-left text-xs text-muted-foreground">
                                     <tr>
                                         <th className="px-4 py-3 font-medium">Partida</th>
@@ -248,6 +323,9 @@ export default function OwnRevenueExecutionShow({
                                         <th className="px-3 py-3 text-right font-medium">Entradas</th>
                                         <th className="px-3 py-3 text-right font-medium">Salidas</th>
                                         <th className="px-3 py-3 text-right font-medium">Modificado</th>
+                                        <th className="px-3 py-3 text-right font-medium">Reservado</th>
+                                        <th className="px-3 py-3 text-right font-medium">Comprometido</th>
+                                        <th className="px-3 py-3 text-right font-medium">Pagado</th>
                                         <th className="px-3 py-3 text-right font-medium">Disponible</th>
                                         <th className="px-4 py-3"><span className="sr-only">Acciones</span></th>
                                     </tr>
@@ -264,6 +342,9 @@ export default function OwnRevenueExecutionShow({
                                             <MoneyCell value={line.incoming_amount_cents} />
                                             <MoneyCell value={line.outgoing_amount_cents} />
                                             <MoneyCell value={line.modified_amount_cents} strong />
+                                            <MoneyCell value={line.reserved_amount_cents} />
+                                            <MoneyCell value={line.committed_amount_cents} />
+                                            <MoneyCell value={line.paid_amount_cents} />
                                             <MoneyCell value={line.available_amount_cents} strong />
                                             <td className="px-4 py-3 text-right">
                                                 {permissions.manage && BigInt(line.available_amount_cents) > 0n && (
@@ -277,6 +358,49 @@ export default function OwnRevenueExecutionShow({
                                 </tbody>
                             </table>
                         </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex-row items-center justify-between gap-3">
+                        <CardTitle>Expedientes de gasto</CardTitle>
+                        {permissions.create_expense_dossier && usableLines.length > 0 && (
+                            <Button type="button" size="sm" onClick={openExpenseForm}>
+                                <Plus className="size-4" /> Nuevo gasto
+                            </Button>
+                        )}
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                        {expenseDossiers.map((dossier) => (
+                            <article key={dossier.id} className="grid gap-3 rounded-lg border p-4 text-sm md:grid-cols-[1fr_auto]">
+                                <div className="grid gap-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-semibold">{dossier.folio}</span>
+                                        <Badge variant="outline">{dossierStatusLabels[dossier.status]}</Badge>
+                                    </div>
+                                    <p>{dossier.concept}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {dossier.line.specific_item_code} · {months[dossier.line.month]} · {dossier.requested_by_name}
+                                    </p>
+                                </div>
+                                <div className="flex flex-col items-end justify-between gap-2">
+                                    <span className="font-semibold">{formatCents(dossier.amount_cents)}</span>
+                                    {dossier.status === 'draft' && permissions.request_expense_sufficiency && (
+                                        <Button type="button" size="sm" onClick={() => advanceDossier(dossier, 'request')}>
+                                            Solicitar suficiencia
+                                        </Button>
+                                    )}
+                                    {dossier.status === 'sufficiency_requested' && permissions.confirm_expense_sufficiency && (
+                                        <Button type="button" size="sm" onClick={() => advanceDossier(dossier, 'confirm')}>
+                                            Confirmar suficiencia
+                                        </Button>
+                                    )}
+                                </div>
+                            </article>
+                        ))}
+                        {expenseDossiers.length === 0 && (
+                            <p className="text-sm text-muted-foreground">Aún no hay expedientes de gasto en este ejercicio.</p>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -403,6 +527,43 @@ export default function OwnRevenueExecutionShow({
                         <Button type="submit" disabled={form.processing || destinationOptions.length === 0}>
                             {form.processing ? 'Registrando…' : 'Registrar modificación'}
                         </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>Nuevo expediente de gasto</DialogTitle>
+                        <DialogDescription>Guárdalo como borrador y solicita la suficiencia cuando esté listo.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitExpense} className="grid gap-4">
+                        <Field label="Partida y mes" error={expenseForm.errors.own_revenue_modified_budget_line_id}>
+                            <select value={expenseForm.data.own_revenue_modified_budget_line_id} onChange={(event) => expenseForm.setData('own_revenue_modified_budget_line_id', event.target.value)} className={selectClassName} required>
+                                {usableLines.map((line) => (
+                                    <option key={line.id} value={line.id}>{line.specific_item_code} · {months[line.month]} · {formatCents(line.available_amount_cents)} disponible</option>
+                                ))}
+                            </select>
+                        </Field>
+                        <Field label="Concepto del gasto" error={expenseForm.errors.concept}>
+                            <textarea value={expenseForm.data.concept} onChange={(event) => expenseForm.setData('concept', event.target.value)} className={`${selectClassName} min-h-24 py-2`} maxLength={2000} required />
+                        </Field>
+                        <Field label="Importe (pesos)" error={expenseForm.errors.amount_cents}>
+                            <Input value={expenseForm.data.amount_pesos} onChange={(event) => expenseForm.setData('amount_pesos', event.target.value)} inputMode="decimal" placeholder="0.00" required />
+                        </Field>
+                        <Field label="Responsable de la compra" error={expenseForm.errors.purchase_responsibility}>
+                            <select value={expenseForm.data.purchase_responsibility} onChange={(event) => expenseForm.setData('purchase_responsibility', event.target.value as 'cren' | 'seq')} className={selectClassName}>
+                                <option value="cren">CREN</option>
+                                <option value="seq">SEQ</option>
+                            </select>
+                        </Field>
+                        <Field label="Referencia externa (opcional)" error={expenseForm.errors.external_reference}>
+                            <Input value={expenseForm.data.external_reference} onChange={(event) => expenseForm.setData('external_reference', event.target.value)} maxLength={255} />
+                        </Field>
+                        <Field label="Observaciones (opcional)" error={expenseForm.errors.notes}>
+                            <textarea value={expenseForm.data.notes} onChange={(event) => expenseForm.setData('notes', event.target.value)} className={`${selectClassName} min-h-20 py-2`} maxLength={4000} />
+                        </Field>
+                        <Button type="submit" disabled={expenseForm.processing}>{expenseForm.processing ? 'Guardando…' : 'Guardar borrador'}</Button>
                     </form>
                 </DialogContent>
             </Dialog>
