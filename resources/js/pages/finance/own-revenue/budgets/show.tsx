@@ -1,6 +1,7 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
+    ArrowRightLeft,
     CheckCircle2,
     ClipboardList,
     Copy,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/card';
 import { create, index } from '@/routes/finance/own-revenue/budgets';
 import { confirm as confirmCog } from '@/routes/finance/own-revenue/budgets/cog';
+import execution from '@/routes/finance/own-revenue/budgets/execution';
 import imports from '@/routes/finance/own-revenue/budgets/imports';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
 import type {
@@ -357,6 +359,31 @@ export default function OwnRevenueBudgetShow({
                         </Button>
                     </CardHeader>
                 </Card>
+
+                {['initial_authorized', 'in_execution', 'closed'].includes(
+                    budget.status,
+                ) && (
+                    <Card>
+                        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <ArrowRightLeft className="size-5" />
+                                    Presupuesto modificado
+                                </CardTitle>
+                                <CardDescription>
+                                    Consulta los saldos y registra transferencias
+                                    o cambios de mes sin alterar el presupuesto
+                                    inicial.
+                                </CardDescription>
+                            </div>
+                            <Button asChild>
+                                <Link href={execution.show(budget.id)}>
+                                    Abrir presupuesto modificado
+                                </Link>
+                            </Button>
+                        </CardHeader>
+                    </Card>
+                )}
 
                 <Card>
                     <CardHeader>

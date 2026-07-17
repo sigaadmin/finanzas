@@ -11,6 +11,7 @@ use App\Http\Controllers\Finance\OwnRevenueActivityExceptionController;
 use App\Http\Controllers\Finance\OwnRevenueActivityReconciliationController;
 use App\Http\Controllers\Finance\OwnRevenueActivityRuleController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetController;
+use App\Http\Controllers\Finance\OwnRevenueBudgetExecutionController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
@@ -128,6 +129,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('own-revenue/budgets/{budget}/planning', OwnRevenuePlanningController::class)
             ->name('own-revenue.budgets.planning.show');
+
+        Route::get('own-revenue/budgets/{budget}/execution', [OwnRevenueBudgetExecutionController::class, 'show'])
+            ->name('own-revenue.budgets.execution.show');
+
+        Route::post('own-revenue/budgets/{budget}/execution/modifications', [OwnRevenueBudgetExecutionController::class, 'store'])
+            ->name('own-revenue.budgets.execution.modifications.store');
 
         Route::post('own-revenue/budgets/{budget}/cog/confirm', OwnRevenueCogConfirmationController::class)
             ->name('own-revenue.budgets.cog.confirm');
