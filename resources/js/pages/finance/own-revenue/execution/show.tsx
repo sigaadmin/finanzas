@@ -42,6 +42,7 @@ type Props = {
         request_expense_sufficiency: boolean;
         confirm_expense_sufficiency: boolean;
         manage_expense_purchase: boolean;
+        authorize_expense_payment: boolean;
     };
 };
 
@@ -69,6 +70,32 @@ type PaymentRequestForm = {
     payment_request_reference: string;
     documents: File[];
 };
+
+type AuthorizationAction = {
+    dossier: ExpenseDossier;
+    kind: 'finance' | 'budget-office' | 'payment';
+};
+
+const authorizationCopy = {
+    finance: {
+        title: 'Autorizar en Finanzas',
+        description: 'Registra la referencia emitida por Finanzas para continuar el trámite.',
+        label: 'Referencia de Finanzas',
+        button: 'Registrar autorización',
+    },
+    'budget-office': {
+        title: 'Autorizar en Presupuesto o Pagaduría',
+        description: 'Registra la referencia externa que confirma la segunda autorización.',
+        label: 'Referencia de Presupuesto o Pagaduría',
+        button: 'Registrar autorización',
+    },
+    payment: {
+        title: 'Registrar pago',
+        description: 'Registra la transferencia, póliza o referencia que acredita el pago.',
+        label: 'Referencia del pago',
+        button: 'Marcar como pagado',
+    },
+} satisfies Record<AuthorizationAction['kind'], { title: string; description: string; label: string; button: string }>;
 
 const dossierStatusLabels: Record<ExpenseDossier['status'], string> = {
     draft: 'Borrador',
@@ -147,6 +174,7 @@ export default function OwnRevenueExecutionShow({
     const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
     const [purchaseDossier, setPurchaseDossier] = useState<ExpenseDossier | null>(null);
     const [paymentDossier, setPaymentDossier] = useState<ExpenseDossier | null>(null);
+    const [authorizationAction, setAuthorizationAction] = useState<AuthorizationAction | null>(null);
     const usableLines = lines.filter(
         (line) => BigInt(line.available_amount_cents) > 0n,
     );
@@ -173,6 +201,7 @@ export default function OwnRevenueExecutionShow({
         payment_request_reference: '',
         documents: [],
     });
+    const authorizationForm = useForm({ reference: '' });
     const selectedSource = lines.find(
         (line) => line.id.toString() === form.data.source_line_id,
     );
@@ -317,6 +346,39 @@ export default function OwnRevenueExecutionShow({
         });
     };
 
+    const openAuthorizationForm = (dossier: ExpenseDossier, kind: AuthorizationAction['kind']): void => {
+        authorizationForm.reset();
+        authorizationForm.clearErrors();
+        setAuthorizationAction({ dossier, kind });
+    };
+
+    const submitAuthorization = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+
+        if (authorizationAction === null) {
+            return;
+        }
+
+        const { dossier, kind } = authorizationAction;
+        const route = kind === 'finance'
+            ? expenseDossierRoutes.financeAuthorization([budget.id, dossier.id])
+            : kind === 'budget-office'
+              ? expenseDossierRoutes.budgetOfficeAuthorization([budget.id, dossier.id])
+              : expenseDossierRoutes.payment([budget.id, dossier.id]);
+        const field = kind === 'finance'
+            ? 'finance_authorization_reference'
+            : kind === 'budget-office'
+              ? 'budget_office_authorization_reference'
+              : 'payment_reference';
+
+        authorizationForm.transform((data) => ({ [field]: data.reference }));
+        authorizationForm.post(route.url, {
+            preserveScroll: true,
+            onSuccess: () => setAuthorizationAction(null),
+            onError: (errors) => authorizationForm.setError('reference', Object.values(errors)[0] ?? 'No fue posible registrar la referencia.'),
+        });
+    };
+
     return (
         <>
             <Head title={`Presupuesto modificado ${budget.fiscal_year}`} />
@@ -448,6 +510,15 @@ export default function OwnRevenueExecutionShow({
                                     {dossier.payment_request_reference !== null && (
                                         <p className="text-xs text-muted-foreground">Solicitud de pago: {dossier.payment_request_reference}</p>
                                     )}
+                                    {dossier.finance_authorization_reference !== null && (
+                                        <p className="text-xs text-muted-foreground">Finanzas: {dossier.finance_authorization_reference}</p>
+                                    )}
+                                    {dossier.budget_office_authorization_reference !== null && (
+                                        <p className="text-xs text-muted-foreground">Presupuesto/Pagaduría: {dossier.budget_office_authorization_reference}</p>
+                                    )}
+                                    {dossier.payment_reference !== null && (
+                                        <p className="text-xs text-muted-foreground">Pago: {dossier.payment_reference}</p>
+                                    )}
                                     {dossier.documents.length > 0 && (
                                         <div className="flex flex-wrap gap-2 pt-1">
                                             {dossier.documents.map((document) => (
@@ -480,6 +551,21 @@ export default function OwnRevenueExecutionShow({
                                     {dossier.status === 'purchase_in_progress' && permissions.manage_expense_purchase && (
                                         <Button type="button" size="sm" onClick={() => openPaymentForm(dossier)}>
                                             Solicitar pago
+                                        </Button>
+                                    )}
+                                    {dossier.status === 'payment_requested' && permissions.authorize_expense_payment && (
+                                        <Button type="button" size="sm" onClick={() => openAuthorizationForm(dossier, 'finance')}>
+                                            Autorizar en Finanzas
+                                        </Button>
+                                    )}
+                                    {dossier.status === 'finance_authorized' && permissions.authorize_expense_payment && (
+                                        <Button type="button" size="sm" onClick={() => openAuthorizationForm(dossier, 'budget-office')}>
+                                            Autorizar en Presupuesto
+                                        </Button>
+                                    )}
+                                    {dossier.status === 'budget_office_authorized' && permissions.authorize_expense_payment && (
+                                        <Button type="button" size="sm" onClick={() => openAuthorizationForm(dossier, 'payment')}>
+                                            Registrar pago
                                         </Button>
                                     )}
                                 </div>
@@ -710,6 +796,39 @@ export default function OwnRevenueExecutionShow({
                         </Field>
                         <Button type="submit" disabled={paymentForm.processing}>
                             {paymentForm.processing ? 'Enviando…' : 'Registrar solicitud de pago'}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={authorizationAction !== null} onOpenChange={(open) => !open && setAuthorizationAction(null)}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {authorizationAction === null ? 'Registrar autorización' : authorizationCopy[authorizationAction.kind].title}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {authorizationAction === null ? '' : `${authorizationCopy[authorizationAction.kind].description} Expediente ${authorizationAction.dossier.folio}.`}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitAuthorization} className="grid gap-4">
+                        <Field
+                            label={authorizationAction === null ? 'Referencia' : authorizationCopy[authorizationAction.kind].label}
+                            error={authorizationForm.errors.reference}
+                        >
+                            <Input
+                                value={authorizationForm.data.reference}
+                                onChange={(event) => authorizationForm.setData('reference', event.target.value)}
+                                maxLength={255}
+                                required
+                            />
+                        </Field>
+                        <Button type="submit" disabled={authorizationForm.processing}>
+                            {authorizationForm.processing
+                                ? 'Registrando…'
+                                : authorizationAction === null
+                                  ? 'Registrar'
+                                  : authorizationCopy[authorizationAction.kind].button}
                         </Button>
                     </form>
                 </DialogContent>

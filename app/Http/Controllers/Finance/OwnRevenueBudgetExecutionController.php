@@ -2,14 +2,20 @@
 
 namespace App\Http\Controllers\Finance;
 
+use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOffice;
+use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinance;
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\InitializeOwnRevenueModifiedBudget;
+use App\Actions\Finance\OwnRevenue\Execution\MarkExpenseDossierPaid;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpensePayment;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\StartExpensePurchase;
 use App\Actions\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModification;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOfficeRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinanceRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\MarkExpenseDossierPaidRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\RequestExpensePaymentRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StartExpensePurchaseRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModificationRequest;
@@ -120,5 +126,44 @@ class OwnRevenueBudgetExecutionController extends Controller
 
         return to_route('finance.own-revenue.budgets.execution.show', $budget)
             ->with('success', 'La solicitud de pago y sus documentos quedaron registrados.');
+    }
+
+    public function authorizeByFinance(
+        AuthorizeExpensePaymentByFinanceRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        AuthorizeExpensePaymentByFinance $authorize,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $authorize->handle($expenseDossier, $request->user(), $request->validated('finance_authorization_reference'));
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'La autorización de Finanzas quedó registrada.');
+    }
+
+    public function authorizeByBudgetOffice(
+        AuthorizeExpensePaymentByBudgetOfficeRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        AuthorizeExpensePaymentByBudgetOffice $authorize,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $authorize->handle($expenseDossier, $request->user(), $request->validated('budget_office_authorization_reference'));
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'La autorización de Presupuesto o Pagaduría quedó registrada.');
+    }
+
+    public function markPaid(
+        MarkExpenseDossierPaidRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        MarkExpenseDossierPaid $markPaid,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $markPaid->handle($expenseDossier, $request->user(), $request->validated('payment_reference'));
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'El pago quedó registrado y el saldo se actualizó.');
     }
 }

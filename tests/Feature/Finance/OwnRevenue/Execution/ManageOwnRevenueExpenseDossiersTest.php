@@ -1,7 +1,10 @@
 <?php
 
+use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOffice;
+use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinance;
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
+use App\Actions\Finance\OwnRevenue\Execution\MarkExpenseDossierPaid;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpensePayment;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\StartExpensePurchase;
@@ -98,6 +101,22 @@ function expenseDossierData(int $amountCents = 4_000): array
         'external_reference' => null,
         'notes' => 'Material requerido para actividades administrativas.',
     ];
+}
+
+/** @return array{budget: OwnRevenueBudget, line: OwnRevenueModifiedBudgetLine, manager: User, assistant: User, dossier: OwnRevenueExpenseDossier} */
+function paymentRequestedExpenseDossier(): array
+{
+    Storage::fake('local');
+    ['budget' => $budget, 'line' => $line, 'manager' => $manager, 'assistant' => $assistant] = expenseDossierFixture();
+    $dossier = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+    app(RequestExpenseSufficiency::class)->handle($dossier, $assistant);
+    app(ConfirmExpenseSufficiency::class)->handle($dossier, $manager);
+    app(StartExpensePurchase::class)->handle($dossier, $assistant, 'OC-CREN-2026-001');
+    app(RequestExpensePayment::class)->handle($dossier, $assistant, 'SP-CREN-2026-001', [
+        UploadedFile::fake()->create('factura.pdf', 120, 'application/pdf'),
+    ]);
+
+    return compact('budget', 'line', 'manager', 'assistant', 'dossier');
 }
 
 test('an assistant can create an audited draft expense dossier', function () {
@@ -235,4 +254,48 @@ test('purchase and payment stages cannot be skipped and payment requires evidenc
         UploadedFile::fake()->create('factura.exe', 20, 'application/pdf'),
     ]))->toThrow(ValidationException::class);
     expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::PurchaseInProgress);
+});
+
+test('a manager records the finance authorization with its external reference', function () {
+    ['dossier' => $dossier, 'manager' => $manager, 'line' => $line] = paymentRequestedExpenseDossier();
+
+    app(AuthorizeExpensePaymentByFinance::class)->handle($dossier, $manager, 'AF-2026-001');
+
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::FinanceAuthorized)
+        ->and($dossier->fresh()->finance_authorization_reference)->toBe('AF-2026-001')
+        ->and($dossier->fresh()->finance_authorized_by)->toBe($manager->id)
+        ->and($dossier->fresh()->finance_authorized_at)->not->toBeNull()
+        ->and($dossier->transitions()->latest('id')->first()->to_status)->toBe(OwnRevenueExpenseDossierStatus::FinanceAuthorized)
+        ->and(app(OwnRevenueBudgetBalance::class)->committedCents($line->fresh()))->toBe(4_000);
+});
+
+test('only administrators authorize payments and authorization stages cannot be skipped', function () {
+    ['dossier' => $dossier, 'manager' => $manager, 'assistant' => $assistant] = paymentRequestedExpenseDossier();
+
+    expect(fn () => app(AuthorizeExpensePaymentByFinance::class)->handle($dossier, $assistant, 'AF-001'))
+        ->toThrow(AuthorizationException::class);
+    expect(fn () => app(AuthorizeExpensePaymentByBudgetOffice::class)->handle($dossier, $manager, 'AP-001'))
+        ->toThrow(ValidationException::class);
+    expect(fn () => app(MarkExpenseDossierPaid::class)->handle($dossier, $manager, 'PAGO-001'))
+        ->toThrow(ValidationException::class);
+});
+
+test('budget office authorization and payment move the commitment to paid without double counting', function () {
+    ['dossier' => $dossier, 'manager' => $manager, 'line' => $line] = paymentRequestedExpenseDossier();
+    app(AuthorizeExpensePaymentByFinance::class)->handle($dossier, $manager, 'AF-2026-001');
+
+    app(AuthorizeExpensePaymentByBudgetOffice::class)->handle($dossier, $manager, 'AP-2026-001');
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::BudgetOfficeAuthorized)
+        ->and($dossier->fresh()->budget_office_authorization_reference)->toBe('AP-2026-001');
+    app(MarkExpenseDossierPaid::class)->handle($dossier, $manager, 'PAGO-2026-001');
+    $balances = app(OwnRevenueBudgetBalance::class);
+
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::Paid)
+        ->and($dossier->fresh()->payment_reference)->toBe('PAGO-2026-001')
+        ->and($dossier->fresh()->paid_by)->toBe($manager->id)
+        ->and($dossier->fresh()->paid_at)->not->toBeNull()
+        ->and($dossier->transitions()->count())->toBe(8)
+        ->and($balances->committedCents($line->fresh()))->toBe(0)
+        ->and($balances->paidCents($line->fresh()))->toBe(4_000)
+        ->and($balances->availableCents($line->fresh()))->toBe(6_000);
 });

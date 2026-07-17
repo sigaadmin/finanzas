@@ -16,10 +16,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'own_revenue_budget_id', 'own_revenue_modified_budget_line_id', 'sequence_number',
     'folio', 'status', 'concept', 'amount_cents', 'purchase_responsibility',
-    'external_reference', 'purchase_reference', 'payment_request_reference', 'notes',
+    'external_reference', 'purchase_reference', 'payment_request_reference',
+    'finance_authorization_reference', 'budget_office_authorization_reference',
+    'payment_reference', 'notes',
     'requested_by', 'sufficiency_requested_at',
     'sufficiency_confirmed_by', 'sufficiency_confirmed_at',
     'purchase_started_by', 'purchase_started_at', 'payment_requested_by', 'payment_requested_at',
+    'finance_authorized_by', 'finance_authorized_at',
+    'budget_office_authorized_by', 'budget_office_authorized_at', 'paid_by', 'paid_at',
 ])]
 class OwnRevenueExpenseDossier extends Model
 {
@@ -38,6 +42,9 @@ class OwnRevenueExpenseDossier extends Model
             'sufficiency_confirmed_at' => 'datetime',
             'purchase_started_at' => 'datetime',
             'payment_requested_at' => 'datetime',
+            'finance_authorized_at' => 'datetime',
+            'budget_office_authorized_at' => 'datetime',
+            'paid_at' => 'datetime',
         ];
     }
 
@@ -75,6 +82,24 @@ class OwnRevenueExpenseDossier extends Model
     public function paymentRequester(): BelongsTo
     {
         return $this->belongsTo(User::class, 'payment_requested_by');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function financeAuthorizer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'finance_authorized_by');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function budgetOfficeAuthorizer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'budget_office_authorized_by');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function payer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'paid_by');
     }
 
     /** @return HasMany<OwnRevenueExpenseDossierTransition, $this> */

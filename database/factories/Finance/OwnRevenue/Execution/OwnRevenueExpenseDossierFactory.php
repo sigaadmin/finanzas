@@ -44,6 +44,9 @@ class OwnRevenueExpenseDossierFactory extends Factory
             'external_reference' => null,
             'purchase_reference' => null,
             'payment_request_reference' => null,
+            'finance_authorization_reference' => null,
+            'budget_office_authorization_reference' => null,
+            'payment_reference' => null,
             'notes' => fake()->optional()->sentence(),
             'requested_by' => User::factory(),
             'sufficiency_requested_at' => null,
@@ -53,6 +56,12 @@ class OwnRevenueExpenseDossierFactory extends Factory
             'purchase_started_at' => null,
             'payment_requested_by' => null,
             'payment_requested_at' => null,
+            'finance_authorized_by' => null,
+            'finance_authorized_at' => null,
+            'budget_office_authorized_by' => null,
+            'budget_office_authorized_at' => null,
+            'paid_by' => null,
+            'paid_at' => null,
         ];
     }
 }

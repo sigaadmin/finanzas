@@ -79,6 +79,9 @@ export type ExpenseDossier = {
     external_reference: string | null;
     purchase_reference: string | null;
     payment_request_reference: string | null;
+    finance_authorization_reference: string | null;
+    budget_office_authorization_reference: string | null;
+    payment_reference: string | null;
     notes: string | null;
     line: {
         specific_item_code: string;
@@ -90,6 +93,9 @@ export type ExpenseDossier = {
     sufficiency_confirmed_at: string | null;
     purchase_started_at: string | null;
     payment_requested_at: string | null;
+    finance_authorized_at: string | null;
+    budget_office_authorized_at: string | null;
+    paid_at: string | null;
     documents: Array<{
         id: number;
         original_name: string;

@@ -49,6 +49,7 @@ class OwnRevenueExecutionViewData
                 'request_expense_sufficiency' => Gate::allows('requestExpenseSufficiency', $budget),
                 'confirm_expense_sufficiency' => Gate::allows('confirmExpenseSufficiency', $budget),
                 'manage_expense_purchase' => Gate::allows('manageExpensePurchase', $budget),
+                'authorize_expense_payment' => Gate::allows('authorizeExpensePayment', $budget),
             ],
         ];
     }
@@ -147,6 +148,9 @@ class OwnRevenueExecutionViewData
                 'external_reference' => $dossier->external_reference,
                 'purchase_reference' => $dossier->purchase_reference,
                 'payment_request_reference' => $dossier->payment_request_reference,
+                'finance_authorization_reference' => $dossier->finance_authorization_reference,
+                'budget_office_authorization_reference' => $dossier->budget_office_authorization_reference,
+                'payment_reference' => $dossier->payment_reference,
                 'notes' => $dossier->notes,
                 'line' => [
                     'specific_item_code' => $dossier->budgetLine->specific_item_code,
@@ -158,6 +162,9 @@ class OwnRevenueExecutionViewData
                 'sufficiency_confirmed_at' => $dossier->sufficiency_confirmed_at?->toISOString(),
                 'purchase_started_at' => $dossier->purchase_started_at?->toISOString(),
                 'payment_requested_at' => $dossier->payment_requested_at?->toISOString(),
+                'finance_authorized_at' => $dossier->finance_authorized_at?->toISOString(),
+                'budget_office_authorized_at' => $dossier->budget_office_authorized_at?->toISOString(),
+                'paid_at' => $dossier->paid_at?->toISOString(),
                 'documents' => $dossier->documents->map(fn ($document): array => [
                     'id' => $document->id,
                     'original_name' => $document->original_name,

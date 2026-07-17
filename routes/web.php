@@ -156,6 +156,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->scopeBindings()
             ->name('own-revenue.budgets.execution.expense-dossiers.payment-request');
 
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/finance-authorization', [OwnRevenueBudgetExecutionController::class, 'authorizeByFinance'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.finance-authorization');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/budget-office-authorization', [OwnRevenueBudgetExecutionController::class, 'authorizeByBudgetOffice'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.budget-office-authorization');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/payment', [OwnRevenueBudgetExecutionController::class, 'markPaid'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.payment');
+
         Route::get('own-revenue/expense-dossier-documents/{expenseDossierDocument}', OwnRevenueExpenseDossierDocumentController::class)
             ->name('own-revenue.expense-dossier-documents.download');
 

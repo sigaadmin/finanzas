@@ -210,6 +210,30 @@ test('purchase and payment request can advance with private downloadable evidenc
             ->where('expense_dossiers.0.payment_request_reference', 'SP-CREN-2026-001')
             ->has('expense_dossiers.0.documents', 1)
             ->where('expense_dossiers.0.documents.0.original_name', 'factura.pdf'));
+
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.finance-authorization', [$budget, $dossier]), [
+            'finance_authorization_reference' => 'AF-2026-001',
+        ])->assertSessionHasNoErrors();
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.budget-office-authorization', [$budget, $dossier]), [
+            'budget_office_authorization_reference' => 'AP-2026-001',
+        ])->assertSessionHasNoErrors();
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.payment', [$budget, $dossier]), [
+            'payment_reference' => 'PAGO-2026-001',
+        ])->assertSessionHasNoErrors();
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.execution.show', $budget))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('expense_dossiers.0.status', 'paid')
+            ->where('expense_dossiers.0.finance_authorization_reference', 'AF-2026-001')
+            ->where('expense_dossiers.0.budget_office_authorization_reference', 'AP-2026-001')
+            ->where('expense_dossiers.0.payment_reference', 'PAGO-2026-001')
+            ->where('summary.committed_amount_cents', '0')
+            ->where('summary.paid_amount_cents', '4000')
+            ->where('summary.available_amount_cents', '11000'));
 });
 
 test('budgets without an authorized initial budget do not expose execution', function () {
