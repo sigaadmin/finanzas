@@ -14,7 +14,9 @@ use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalTravelCommission;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueTravelRate;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Planning\FixedDecimal;
+use App\Services\Finance\OwnRevenue\Planning\FuelNeedCalculator;
 use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalReadiness;
+use App\Services\Finance\OwnRevenue\Planning\TravelCommissionCalculator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -26,6 +28,8 @@ class CreateOwnRevenueProposalFromImports
     public function __construct(
         private readonly OwnRevenueProposalReadiness $readiness,
         private readonly FixedDecimal $decimal,
+        private readonly FuelNeedCalculator $fuelCalculator,
+        private readonly TravelCommissionCalculator $travelCalculator,
     ) {}
 
     /** @param array<string, int> $expectedFileIds */
@@ -152,6 +156,12 @@ class CreateOwnRevenueProposalFromImports
                     (string) $returnKilometers,
                     4,
                 );
+                $calculation = $this->fuelCalculator->calculate(
+                    $totalKilometers,
+                    (string) $source->kilometers_per_liter,
+                    (string) $source->fuel_price,
+                );
+                $keepsImportedAmount = $calculation->budgetedCents !== (string) $source->amount_cents;
 
                 $proposal->fuelNeeds()->create([
                     'own_revenue_budget_id' => $proposal->own_revenue_budget_id,
@@ -173,12 +183,15 @@ class CreateOwnRevenueProposalFromImports
                     'return_kilometers' => $returnKilometers,
                     'additional_kilometers' => '0.0000',
                     'total_kilometers' => $totalKilometers,
-                    'liters' => $source->liters,
+                    'liters' => $calculation->liters,
                     'fuel_price' => $source->fuel_price,
-                    'mathematical_amount_cents' => $source->amount_cents,
-                    'rounded_amount_cents' => $source->amount_cents,
+                    'mathematical_amount_cents' => $calculation->mathematicalCents,
+                    'rounded_amount_cents' => $calculation->roundedCents,
                     'budget_amount_cents' => $source->amount_cents,
-                    'rounding_difference_cents' => 0,
+                    'rounding_difference_cents' => $calculation->roundingDifferenceCents,
+                    'override_justification' => $keepsImportedAmount
+                        ? 'Importe conservado del archivo confirmado.'
+                        : null,
                     'sort_order' => $source->sort_order,
                 ]);
             });
@@ -209,7 +222,6 @@ class CreateOwnRevenueProposalFromImports
                 'lodging_zone' => 1,
                 'is_active' => true,
             ]);
-            $participantsAmount = (int) $group->sum('total_amount_cents');
             $flightAmount = (int) $group->sum('flight_amount_cents');
             $commission = $proposal->travelCommissions()->create([
                 'own_revenue_budget_id' => $proposal->own_revenue_budget_id,
@@ -226,12 +238,17 @@ class CreateOwnRevenueProposalFromImports
                 'lodging_zone' => 1,
                 'uma_value' => $first->uma_value,
                 'flight_amount_cents' => $flightAmount,
-                'participants_amount_cents' => $participantsAmount,
-                'total_amount_cents' => $participantsAmount + $flightAmount,
+                'participants_amount_cents' => 0,
+                'total_amount_cents' => $flightAmount,
                 'sort_order' => $first->sort_order,
             ]);
 
             $group->each(fn (OwnRevenueTravelCommission $source) => $this->copyTravelParticipant($commission, $source));
+            $participantsAmount = (int) $commission->participants()->sum('total_amount_cents');
+            $commission->update([
+                'participants_amount_cents' => $participantsAmount,
+                'total_amount_cents' => $participantsAmount + $flightAmount,
+            ]);
         });
     }
 
@@ -251,6 +268,13 @@ class CreateOwnRevenueProposalFromImports
             'is_fallback' => $this->normalize($source->position) === 'puestos no considerados en los anteriores',
             'is_active' => true,
         ]);
+        $calculation = $this->travelCalculator->calculate(
+            (string) $source->commission_days,
+            (string) $source->per_diem_uma,
+            (string) $source->lodging_uma,
+            (string) $commission->uma_value,
+            '0',
+        );
         $commission->participants()->create([
             'own_revenue_proposal_id' => $commission->own_revenue_proposal_id,
             'own_revenue_budget_id' => $commission->own_revenue_budget_id,
@@ -263,9 +287,9 @@ class CreateOwnRevenueProposalFromImports
             'commission_days' => $source->commission_days,
             'per_diem_uma' => $source->per_diem_uma,
             'lodging_uma' => $source->lodging_uma,
-            'per_diem_amount_cents' => $source->per_diem_amount_cents,
-            'lodging_amount_cents' => $source->lodging_amount_cents,
-            'total_amount_cents' => $source->total_amount_cents,
+            'per_diem_amount_cents' => $calculation->perDiemCents,
+            'lodging_amount_cents' => $calculation->lodgingCents,
+            'total_amount_cents' => $calculation->totalCents,
             'sort_order' => $source->sort_order,
         ]);
     }

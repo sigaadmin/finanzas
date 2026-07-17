@@ -18,6 +18,7 @@ use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\OwnRevenueSignatory;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalFingerprint;
 use App\Services\Finance\OwnRevenue\Planning\OwnRevenueProposalReadiness;
 
 function planningProposalManager(UserRole $role = UserRole::FinanceManager): User
@@ -55,6 +56,21 @@ function planningProposalFixture(): array
         'expense_type_code' => '1',
         'expense_type_name' => 'Gasto corriente',
     ]);
+    foreach (['26101' => 'Combustibles', '37101' => 'Pasajes aéreos', '37501' => 'Viáticos'] as $code => $name) {
+        ExpenseClassification::query()->create([
+            'fiscal_year' => $budget->fiscal_year,
+            'chapter_code' => '3000',
+            'chapter_name' => 'Servicios generales',
+            'concept_code' => '3700',
+            'concept_name' => 'Servicios de traslado y viáticos',
+            'generic_item_code' => substr($code, 0, 4).'0',
+            'generic_item_name' => $name,
+            'specific_item_code' => $code,
+            'specific_item_name' => $name,
+            'expense_type_code' => '1',
+            'expense_type_name' => 'Gasto corriente',
+        ]);
+    }
     $session = OwnRevenueImportSession::factory()->for($budget, 'budget')->for($manager, 'createdBy')->create();
     $files = collect(OwnRevenueImportFormat::cases())->mapWithKeys(function (OwnRevenueImportFormat $format) use ($budget, $manager, $session): array {
         $file = OwnRevenueImportFile::factory()->for($session, 'session')->create([
@@ -81,7 +97,7 @@ function planningProposalFixture(): array
         ->for($files[OwnRevenueImportFormat::Fuel->value], 'file')
         ->for($budget, 'budget')
         ->for($activity, 'activity')
-        ->create(['amount_cents' => 75_000]);
+        ->create(['amount_cents' => 79_300]);
     $travelA = OwnRevenueTravelCommission::factory()
         ->for($files[OwnRevenueImportFormat::TravelExpenses->value], 'file')
         ->for($budget, 'budget')
@@ -149,6 +165,42 @@ test('confirmed imports materialize one idempotent editable proposal without mut
         expect(collect($source->fresh()->getAttributes())->sortKeys()->all())
             ->toBe($sourceSnapshots[$source::class.'|'.$source->id]);
     }
+});
+
+test('materialized calculated fields are current and retain an imported fuel override for audit', function () {
+    ['budget' => $budget, 'manager' => $manager, 'files' => $files] = planningProposalFixture();
+    $readiness = app(OwnRevenueProposalReadiness::class)->forBudget($budget);
+
+    $this->actingAs($manager)->post(
+        route('finance.own-revenue.budgets.proposals.from-imports.store', $budget),
+        planningProposalPayload($files, $readiness->fingerprint),
+    )->assertSessionHasNoErrors();
+
+    $proposal = OwnRevenueProposal::query()->sole();
+    $fuelNeed = $proposal->fuelNeeds()->sole();
+
+    expect($fuelNeed->total_kilometers)->toBe('300.0000')
+        ->and($fuelNeed->liters)->toBe('30.0000')
+        ->and($fuelNeed->mathematical_amount_cents)->toBe(72_090)
+        ->and($fuelNeed->rounded_amount_cents)->toBe(72_100)
+        ->and($fuelNeed->budget_amount_cents)->toBe(79_300)
+        ->and($fuelNeed->rounding_difference_cents)->toBe(2_910)
+        ->and($fuelNeed->override_justification)->toBe('Importe conservado del archivo confirmado.');
+
+    $commission = $proposal->travelCommissions()->sole();
+    expect($commission->participants)->each(fn ($participant) => $participant
+        ->per_diem_amount_cents->toBe(234_620)
+        ->lodging_amount_cents->toBe(93_848)
+        ->total_amount_cents->toBe(328_468))
+        ->and($commission->participants_amount_cents)->toBe(656_936)
+        ->and($commission->total_amount_cents)->toBe(656_936);
+
+    $this->actingAs($manager)->post(
+        route('finance.own-revenue.budgets.proposals.calculate', [$budget, $proposal]),
+        ['proposal_fingerprint' => app(OwnRevenueProposalFingerprint::class)->forProposal($proposal)],
+    )->assertSessionHasNoErrors();
+
+    expect($proposal->fresh()->status)->toBe(OwnRevenueProposalStatus::Calculated);
 });
 
 test('a stale import observation creates no partial proposal', function () {
