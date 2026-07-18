@@ -286,7 +286,7 @@ git commit -m "feat: close own revenue budgets definitively"
 **Files:**
 - Create: `app/Http/Controllers/Finance/OwnRevenueAnnualCloseController.php`
 - Modify: `routes/web.php`
-- Modify: `app/Services/Finance/OwnRevenue/OwnRevenueBudgetViewData.php`
+- Modify: `app/Http/Controllers/Finance/OwnRevenueBudgetController.php`
 - Test: `tests/Feature/Finance/OwnRevenue/Closing/OwnRevenueAnnualCloseNavigationTest.php`
 
 - [ ] **Step 1: Escribir pruebas rojas de navegación y endpoints**
@@ -320,7 +320,7 @@ Route::post('own-revenue/budgets/{budget}/annual-close', [OwnRevenueAnnualCloseC
     ->name('own-revenue.budgets.annual-close.store');
 ```
 
-`show()` autorizará `view`, renderizará la revisión, el acta con responsable y `permissions.close`. `store()` recibirá el form request, ejecutará la acción y redirigirá a `show` con `success`. El tablero anual expondrá `permissions.closeAnnualBudget` y `annual_closure` sin duplicar cálculos.
+`show()` autorizará `view`, renderizará la revisión, el acta con responsable y `permissions.close`. `store()` recibirá el form request, ejecutará la acción y redirigirá a `show` con `success`. `OwnRevenueBudgetController::show()` cargará `annualClosure.closedBy:id,name`, expondrá `permissions.closeAnnualBudget` y añadirá `annual_closure` al contrato del presupuesto sin duplicar cálculos.
 
 - [ ] **Step 4: Ejecutar prueba y formatear**
 
@@ -336,7 +336,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add app/Http/Controllers/Finance/OwnRevenueAnnualCloseController.php app/Services/Finance/OwnRevenue/OwnRevenueBudgetViewData.php routes/web.php tests/Feature/Finance/OwnRevenue/Closing/OwnRevenueAnnualCloseNavigationTest.php
+git add app/Http/Controllers/Finance/OwnRevenueAnnualCloseController.php app/Http/Controllers/Finance/OwnRevenueBudgetController.php routes/web.php tests/Feature/Finance/OwnRevenue/Closing/OwnRevenueAnnualCloseNavigationTest.php
 git commit -m "feat: expose own revenue annual close review"
 ```
 
