@@ -14,7 +14,9 @@ La pantalla reunirá en un solo tablero:
 - comparación entre lo planeado y lo ejercido;
 - fondo operativo de combustible, consumo confirmado, necesidades pendientes y saldo disponible.
 
-La información podrá filtrarse por actividad, capítulo, partida y mes. Los filtros afectarán únicamente las secciones presupuestales compatibles; las secciones operativas conservarán el contexto del mismo ejercicio y explicarán cuando un filtro no les corresponda.
+La información podrá filtrarse por capítulo, partida y mes. Los filtros afectarán únicamente las secciones presupuestales compatibles; las secciones operativas conservarán el contexto del mismo ejercicio y explicarán cuando un filtro no les corresponda.
+
+La dimensión de actividad queda fuera de este primer tablero porque la ejecución vigente consolida los saldos por partida y mes. Incorporarla correctamente requerirá ampliar el modelo de ejecución, modificaciones y expedientes en un incremento posterior; no se inferirá una actividad que los movimientos actuales no conservan.
 
 Quedan fuera de este incremento:
 
@@ -51,7 +53,7 @@ La respuesta contendrá:
 - contexto del ejercicio y filtros disponibles;
 - filtros aplicados;
 - seis totales presupuestales;
-- desglose presupuestal agrupado por actividad, capítulo, partida y mes;
+- desglose presupuestal agrupado por capítulo, partida y mes;
 - resumen y listado de modificaciones;
 - conteo de expedientes por etapa y total de requisitos pendientes;
 - comparación de importe planeado, pagado y diferencia;
@@ -64,7 +66,7 @@ Los renglones de presupuesto conservarán las claves y nombres históricos guard
 La pantalla utilizará una sola página con:
 
 1. encabezado del ejercicio y acceso para volver al tablero anual;
-2. filtros compactos por actividad, capítulo, partida y mes;
+2. filtros compactos por capítulo, partida y mes;
 3. tarjetas de totales presupuestales;
 4. tabla de desglose presupuestal;
 5. secciones resumidas de modificaciones, expedientes y combustible;
@@ -76,8 +78,8 @@ Los filtros viajarán en la URL y se aplicarán mediante navegación Inertia en 
 
 - **Inicial:** importe del presupuesto inicial autorizado dentro del filtro.
 - **Modificado:** importe vigente después de transferencias y recalendarizaciones.
-- **Reservado:** suficiencias confirmadas que todavía no se han convertido en compromiso.
-- **Comprometido:** expedientes con compra iniciada o autorización de pago que todavía no estén pagados.
+- **Reservado:** expedientes con suficiencia solicitada que todavía esperan confirmación.
+- **Comprometido:** expedientes con suficiencia confirmada, compra iniciada o autorización de pago que todavía no estén pagados.
 - **Pagado:** expedientes concluidos como pagados.
 - **Disponible:** modificado menos reservado, comprometido y pagado.
 - **Planeado contra ejercido:** presupuesto inicial autorizado contra importe pagado, mostrando diferencia y porcentaje de ejercicio cuando el inicial sea mayor que cero.
@@ -96,7 +98,7 @@ Si todavía no se inicializó el presupuesto modificado o el fondo de combustibl
 La implementación se considerará aceptada cuando las pruebas demuestren que:
 
 - los seis saldos se calculan correctamente a partir de datos existentes;
-- los filtros por actividad, capítulo, partida y mes preservan totales coherentes;
+- los filtros por capítulo, partida y mes preservan totales coherentes;
 - cada presupuesto está aislado de otros ejercicios;
 - cancelaciones y rechazos liberados no consumen saldo;
 - expedientes y requisitos se agrupan por estado;
