@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Finance;
 
 use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOffice;
 use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinance;
+use App\Actions\Finance\OwnRevenue\Execution\CancelExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\InitializeOwnRevenueModifiedBudget;
 use App\Actions\Finance\OwnRevenue\Execution\MarkExpenseDossierPaid;
+use App\Actions\Finance\OwnRevenue\Execution\RejectExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpensePayment;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\StartExpensePurchase;
@@ -15,7 +17,9 @@ use App\Actions\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModification;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOfficeRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinanceRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\CancelExpenseDossierRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\MarkExpenseDossierPaidRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\RejectExpenseDossierRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\RequestExpensePaymentRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StartExpensePurchaseRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModificationRequest;
@@ -165,5 +169,31 @@ class OwnRevenueBudgetExecutionController extends Controller
 
         return to_route('finance.own-revenue.budgets.execution.show', $budget)
             ->with('success', 'El pago quedó registrado y el saldo se actualizó.');
+    }
+
+    public function cancelExpenseDossier(
+        CancelExpenseDossierRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        CancelExpenseDossier $cancel,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $cancel->handle($expenseDossier, $request->user(), $request->validated('reason'));
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'El expediente quedó cancelado y el saldo fue liberado.');
+    }
+
+    public function rejectExpenseDossier(
+        RejectExpenseDossierRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        RejectExpenseDossier $reject,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        $reject->handle($expenseDossier, $request->user(), $request->validated('reason'));
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'El expediente quedó rechazado y el saldo fue liberado.');
     }
 }

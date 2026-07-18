@@ -168,6 +168,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->scopeBindings()
             ->name('own-revenue.budgets.execution.expense-dossiers.payment');
 
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/cancel', [OwnRevenueBudgetExecutionController::class, 'cancelExpenseDossier'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.cancel');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/reject', [OwnRevenueBudgetExecutionController::class, 'rejectExpenseDossier'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.reject');
+
         Route::get('own-revenue/expense-dossier-documents/{expenseDossierDocument}', OwnRevenueExpenseDossierDocumentController::class)
             ->name('own-revenue.expense-dossier-documents.download');
 

@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'own_revenue_budget_id', 'own_revenue_modified_budget_line_id', 'sequence_number',
@@ -106,6 +107,12 @@ class OwnRevenueExpenseDossier extends Model
     public function transitions(): HasMany
     {
         return $this->hasMany(OwnRevenueExpenseDossierTransition::class);
+    }
+
+    /** @return HasOne<OwnRevenueExpenseDossierTransition, $this> */
+    public function latestTransition(): HasOne
+    {
+        return $this->hasOne(OwnRevenueExpenseDossierTransition::class)->latestOfMany();
     }
 
     /** @return HasMany<OwnRevenueExpenseDossierDocument, $this> */

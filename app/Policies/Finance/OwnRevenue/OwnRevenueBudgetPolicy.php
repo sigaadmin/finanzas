@@ -153,6 +153,16 @@ class OwnRevenueBudgetPolicy
         return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
     }
 
+    public function cancelExpenseDossier(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->canManageExpenseDossiers($user, $ownRevenueBudget);
+    }
+
+    public function rejectExpenseDossier(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
+    }
+
     private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->isExecutable($ownRevenueBudget)

@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { ArrowLeft, ArrowRightLeft, CalendarClock, Download, FileText, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Ban, CalendarClock, CircleX, Download, FileText, Plus } from 'lucide-react';
 import type { FormEvent} from 'react';
 import { useMemo, useState } from 'react';
 import InputError from '@/components/input-error';
@@ -43,6 +43,8 @@ type Props = {
         confirm_expense_sufficiency: boolean;
         manage_expense_purchase: boolean;
         authorize_expense_payment: boolean;
+        cancel_expense_dossier: boolean;
+        reject_expense_dossier: boolean;
     };
 };
 
@@ -74,6 +76,11 @@ type PaymentRequestForm = {
 type AuthorizationAction = {
     dossier: ExpenseDossier;
     kind: 'finance' | 'budget-office' | 'payment';
+};
+
+type ConclusionAction = {
+    dossier: ExpenseDossier;
+    kind: 'cancel' | 'reject';
 };
 
 const authorizationCopy = {
@@ -175,6 +182,7 @@ export default function OwnRevenueExecutionShow({
     const [purchaseDossier, setPurchaseDossier] = useState<ExpenseDossier | null>(null);
     const [paymentDossier, setPaymentDossier] = useState<ExpenseDossier | null>(null);
     const [authorizationAction, setAuthorizationAction] = useState<AuthorizationAction | null>(null);
+    const [conclusionAction, setConclusionAction] = useState<ConclusionAction | null>(null);
     const usableLines = lines.filter(
         (line) => BigInt(line.available_amount_cents) > 0n,
     );
@@ -202,6 +210,7 @@ export default function OwnRevenueExecutionShow({
         documents: [],
     });
     const authorizationForm = useForm({ reference: '' });
+    const conclusionForm = useForm({ reason: '' });
     const selectedSource = lines.find(
         (line) => line.id.toString() === form.data.source_line_id,
     );
@@ -379,6 +388,28 @@ export default function OwnRevenueExecutionShow({
         });
     };
 
+    const openConclusionForm = (dossier: ExpenseDossier, kind: ConclusionAction['kind']): void => {
+        conclusionForm.reset();
+        conclusionForm.clearErrors();
+        setConclusionAction({ dossier, kind });
+    };
+
+    const submitConclusion = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+
+        if (conclusionAction === null) {
+            return;
+        }
+
+        const route = conclusionAction.kind === 'cancel'
+            ? expenseDossierRoutes.cancel([budget.id, conclusionAction.dossier.id])
+            : expenseDossierRoutes.reject([budget.id, conclusionAction.dossier.id]);
+        conclusionForm.post(route.url, {
+            preserveScroll: true,
+            onSuccess: () => setConclusionAction(null),
+        });
+    };
+
     return (
         <>
             <Head title={`Presupuesto modificado ${budget.fiscal_year}`} />
@@ -519,6 +550,17 @@ export default function OwnRevenueExecutionShow({
                                     {dossier.payment_reference !== null && (
                                         <p className="text-xs text-muted-foreground">Pago: {dossier.payment_reference}</p>
                                     )}
+                                    {dossier.latest_transition !== null && dossier.latest_transition.reason !== null && (
+                                        <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                                            <p className="font-medium">
+                                                {dossier.status === 'rejected' ? 'Motivo del rechazo' : 'Motivo de la cancelación'}
+                                            </p>
+                                            <p className="mt-1">{dossier.latest_transition.reason}</p>
+                                            <p className="mt-1 text-amber-800 dark:text-amber-300">
+                                                {dossier.latest_transition.actor_name} · {displayDate(dossier.latest_transition.occurred_at)}
+                                            </p>
+                                        </div>
+                                    )}
                                     {dossier.documents.length > 0 && (
                                         <div className="flex flex-wrap gap-2 pt-1">
                                             {dossier.documents.map((document) => (
@@ -566,6 +608,16 @@ export default function OwnRevenueExecutionShow({
                                     {dossier.status === 'budget_office_authorized' && permissions.authorize_expense_payment && (
                                         <Button type="button" size="sm" onClick={() => openAuthorizationForm(dossier, 'payment')}>
                                             Registrar pago
+                                        </Button>
+                                    )}
+                                    {permissions.cancel_expense_dossier && ['draft', 'sufficiency_requested', 'sufficiency_confirmed', 'purchase_in_progress'].includes(dossier.status) && (
+                                        <Button type="button" size="sm" variant="outline" onClick={() => openConclusionForm(dossier, 'cancel')}>
+                                            <Ban className="size-3" /> Cancelar expediente
+                                        </Button>
+                                    )}
+                                    {permissions.reject_expense_dossier && ['sufficiency_requested', 'sufficiency_confirmed', 'purchase_in_progress', 'payment_requested', 'finance_authorized', 'budget_office_authorized'].includes(dossier.status) && (
+                                        <Button type="button" size="sm" variant="destructive" onClick={() => openConclusionForm(dossier, 'reject')}>
+                                            <CircleX className="size-3" /> Rechazar expediente
                                         </Button>
                                     )}
                                 </div>
@@ -829,6 +881,42 @@ export default function OwnRevenueExecutionShow({
                                 : authorizationAction === null
                                   ? 'Registrar'
                                   : authorizationCopy[authorizationAction.kind].button}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={conclusionAction !== null} onOpenChange={(open) => !open && setConclusionAction(null)}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {conclusionAction?.kind === 'reject' ? 'Rechazar expediente' : 'Cancelar expediente'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            El saldo reservado o comprometido se liberará y el motivo quedará en el historial de {conclusionAction?.dossier.folio}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitConclusion} className="grid gap-4">
+                        <Field label="Motivo" error={conclusionForm.errors.reason}>
+                            <textarea
+                                value={conclusionForm.data.reason}
+                                onChange={(event) => conclusionForm.setData('reason', event.target.value)}
+                                className={`${selectClassName} min-h-28 py-2`}
+                                minLength={10}
+                                maxLength={2000}
+                                required
+                            />
+                        </Field>
+                        <Button
+                            type="submit"
+                            variant={conclusionAction?.kind === 'reject' ? 'destructive' : 'default'}
+                            disabled={conclusionForm.processing}
+                        >
+                            {conclusionForm.processing
+                                ? 'Registrando…'
+                                : conclusionAction?.kind === 'reject'
+                                  ? 'Confirmar rechazo'
+                                  : 'Confirmar cancelación'}
                         </Button>
                     </form>
                 </DialogContent>

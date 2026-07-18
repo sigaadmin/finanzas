@@ -50,6 +50,8 @@ class OwnRevenueExecutionViewData
                 'confirm_expense_sufficiency' => Gate::allows('confirmExpenseSufficiency', $budget),
                 'manage_expense_purchase' => Gate::allows('manageExpensePurchase', $budget),
                 'authorize_expense_payment' => Gate::allows('authorizeExpensePayment', $budget),
+                'cancel_expense_dossier' => Gate::allows('cancelExpenseDossier', $budget),
+                'reject_expense_dossier' => Gate::allows('rejectExpenseDossier', $budget),
             ],
         ];
     }
@@ -134,6 +136,7 @@ class OwnRevenueExecutionViewData
             ->with([
                 'budgetLine:id,specific_item_code,specific_item_name,month',
                 'requester:id,name',
+                'latestTransition.actor:id,name',
                 'documents:id,own_revenue_expense_dossier_id,original_name,mime_type,size_bytes,uploaded_at',
             ])
             ->latest('id')
@@ -165,6 +168,13 @@ class OwnRevenueExecutionViewData
                 'finance_authorized_at' => $dossier->finance_authorized_at?->toISOString(),
                 'budget_office_authorized_at' => $dossier->budget_office_authorized_at?->toISOString(),
                 'paid_at' => $dossier->paid_at?->toISOString(),
+                'latest_transition' => $dossier->latestTransition === null ? null : [
+                    'from_status' => $dossier->latestTransition->from_status?->value,
+                    'to_status' => $dossier->latestTransition->to_status->value,
+                    'reason' => $dossier->latestTransition->reason,
+                    'actor_name' => $dossier->latestTransition->actor->name,
+                    'occurred_at' => $dossier->latestTransition->occurred_at?->toISOString(),
+                ],
                 'documents' => $dossier->documents->map(fn ($document): array => [
                     'id' => $document->id,
                     'original_name' => $document->original_name,

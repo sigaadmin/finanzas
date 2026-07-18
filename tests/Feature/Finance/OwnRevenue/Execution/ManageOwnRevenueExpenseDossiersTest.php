@@ -2,9 +2,11 @@
 
 use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOffice;
 use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinance;
+use App\Actions\Finance\OwnRevenue\Execution\CancelExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\MarkExpenseDossierPaid;
+use App\Actions\Finance\OwnRevenue\Execution\RejectExpenseDossier;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpensePayment;
 use App\Actions\Finance\OwnRevenue\Execution\RequestExpenseSufficiency;
 use App\Actions\Finance\OwnRevenue\Execution\StartExpensePurchase;
@@ -298,4 +300,115 @@ test('budget office authorization and payment move the commitment to paid withou
         ->and($balances->committedCents($line->fresh()))->toBe(0)
         ->and($balances->paidCents($line->fresh()))->toBe(4_000)
         ->and($balances->availableCents($line->fresh()))->toBe(6_000);
+});
+
+test('an assistant cancels an active dossier and releases its reserved or committed balance', function (string $stage) {
+    ['budget' => $budget, 'line' => $line, 'manager' => $manager, 'assistant' => $assistant] = expenseDossierFixture();
+    $dossier = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+    if ($stage !== 'draft') {
+        app(RequestExpenseSufficiency::class)->handle($dossier, $assistant);
+    }
+    if ($stage === 'purchase') {
+        app(ConfirmExpenseSufficiency::class)->handle($dossier, $manager);
+        app(StartExpensePurchase::class)->handle($dossier, $assistant, 'OC-CANCEL-001');
+    }
+
+    app(CancelExpenseDossier::class)->handle($dossier, $assistant, 'La adquisición dejó de ser necesaria para el ejercicio.');
+    $transition = $dossier->transitions()->latest('id')->firstOrFail();
+    $balances = app(OwnRevenueBudgetBalance::class);
+
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::Cancelled)
+        ->and($transition->reason)->toBe('La adquisición dejó de ser necesaria para el ejercicio.')
+        ->and($transition->actor_id)->toBe($assistant->id)
+        ->and($balances->reservedCents($line->fresh()))->toBe(0)
+        ->and($balances->committedCents($line->fresh()))->toBe(0)
+        ->and($balances->availableCents($line->fresh()))->toBe(10_000);
+
+    $this->actingAs($assistant);
+    $viewData = app(OwnRevenueExecutionViewData::class)->forBudget($budget->fresh());
+    expect($viewData['permissions']['cancel_expense_dossier'])->toBeTrue()
+        ->and($viewData['permissions']['reject_expense_dossier'])->toBeFalse()
+        ->and($viewData['expense_dossiers'][0]['latest_transition']['to_status'])->toBe('cancelled')
+        ->and($viewData['expense_dossiers'][0]['latest_transition']['reason'])->toBe('La adquisición dejó de ser necesaria para el ejercicio.')
+        ->and($viewData['expense_dossiers'][0]['latest_transition']['actor_name'])->toBe($assistant->name);
+})->with(['draft', 'reserved' => 'requested', 'committed' => 'purchase']);
+
+test('a manager rejects a payment review and releases the commitment with an audited reason', function () {
+    ['dossier' => $dossier, 'manager' => $manager, 'assistant' => $assistant, 'line' => $line] = paymentRequestedExpenseDossier();
+
+    expect(fn () => app(RejectExpenseDossier::class)->handle($dossier, $assistant, 'No corresponde al concepto autorizado.'))
+        ->toThrow(AuthorizationException::class);
+
+    app(RejectExpenseDossier::class)->handle($dossier, $manager, 'La factura no corresponde al concepto autorizado.');
+    $transition = $dossier->transitions()->latest('id')->firstOrFail();
+    $balances = app(OwnRevenueBudgetBalance::class);
+
+    expect($dossier->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::Rejected)
+        ->and($transition->from_status)->toBe(OwnRevenueExpenseDossierStatus::PaymentRequested)
+        ->and($transition->to_status)->toBe(OwnRevenueExpenseDossierStatus::Rejected)
+        ->and($transition->reason)->toBe('La factura no corresponde al concepto autorizado.')
+        ->and($transition->actor_id)->toBe($manager->id)
+        ->and($balances->committedCents($line->fresh()))->toBe(0)
+        ->and($balances->availableCents($line->fresh()))->toBe(10_000);
+
+    $this->actingAs($manager);
+    $viewData = app(OwnRevenueExecutionViewData::class)->forBudget($dossier->budget->fresh());
+    expect($viewData['permissions']['reject_expense_dossier'])->toBeTrue()
+        ->and($viewData['expense_dossiers'][0]['latest_transition']['to_status'])->toBe('rejected')
+        ->and($viewData['expense_dossiers'][0]['latest_transition']['reason'])->toBe('La factura no corresponde al concepto autorizado.')
+        ->and($viewData['expense_dossiers'][0]['latest_transition']['actor_name'])->toBe($manager->name);
+});
+
+test('paid and terminal dossiers cannot be cancelled or rejected', function () {
+    ['dossier' => $dossier, 'manager' => $manager] = paymentRequestedExpenseDossier();
+    app(AuthorizeExpensePaymentByFinance::class)->handle($dossier, $manager, 'AF-TERMINAL-001');
+    app(AuthorizeExpensePaymentByBudgetOffice::class)->handle($dossier, $manager, 'AP-TERMINAL-001');
+    app(MarkExpenseDossierPaid::class)->handle($dossier, $manager, 'PAGO-TERMINAL-001');
+
+    expect(fn () => app(CancelExpenseDossier::class)->handle($dossier, $manager, 'Intento de cancelación posterior al pago.'))
+        ->toThrow(ValidationException::class)
+        ->and(fn () => app(RejectExpenseDossier::class)->handle($dossier, $manager, 'Intento de rechazo posterior al pago.'))
+        ->toThrow(ValidationException::class);
+});
+
+test('expense dossier cancellation and rejection endpoints validate the reason and permissions', function () {
+    ['budget' => $budget, 'line' => $line, 'manager' => $manager, 'assistant' => $assistant] = expenseDossierFixture();
+    $cancelled = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.cancel', [$budget, $cancelled]), [
+            'reason' => 'Breve',
+        ])
+        ->assertSessionHasErrors('reason');
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.cancel', [$budget, $cancelled]), [
+            'reason' => 'La necesidad fue atendida por otra vía institucional.',
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget));
+    expect($cancelled->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::Cancelled);
+
+    $rejected = app(CreateOwnRevenueExpenseDossier::class)->handle($budget, $line, $assistant, expenseDossierData());
+    app(RequestExpenseSufficiency::class)->handle($rejected, $assistant);
+    $this->actingAs($assistant)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.reject', [$budget, $rejected]), [
+            'reason' => 'La solicitud no cumple con los requisitos de revisión.',
+        ])
+        ->assertForbidden();
+    $this->actingAs($manager)
+        ->post(route('finance.own-revenue.budgets.execution.expense-dossiers.reject', [$budget, $rejected]), [
+            'reason' => 'La solicitud no cumple con los requisitos de revisión.',
+        ])
+        ->assertRedirect(route('finance.own-revenue.budgets.execution.show', $budget));
+    expect($rejected->fresh()->status)->toBe(OwnRevenueExpenseDossierStatus::Rejected);
+});
+
+test('execution workspace exposes cancellation and rejection controls with their audited reason', function () {
+    $source = file_get_contents(resource_path('js/pages/finance/own-revenue/execution/show.tsx'));
+
+    expect($source)
+        ->toContain('expenseDossierRoutes.cancel')
+        ->toContain('expenseDossierRoutes.reject')
+        ->toContain('latest_transition.reason')
+        ->toContain('Cancelar expediente')
+        ->toContain('Rechazar expediente');
 });

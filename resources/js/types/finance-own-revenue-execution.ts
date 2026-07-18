@@ -96,6 +96,13 @@ export type ExpenseDossier = {
     finance_authorized_at: string | null;
     budget_office_authorized_at: string | null;
     paid_at: string | null;
+    latest_transition: {
+        from_status: ExpenseDossier['status'] | null;
+        to_status: ExpenseDossier['status'];
+        reason: string | null;
+        actor_name: string;
+        occurred_at: string | null;
+    } | null;
     documents: Array<{
         id: number;
         original_name: string;
