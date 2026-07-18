@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import {
     ArrowLeft,
     ArrowRightLeft,
+    BarChart3,
     CheckCircle2,
     ClipboardList,
     Copy,
@@ -31,6 +32,7 @@ import execution from '@/routes/finance/own-revenue/budgets/execution';
 import fuel from '@/routes/finance/own-revenue/budgets/fuel';
 import imports from '@/routes/finance/own-revenue/budgets/imports';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
+import reports from '@/routes/finance/own-revenue/budgets/reports';
 import type {
     AnnualValueStatus,
     CogCatalogStatus,
@@ -386,7 +388,33 @@ export default function OwnRevenueBudgetShow({
                     </Card>
                 )}
 
-                {['initial_authorized', 'in_execution'].includes(budget.status) && (
+                {['initial_authorized', 'in_execution', 'closed'].includes(
+                    budget.status,
+                ) && (
+                    <Card>
+                        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <BarChart3 className="size-5" />
+                                    Reportes internos
+                                </CardTitle>
+                                <CardDescription>
+                                    Consulta saldos, movimientos, expedientes y
+                                    combustible sin modificar el ejercicio.
+                                </CardDescription>
+                            </div>
+                            <Button asChild>
+                                <Link href={reports.show(budget.id)}>
+                                    Abrir reportes
+                                </Link>
+                            </Button>
+                        </CardHeader>
+                    </Card>
+                )}
+
+                {['initial_authorized', 'in_execution'].includes(
+                    budget.status,
+                ) && (
                     <Card>
                         <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
@@ -395,11 +423,15 @@ export default function OwnRevenueBudgetShow({
                                     Control operativo de combustible
                                 </CardTitle>
                                 <CardDescription>
-                                    Abre el fondo adquirido y controla su disponibilidad sin mezclarlo con el gasto presupuestal.
+                                    Abre el fondo adquirido y controla su
+                                    disponibilidad sin mezclarlo con el gasto
+                                    presupuestal.
                                 </CardDescription>
                             </div>
                             <Button asChild>
-                                <Link href={fuel.show(budget.id)}>Abrir control de combustible</Link>
+                                <Link href={fuel.show(budget.id)}>
+                                    Abrir control de combustible
+                                </Link>
                             </Button>
                         </CardHeader>
                     </Card>
