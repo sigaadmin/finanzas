@@ -28,6 +28,7 @@ import {
 import { create, index } from '@/routes/finance/own-revenue/budgets';
 import { confirm as confirmCog } from '@/routes/finance/own-revenue/budgets/cog';
 import execution from '@/routes/finance/own-revenue/budgets/execution';
+import fuel from '@/routes/finance/own-revenue/budgets/fuel';
 import imports from '@/routes/finance/own-revenue/budgets/imports';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
 import type {
@@ -380,6 +381,25 @@ export default function OwnRevenueBudgetShow({
                                 <Link href={execution.show(budget.id)}>
                                     Abrir presupuesto modificado
                                 </Link>
+                            </Button>
+                        </CardHeader>
+                    </Card>
+                )}
+
+                {['initial_authorized', 'in_execution'].includes(budget.status) && (
+                    <Card>
+                        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Fuel className="size-5" />
+                                    Control operativo de combustible
+                                </CardTitle>
+                                <CardDescription>
+                                    Abre el fondo adquirido y controla su disponibilidad sin mezclarlo con el gasto presupuestal.
+                                </CardDescription>
+                            </div>
+                            <Button asChild>
+                                <Link href={fuel.show(budget.id)}>Abrir control de combustible</Link>
                             </Button>
                         </CardHeader>
                     </Card>

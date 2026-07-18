@@ -4,6 +4,7 @@ namespace App\Models\Finance\OwnRevenue\Execution;
 
 use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenuePurchaseResponsibility;
+use App\Models\Finance\OwnRevenue\Fuel\OwnRevenueFuelFund;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use Database\Factories\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossierFactory;
@@ -125,5 +126,11 @@ class OwnRevenueExpenseDossier extends Model
     public function requirements(): HasMany
     {
         return $this->hasMany(OwnRevenueExpenseDossierRequirement::class);
+    }
+
+    /** @return HasOne<OwnRevenueFuelFund, $this> */
+    public function openedFuelFund(): HasOne
+    {
+        return $this->hasOne(OwnRevenueFuelFund::class, 'source_expense_dossier_id');
     }
 }

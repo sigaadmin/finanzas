@@ -9,6 +9,7 @@ use App\Models\Finance\OwnRevenue\Execution\OwnRevenueBudgetModification;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirementRule;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
+use App\Models\Finance\OwnRevenue\Fuel\OwnRevenueFuelFund;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityRule;
@@ -30,6 +31,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'created_by',
@@ -213,6 +215,12 @@ class OwnRevenueBudget extends Model
     public function expenseRequirementRules(): HasMany
     {
         return $this->hasMany(OwnRevenueExpenseRequirementRule::class);
+    }
+
+    /** @return HasOne<OwnRevenueFuelFund, $this> */
+    public function fuelFund(): HasOne
+    {
+        return $this->hasOne(OwnRevenueFuelFund::class);
     }
 
     /** @return HasMany<OwnRevenueRoute, $this> */

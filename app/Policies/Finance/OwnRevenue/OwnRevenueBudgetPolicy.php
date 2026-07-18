@@ -178,6 +178,11 @@ class OwnRevenueBudgetPolicy
         return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
     }
 
+    public function openFuelFund(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
+    }
+
     private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->isExecutable($ownRevenueBudget)

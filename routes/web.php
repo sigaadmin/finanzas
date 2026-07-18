@@ -14,6 +14,7 @@ use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetExecutionController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
 use App\Http\Controllers\Finance\OwnRevenueExpenseDossierDocumentController;
+use App\Http\Controllers\Finance\OwnRevenueFuelFundController;
 use App\Http\Controllers\Finance\OwnRevenueImportAnalysisController;
 use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
@@ -133,6 +134,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('own-revenue/budgets/{budget}/execution', [OwnRevenueBudgetExecutionController::class, 'show'])
             ->name('own-revenue.budgets.execution.show');
+
+        Route::get('own-revenue/budgets/{budget}/fuel', [OwnRevenueFuelFundController::class, 'show'])
+            ->name('own-revenue.budgets.fuel.show');
+
+        Route::post('own-revenue/budgets/{budget}/fuel', [OwnRevenueFuelFundController::class, 'store'])
+            ->name('own-revenue.budgets.fuel.store');
 
         Route::post('own-revenue/budgets/{budget}/execution/modifications', [OwnRevenueBudgetExecutionController::class, 'store'])
             ->name('own-revenue.budgets.execution.modifications.store');
