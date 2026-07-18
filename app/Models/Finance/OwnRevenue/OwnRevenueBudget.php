@@ -223,6 +223,12 @@ class OwnRevenueBudget extends Model
         return $this->hasOne(OwnRevenueFuelFund::class);
     }
 
+    /** @return HasOne<OwnRevenueBudgetClosure, $this> */
+    public function annualClosure(): HasOne
+    {
+        return $this->hasOne(OwnRevenueBudgetClosure::class);
+    }
+
     /** @return HasMany<OwnRevenueRoute, $this> */
     public function planningRoutes(): HasMany
     {
