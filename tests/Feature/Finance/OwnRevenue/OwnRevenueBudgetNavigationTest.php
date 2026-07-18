@@ -129,14 +129,16 @@ test('copy guidance accurately distinguishes copied and reset annual data', func
         ->not->toContain('replica COG, ingresos y porcentaje de recorte');
 });
 
-test('annual frontend source protects draft editing copy mode and deterministic dates', function () {
+test('annual frontend source protects pre-authorization editing copy mode and deterministic dates', function () {
     $createPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/create.tsx'));
     $showPage = file_get_contents(resource_path('js/pages/finance/own-revenue/budgets/show.tsx'));
     $settingsForm = file_get_contents(resource_path('js/components/finance/own-revenue/annual-settings-form.tsx'));
 
     expect($showPage)
-        ->toContain("permissions.updateSettings && budget.status === 'draft'")
-        ->toContain("budget.status !== 'draft'")
+        ->toContain('permissions.updateSettings &&')
+        ->toContain("['draft', 'proposal_calculated', 'proposal_adjusted'].includes(")
+        ->toContain("institutionalOnly={budget.status !== 'draft'}")
+        ->toContain("budget.status === 'initial_authorized'")
         ->toContain("timeZone: 'America/Cancun'")
         ->toContain('cogForm.errors.catalog')
         ->toContain('cogForm.errors.confirmed_by')

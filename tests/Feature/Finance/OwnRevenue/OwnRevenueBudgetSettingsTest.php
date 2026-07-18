@@ -6,8 +6,12 @@ use App\Data\Finance\OwnRevenue\UnsignedBigInteger;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
+use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
+use App\Enums\UserRole;
+use App\Models\AuthorizedAccess;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Validation\ValidationException;
@@ -245,20 +249,46 @@ test('updating a missing annual value without a status starts it as provisional'
         ->and($updated->uma_status)->toBe(AnnualValueStatus::Provisional);
 });
 
-test('non draft settings cannot be updated and remain unchanged', function () {
+test('institutional settings create a draft proposal revision before initial authorization', function () {
     $budget = OwnRevenueBudget::factory()->create([
         'fiscal_year' => 2030,
         'status' => OwnRevenueBudgetStatus::ProposalCalculated,
         'institution_name' => 'Original',
     ]);
+    $proposal = OwnRevenueProposal::factory()->for($budget, 'budget')->create([
+        'status' => OwnRevenueProposalStatus::Calculated,
+    ]);
+    $user = User::factory()->create();
+    AuthorizedAccess::query()->create([
+        'email' => $user->email,
+        'role' => UserRole::FinanceManager,
+        'is_active' => true,
+    ]);
+
+    $updated = app(UpdateOwnRevenueBudgetSettings::class)->handle($budget, [
+        'budget_program_code' => 'E016',
+        'estimated_income_cents' => 999,
+    ], $user->load('authorizedAccess'));
+
+    $revision = OwnRevenueProposal::query()->where('based_on_proposal_id', $proposal->id)->sole();
+    expect($updated->budget_program_code)->toBe('E016')
+        ->and($updated->estimated_income_cents)->not->toBe(999)
+        ->and($updated->status)->toBe(OwnRevenueBudgetStatus::Draft)
+        ->and($revision->status)->toBe(OwnRevenueProposalStatus::Draft)
+        ->and($revision->based_on_proposal_id)->toBe($proposal->id);
+});
+
+test('institutional settings stay locked after initial authorization', function () {
+    $budget = OwnRevenueBudget::factory()->create([
+        'status' => OwnRevenueBudgetStatus::InitialAuthorized,
+        'budget_program_code' => 'E062',
+    ]);
 
     expect(fn () => app(UpdateOwnRevenueBudgetSettings::class)->handle($budget, [
-        'institution_name' => 'Changed',
-        'region_code' => 'Changed',
-    ]))->toThrow(ValidationException::class, 'Sólo se puede modificar la configuración de un presupuesto en borrador.');
+        'budget_program_code' => 'E016',
+    ]))->toThrow(ValidationException::class, 'La fotografía institucional ya no puede modificarse después de autorizar el presupuesto inicial.');
 
-    expect($budget->refresh()->institution_name)->toBe('Original')
-        ->and($budget->region_code)->toBe('02-001');
+    expect($budget->fresh()->budget_program_code)->toBe('E062');
 });
 
 test('budget settings validate percentages and estimated income', function (array $overrides) {

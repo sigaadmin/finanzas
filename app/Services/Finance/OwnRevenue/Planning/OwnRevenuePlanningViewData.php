@@ -77,7 +77,9 @@ class OwnRevenuePlanningViewData
                 'revise' => $proposal !== null
                     && in_array($proposal->status, [OwnRevenueProposalStatus::Calculated, OwnRevenueProposalStatus::Adjusted], true)
                     && Gate::allows('createProposalRevision', $budget),
-                'authorize' => $proposal !== null && $proposal->status === OwnRevenueProposalStatus::Adjusted
+                'authorize' => $initialBudget === null
+                    && $proposal !== null
+                    && $proposal->status === OwnRevenueProposalStatus::Adjusted
                     && Gate::allows('authorizeInitialBudget', $budget),
                 'generate_exports' => $initialBudget !== null && Gate::allows('generateWorkbookExports', $budget),
             ],

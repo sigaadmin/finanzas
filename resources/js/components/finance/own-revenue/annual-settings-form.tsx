@@ -31,6 +31,7 @@ type Props = {
     budgetId: number;
     settings: OwnRevenueBudgetSettings;
     signatories: OwnRevenueSignatory[];
+    institutionalOnly?: boolean;
 };
 
 type AnnualSettingsFormData = OwnRevenueAnnualSettingsFormData & {
@@ -101,6 +102,7 @@ export default function AnnualSettingsForm({
     budgetId,
     settings,
     signatories,
+    institutionalOnly = false,
 }: Props) {
     const form = useForm<AnnualSettingsFormData>({
         institution_name: settings.institution_name,
@@ -343,197 +345,226 @@ export default function AnnualSettingsForm({
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Parámetros anuales</CardTitle>
-                    <CardDescription>
-                        Los importes se conservan sin conversiones de punto
-                        flotante.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                        <Label htmlFor="estimated_income_pesos">
-                            Ingreso estimado (pesos)
-                        </Label>
-                        <Input
-                            id="estimated_income_pesos"
-                            type="text"
-                            inputMode="decimal"
-                            value={estimatedIncomePesos}
-                            onChange={(event) =>
-                                updateEstimatedIncome(event.target.value)
-                            }
-                            aria-invalid={Boolean(
-                                estimatedIncomeError ??
-                                form.errors.estimated_income_cents,
-                            )}
-                            aria-describedby={
-                                (estimatedIncomeError ??
-                                form.errors.estimated_income_cents)
-                                    ? 'estimated_income_pesos-error'
-                                    : undefined
-                            }
-                        />
-                        <InputError
-                            id="estimated_income_pesos-error"
-                            message={
-                                estimatedIncomeError ??
-                                form.errors.estimated_income_cents
-                            }
-                        />
-                    </div>
-                    <TextField
-                        id="cut_percentage"
-                        label="Porcentaje de recorte"
-                        value={form.data.cut_percentage}
-                        error={form.errors.cut_percentage}
-                        onChange={(value) =>
-                            form.setData('cut_percentage', value)
-                        }
-                        inputMode="decimal"
-                    />
-                    <AnnualValueField
-                        id="uma_value"
-                        label="UMA"
-                        value={form.data.uma_value}
-                        status={form.data.uma_status}
-                        valueError={form.errors.uma_value}
-                        statusError={form.errors.uma_status}
-                        onValueChange={(value) =>
-                            updateAnnualValue('uma_value', 'uma_status', value)
-                        }
-                        onStatusChange={(status) =>
-                            form.setData(
-                                'uma_status',
-                                statusForValue(form.data.uma_value, status),
-                            )
-                        }
-                    />
-                    <AnnualValueField
-                        id="fuel_price_per_liter"
-                        label="Combustible por litro"
-                        value={form.data.fuel_price_per_liter}
-                        status={form.data.fuel_price_status}
-                        valueError={form.errors.fuel_price_per_liter}
-                        statusError={form.errors.fuel_price_status}
-                        onValueChange={(value) =>
-                            updateAnnualValue(
-                                'fuel_price_per_liter',
-                                'fuel_price_status',
-                                value,
-                            )
-                        }
-                        onStatusChange={(status) =>
-                            form.setData(
-                                'fuel_price_status',
-                                statusForValue(
-                                    form.data.fuel_price_per_liter,
-                                    status,
-                                ),
-                            )
-                        }
-                    />
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader className="flex-row items-start justify-between gap-3">
-                    <div className="grid gap-1.5">
-                        <CardTitle>Firmantes</CardTitle>
-                        <CardDescription>
-                            Usa claves canónicas como prepared_by, reviewed_by o
-                            authorized_by.
-                        </CardDescription>
-                    </div>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={addSignatory}
-                        disabled={form.data.signatories.length >= 10}
-                    >
-                        <Plus className="size-4" />
-                        Agregar
-                    </Button>
-                </CardHeader>
-                <CardContent className="grid gap-4">
-                    {form.data.signatories.map((signatory, index) => (
-                        <fieldset
-                            key={signatory.clientKey}
-                            className="grid gap-3 rounded-lg border p-4 md:grid-cols-2"
-                        >
-                            <legend className="px-1 text-sm font-medium">
-                                Firmante {index + 1}
-                            </legend>
+            {!institutionalOnly && (
+                <>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Parámetros anuales</CardTitle>
+                            <CardDescription>
+                                Los importes se conservan sin conversiones de
+                                punto flotante.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 md:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label htmlFor="estimated_income_pesos">
+                                    Ingreso estimado (pesos)
+                                </Label>
+                                <Input
+                                    id="estimated_income_pesos"
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={estimatedIncomePesos}
+                                    onChange={(event) =>
+                                        updateEstimatedIncome(
+                                            event.target.value,
+                                        )
+                                    }
+                                    aria-invalid={Boolean(
+                                        estimatedIncomeError ??
+                                        form.errors.estimated_income_cents,
+                                    )}
+                                    aria-describedby={
+                                        (estimatedIncomeError ??
+                                        form.errors.estimated_income_cents)
+                                            ? 'estimated_income_pesos-error'
+                                            : undefined
+                                    }
+                                />
+                                <InputError
+                                    id="estimated_income_pesos-error"
+                                    message={
+                                        estimatedIncomeError ??
+                                        form.errors.estimated_income_cents
+                                    }
+                                />
+                            </div>
                             <TextField
-                                id={`signatory-${index}-role`}
-                                label="Clave de rol"
-                                value={signatory.role_key}
-                                error={errorFor(
-                                    `signatories.${index}.role_key`,
-                                )}
+                                id="cut_percentage"
+                                label="Porcentaje de recorte"
+                                value={form.data.cut_percentage}
+                                error={form.errors.cut_percentage}
                                 onChange={(value) =>
-                                    updateSignatory(index, 'role_key', value)
+                                    form.setData('cut_percentage', value)
                                 }
+                                inputMode="decimal"
                             />
-                            <TextField
-                                id={`signatory-${index}-name`}
-                                label="Nombre"
-                                value={signatory.name}
-                                error={errorFor(`signatories.${index}.name`)}
-                                onChange={(value) =>
-                                    updateSignatory(index, 'name', value)
-                                }
-                            />
-                            <TextField
-                                id={`signatory-${index}-position`}
-                                label="Cargo"
-                                value={signatory.position}
-                                error={errorFor(
-                                    `signatories.${index}.position`,
-                                )}
-                                onChange={(value) =>
-                                    updateSignatory(index, 'position', value)
-                                }
-                            />
-                            <TextField
-                                id={`signatory-${index}-degree`}
-                                label="Grado académico (opcional)"
-                                value={signatory.academic_degree}
-                                error={errorFor(
-                                    `signatories.${index}.academic_degree`,
-                                )}
-                                onChange={(value) =>
-                                    updateSignatory(
-                                        index,
-                                        'academic_degree',
+                            <AnnualValueField
+                                id="uma_value"
+                                label="UMA"
+                                value={form.data.uma_value}
+                                status={form.data.uma_status}
+                                valueError={form.errors.uma_value}
+                                statusError={form.errors.uma_status}
+                                onValueChange={(value) =>
+                                    updateAnnualValue(
+                                        'uma_value',
+                                        'uma_status',
                                         value,
                                     )
                                 }
+                                onStatusChange={(status) =>
+                                    form.setData(
+                                        'uma_status',
+                                        statusForValue(
+                                            form.data.uma_value,
+                                            status,
+                                        ),
+                                    )
+                                }
                             />
-                            <div className="md:col-span-2">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removeSignatory(index)}
-                                >
-                                    <Trash2 className="size-4" />
-                                    Quitar firmante
-                                </Button>
+                            <AnnualValueField
+                                id="fuel_price_per_liter"
+                                label="Combustible por litro"
+                                value={form.data.fuel_price_per_liter}
+                                status={form.data.fuel_price_status}
+                                valueError={form.errors.fuel_price_per_liter}
+                                statusError={form.errors.fuel_price_status}
+                                onValueChange={(value) =>
+                                    updateAnnualValue(
+                                        'fuel_price_per_liter',
+                                        'fuel_price_status',
+                                        value,
+                                    )
+                                }
+                                onStatusChange={(status) =>
+                                    form.setData(
+                                        'fuel_price_status',
+                                        statusForValue(
+                                            form.data.fuel_price_per_liter,
+                                            status,
+                                        ),
+                                    )
+                                }
+                            />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex-row items-start justify-between gap-3">
+                            <div className="grid gap-1.5">
+                                <CardTitle>Firmantes</CardTitle>
+                                <CardDescription>
+                                    Usa claves canónicas como prepared_by,
+                                    reviewed_by o authorized_by.
+                                </CardDescription>
                             </div>
-                        </fieldset>
-                    ))}
-                    {form.data.signatories.length === 0 && (
-                        <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                            No hay firmantes. Guardar así limpiará la lista
-                            actual.
-                        </p>
-                    )}
-                    <InputError message={form.errors.signatories} />
-                </CardContent>
-            </Card>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={addSignatory}
+                                disabled={form.data.signatories.length >= 10}
+                            >
+                                <Plus className="size-4" />
+                                Agregar
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="grid gap-4">
+                            {form.data.signatories.map((signatory, index) => (
+                                <fieldset
+                                    key={signatory.clientKey}
+                                    className="grid gap-3 rounded-lg border p-4 md:grid-cols-2"
+                                >
+                                    <legend className="px-1 text-sm font-medium">
+                                        Firmante {index + 1}
+                                    </legend>
+                                    <TextField
+                                        id={`signatory-${index}-role`}
+                                        label="Clave de rol"
+                                        value={signatory.role_key}
+                                        error={errorFor(
+                                            `signatories.${index}.role_key`,
+                                        )}
+                                        onChange={(value) =>
+                                            updateSignatory(
+                                                index,
+                                                'role_key',
+                                                value,
+                                            )
+                                        }
+                                    />
+                                    <TextField
+                                        id={`signatory-${index}-name`}
+                                        label="Nombre"
+                                        value={signatory.name}
+                                        error={errorFor(
+                                            `signatories.${index}.name`,
+                                        )}
+                                        onChange={(value) =>
+                                            updateSignatory(
+                                                index,
+                                                'name',
+                                                value,
+                                            )
+                                        }
+                                    />
+                                    <TextField
+                                        id={`signatory-${index}-position`}
+                                        label="Cargo"
+                                        value={signatory.position}
+                                        error={errorFor(
+                                            `signatories.${index}.position`,
+                                        )}
+                                        onChange={(value) =>
+                                            updateSignatory(
+                                                index,
+                                                'position',
+                                                value,
+                                            )
+                                        }
+                                    />
+                                    <TextField
+                                        id={`signatory-${index}-degree`}
+                                        label="Grado académico (opcional)"
+                                        value={signatory.academic_degree}
+                                        error={errorFor(
+                                            `signatories.${index}.academic_degree`,
+                                        )}
+                                        onChange={(value) =>
+                                            updateSignatory(
+                                                index,
+                                                'academic_degree',
+                                                value,
+                                            )
+                                        }
+                                    />
+                                    <div className="md:col-span-2">
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() =>
+                                                removeSignatory(index)
+                                            }
+                                        >
+                                            <Trash2 className="size-4" />
+                                            Quitar firmante
+                                        </Button>
+                                    </div>
+                                </fieldset>
+                            ))}
+                            {form.data.signatories.length === 0 && (
+                                <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                                    No hay firmantes. Guardar así limpiará la
+                                    lista actual.
+                                </p>
+                            )}
+                            <InputError message={form.errors.signatories} />
+                        </CardContent>
+                    </Card>
+                </>
+            )}
 
             <div className="flex justify-end">
                 <Button
@@ -541,7 +572,11 @@ export default function AnnualSettingsForm({
                     disabled={form.processing || Boolean(estimatedIncomeError)}
                 >
                     <Save className="size-4" />
-                    {form.processing ? 'Guardando…' : 'Guardar configuración'}
+                    {form.processing
+                        ? 'Guardando…'
+                        : institutionalOnly
+                          ? 'Guardar fotografía institucional'
+                          : 'Guardar configuración'}
                 </Button>
             </div>
         </form>

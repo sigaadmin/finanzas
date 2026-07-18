@@ -1,17 +1,20 @@
 <?php
 
+use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalFuelNeed;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalTechnicalNeed;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposalTravelCommission;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueRoute;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Planning\OwnRevenueCutReconciliation;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function planningNavigationUser(UserRole $role = UserRole::FinanceManager): User
@@ -157,3 +160,29 @@ test('planning mutation permissions follow role and proposal state', function (U
     'auditor draft' => [UserRole::FinanceAuditor, OwnRevenueProposalStatus::Draft, false, false],
     'manager calculated' => [UserRole::FinanceManager, OwnRevenueProposalStatus::Calculated, true, false],
 ]);
+
+test('planning page does not offer initial authorization after the initial budget was authorized', function () {
+    $owner = planningNavigationUser(UserRole::Owner);
+    $budget = OwnRevenueBudget::factory()->create([
+        'status' => OwnRevenueBudgetStatus::InitialAuthorized,
+    ]);
+    $proposal = OwnRevenueProposal::factory()->for($budget, 'budget')->for($owner, 'creator')->create([
+        'status' => OwnRevenueProposalStatus::Adjusted,
+    ]);
+    OwnRevenueInitialBudget::factory()->for($budget, 'budget')->for($proposal, 'proposal')->for($owner, 'authorizer')->create();
+    $reconciliation = Mockery::mock(OwnRevenueCutReconciliation::class);
+    $reconciliation->shouldReceive('forProposal')->once()->withArgs(fn (OwnRevenueProposal $candidate): bool => $candidate->is($proposal))->andReturn([
+        'ready' => true,
+        'blockers' => [],
+        'fingerprint' => str_repeat('c', 64),
+    ]);
+    app()->instance(OwnRevenueCutReconciliation::class, $reconciliation);
+
+    $this->actingAs($owner)
+        ->get(route('finance.own-revenue.budgets.planning.show', $budget))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('budget.status', OwnRevenueBudgetStatus::InitialAuthorized->value)
+            ->where('initial_budget.id', fn (int $id): bool => $id > 0)
+            ->where('permissions.authorize', false));
+});

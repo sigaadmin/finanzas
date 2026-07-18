@@ -371,9 +371,9 @@ export default function OwnRevenueBudgetShow({
                                     Presupuesto modificado
                                 </CardTitle>
                                 <CardDescription>
-                                    Consulta los saldos y registra transferencias
-                                    o cambios de mes sin alterar el presupuesto
-                                    inicial.
+                                    Consulta los saldos y registra
+                                    transferencias o cambios de mes sin alterar
+                                    el presupuesto inicial.
                                 </CardDescription>
                             </div>
                             <Button asChild>
@@ -618,29 +618,35 @@ export default function OwnRevenueBudgetShow({
                     </CardContent>
                 </Card>
 
-                {permissions.updateSettings && budget.status === 'draft' ? (
+                {permissions.updateSettings &&
+                ['draft', 'proposal_calculated', 'proposal_adjusted'].includes(
+                    budget.status,
+                ) ? (
                     <section className="grid gap-3">
                         <div>
                             <h2 className="text-xl font-semibold">
                                 Editar configuración anual
                             </h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Actualiza la fotografía institucional,
-                                parámetros y firmantes mientras el presupuesto
-                                esté en borrador.
+                                {budget.status === 'draft'
+                                    ? 'Actualiza la fotografía institucional, parámetros y firmantes mientras el presupuesto esté en borrador.'
+                                    : 'Corregir la fotografía institucional creará una nueva versión de la propuesta para recalcular y conciliar antes de autorizar.'}
                             </p>
                         </div>
                         <AnnualSettingsForm
                             budgetId={budget.id}
                             settings={settings}
                             signatories={budget.signatories}
+                            institutionalOnly={budget.status !== 'draft'}
                         />
                     </section>
                 ) : (
                     <Card>
                         <CardContent className="py-5 text-sm text-muted-foreground">
-                            {budget.status !== 'draft'
-                                ? 'La configuración está bloqueada porque este presupuesto ya no está en borrador.'
+                            {budget.status === 'initial_authorized' ||
+                            budget.status === 'in_execution' ||
+                            budget.status === 'closed'
+                                ? 'La fotografía institucional está bloqueada porque el presupuesto inicial ya fue autorizado.'
                                 : 'Tienes acceso de consulta. La configuración de este ejercicio es de sólo lectura.'}
                         </CardContent>
                     </Card>

@@ -2,10 +2,14 @@
 
 namespace App\Actions\Finance\OwnRevenue;
 
+use App\Actions\Finance\OwnRevenue\Planning\CreateOwnRevenueProposalRevision;
 use App\Data\Finance\OwnRevenue\UnsignedBigInteger;
 use App\Enums\Finance\OwnRevenue\AnnualValueStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
+use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
+use App\Models\User;
 use Closure;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +19,8 @@ use Illuminate\Validation\ValidationException;
 
 class UpdateOwnRevenueBudgetSettings
 {
+    public function __construct(private readonly CreateOwnRevenueProposalRevision $proposalRevision) {}
+
     private const REGION_CODE = '02-001';
 
     private const REGION_NAME = 'Felipe Carrillo Puerto';
@@ -53,21 +59,30 @@ class UpdateOwnRevenueBudgetSettings
     /**
      * @param  array<string, mixed>  $data
      */
-    public function handle(OwnRevenueBudget $budget, array $data): OwnRevenueBudget
+    public function handle(OwnRevenueBudget $budget, array $data, ?User $user = null): OwnRevenueBudget
     {
-        return DB::transaction(function () use ($budget, $data): OwnRevenueBudget {
+        return DB::transaction(function () use ($budget, $data, $user): OwnRevenueBudget {
             $budget = OwnRevenueBudget::query()
                 ->whereKey($budget->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            if ($budget->status !== OwnRevenueBudgetStatus::Draft) {
+            if (! in_array($budget->status, [
+                OwnRevenueBudgetStatus::Draft,
+                OwnRevenueBudgetStatus::ProposalCalculated,
+                OwnRevenueBudgetStatus::ProposalAdjusted,
+            ], true)) {
                 throw ValidationException::withMessages([
-                    'budget' => 'Sólo se puede modificar la configuración de un presupuesto en borrador.',
+                    'budget' => 'La fotografía institucional ya no puede modificarse después de autorizar el presupuesto inicial.',
                 ]);
             }
 
             $settings = $this->validatedSettings($budget, $data);
+            $requiresRevision = $budget->status !== OwnRevenueBudgetStatus::Draft
+                && $this->institutionalSettingsChanged($budget, $settings);
+            if ($budget->status !== OwnRevenueBudgetStatus::Draft) {
+                $settings = Arr::only($settings, self::INSTITUTIONAL_FIELDS);
+            }
 
             $budget->update([
                 ...$settings,
@@ -76,14 +91,45 @@ class UpdateOwnRevenueBudgetSettings
                 'fuel_budget_month' => self::FUEL_BUDGET_MONTH,
             ]);
 
-            if (array_key_exists('signatories', $data)) {
+            if ($budget->status === OwnRevenueBudgetStatus::Draft && array_key_exists('signatories', $data)) {
                 $this->replaceSignatories($budget, $data['signatories']);
+            }
+
+            if ($requiresRevision) {
+                if ($user === null) {
+                    throw ValidationException::withMessages([
+                        'budget' => 'Se requiere una persona responsable para crear la nueva versión de la propuesta.',
+                    ]);
+                }
+                $source = OwnRevenueProposal::query()
+                    ->whereBelongsTo($budget, 'budget')
+                    ->whereIn('status', [OwnRevenueProposalStatus::Calculated, OwnRevenueProposalStatus::Adjusted])
+                    ->orderByDesc('version_number')
+                    ->first();
+                if ($source === null) {
+                    throw ValidationException::withMessages([
+                        'budget' => 'No se encontró una propuesta calculada para crear la nueva versión.',
+                    ]);
+                }
+                $this->proposalRevision->handle($budget, $source, $user);
             }
 
             return $budget->refresh()->load([
                 'signatories' => fn ($query) => $query->orderBy('sort_order'),
             ]);
         });
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function institutionalSettingsChanged(OwnRevenueBudget $budget, array $settings): bool
+    {
+        foreach (Arr::only($settings, self::INSTITUTIONAL_FIELDS) as $field => $value) {
+            if ($budget->{$field} !== $value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -130,8 +130,13 @@ class OwnRevenueBudgetController extends Controller
         OwnRevenueBudget $budget,
         UpdateOwnRevenueBudgetSettings $updateSettings,
     ): RedirectResponse {
-        $updateSettings->handle($budget, $request->validated());
-        Inertia::flash('success', 'Configuración del presupuesto actualizada correctamente.');
+        $updatedBudget = $updateSettings->handle($budget, $request->validated(), $request->user());
+        Inertia::flash(
+            'success',
+            $budget->status !== $updatedBudget->status
+                ? 'Fotografía institucional actualizada. Se creó una nueva versión de la propuesta para recalcular y conciliar.'
+                : 'Configuración del presupuesto actualizada correctamente.',
+        );
 
         return to_route('finance.own-revenue.budgets.show', $budget);
     }
