@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
@@ -6,24 +6,36 @@ import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
+import { index as localDataIndex } from '@/routes/local-data';
 import type { NavItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
-    {
-        title: 'Apariencia',
-        href: editAppearance(),
-        icon: null,
-    },
-];
+const appearanceNavItem: NavItem = {
+    title: 'Apariencia',
+    href: editAppearance(),
+    icon: null,
+};
 
 export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
+    const { localDataResetAvailable } = usePage().props;
+    const sidebarNavItems: NavItem[] = [
+        appearanceNavItem,
+        ...(localDataResetAvailable
+            ? [
+                  {
+                      title: 'Datos locales',
+                      href: localDataIndex(),
+                      icon: null,
+                  },
+              ]
+            : []),
+    ];
 
     return (
         <div className="px-4 py-6">
             <Heading
                 title="Configuración"
-                description="Ajusta la apariencia de tu sesión"
+                description="Personaliza tu sesión y administra las herramientas disponibles"
             />
 
             <div className="flex flex-col lg:flex-row lg:space-x-12">
@@ -55,8 +67,8 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
 
                 <Separator className="my-6 lg:hidden" />
 
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">
+                <div className="min-w-0 flex-1">
+                    <section className="max-w-4xl space-y-12">
                         {children}
                     </section>
                 </div>
