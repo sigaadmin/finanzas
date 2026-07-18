@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'own_revenue_budget_id', 'source_expense_dossier_id', 'acquired_amount_cents',
@@ -42,5 +43,11 @@ class OwnRevenueFuelFund extends Model
     public function openedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'opened_by');
+    }
+
+    /** @return HasMany<OwnRevenueFuelCommission, $this> */
+    public function commissions(): HasMany
+    {
+        return $this->hasMany(OwnRevenueFuelCommission::class);
     }
 }

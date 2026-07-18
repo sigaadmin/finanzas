@@ -183,6 +183,12 @@ class OwnRevenueBudgetPolicy
         return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
     }
 
+    public function manageFuelOperations(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget)
+            && ($this->canAdministrate($user) || $user->isFinanceAssistant());
+    }
+
     private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->isExecutable($ownRevenueBudget)
