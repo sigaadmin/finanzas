@@ -1,7 +1,7 @@
 # Centro de reinicio de datos locales
 
 Fecha: 2026-07-18
-Estado: pendiente de revisión escrita
+Estado: aprobado para implementación
 
 ## Propósito
 
@@ -26,7 +26,7 @@ Cada bloque explicará en lenguaje funcional qué se borra y qué se conserva. L
 
 La protección tendrá capas independientes:
 
-1. Las rutas web sólo se registrarán en el entorno `local`.
+1. Las rutas web usarán un middleware que responderá como no encontrado fuera de `local`; se mantendrán declaradas para que Wayfinder pueda generar enlaces en cualquier entorno de compilación.
 2. El servicio de reinicio rechazará cualquier ejecución cuando `App::environment('local')` sea falso, incluso si se invoca fuera del controlador.
 3. La pantalla y los endpoints exigirán autenticación y rol `Owner`.
 4. Cada petición se validará con un Form Request y exigirá la frase exacta de su operación.
@@ -192,7 +192,7 @@ No se guardará una bitácora de estos reinicios en la base porque el alcance ge
 
 Las pruebas Pest cubrirán como mínimo:
 
-1. La pantalla y las rutas sólo existen en `local`.
+1. La pantalla y las rutas responden como no encontradas fuera de `local`.
 2. Sólo el propietario puede abrir y ejecutar el centro.
 3. Una frase incorrecta no altera base ni archivos.
 4. Cada reinicio parcial elimina exclusivamente sus tablas y conserva registros testigo de los otros módulos, catálogos compartidos y usuarios.
