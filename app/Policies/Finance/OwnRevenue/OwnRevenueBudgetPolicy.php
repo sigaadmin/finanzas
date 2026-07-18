@@ -189,6 +189,11 @@ class OwnRevenueBudgetPolicy
             && ($this->canAdministrate($user) || $user->isFinanceAssistant());
     }
 
+    public function closeAnnualBudget(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
+    }
+
     private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->isExecutable($ownRevenueBudget)
