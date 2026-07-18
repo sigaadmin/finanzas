@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetModificationType;
 use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueBudgetModification;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossierRequirement;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Services\Finance\OwnRevenue\Reports\OwnRevenueInternalReportData;
@@ -95,4 +98,53 @@ test('internal reports isolate budgets and preserve portable integer amounts', f
 
     expect($data['summary']['initial_amount_cents'])->toBe('100000')
         ->and($data['lines'][0]['initial_amount_cents'])->toBeString();
+});
+
+test('internal reports apply valid filters and summarize related operations', function () {
+    ['budget' => $budget, 'materialLine' => $materialLine, 'serviceLine' => $serviceLine] = internalReportFixture();
+    OwnRevenueBudgetModification::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'source_line_id' => $materialLine->id,
+        'destination_line_id' => $serviceLine->id,
+        'type' => OwnRevenueBudgetModificationType::Transfer,
+        'amount_cents' => 5_000,
+    ]);
+    $paidDossier = $materialLine->expenseDossiers()
+        ->where('status', OwnRevenueExpenseDossierStatus::Paid)
+        ->sole();
+    OwnRevenueExpenseDossierRequirement::factory()->count(2)->create([
+        'own_revenue_expense_dossier_id' => $paidDossier->id,
+    ]);
+
+    $data = app(OwnRevenueInternalReportData::class)->forBudget($budget, [
+        'chapter_code' => '2000',
+        'specific_item_code' => '21101',
+        'month' => 5,
+    ]);
+
+    expect($data['filters']['applied'])->toBe([
+        'chapter_code' => '2000',
+        'specific_item_code' => '21101',
+        'month' => 5,
+    ])->and($data['lines'])->toHaveCount(1)
+        ->and($data['modifications']['total'])->toBe(1)
+        ->and($data['modifications']['transfer_amount_cents'])->toBe('5000')
+        ->and($data['expense_dossiers']['by_status']['paid'])->toBe(1)
+        ->and($data['expense_dossiers']['pending_requirements'])->toBe(2);
+});
+
+test('internal reports safely clear filters that do not exist in the budget', function () {
+    ['budget' => $budget] = internalReportFixture();
+
+    $data = app(OwnRevenueInternalReportData::class)->forBudget($budget, [
+        'chapter_code' => '9000',
+        'specific_item_code' => '99999',
+        'month' => 13,
+    ]);
+
+    expect($data['filters']['applied'])->toBe([
+        'chapter_code' => null,
+        'specific_item_code' => null,
+        'month' => null,
+    ])->and($data['lines'])->toHaveCount(2);
 });
