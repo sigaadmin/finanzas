@@ -20,6 +20,7 @@ use App\Http\Controllers\Finance\OwnRevenueImportController;
 use App\Http\Controllers\Finance\OwnRevenueImportDecisionController;
 use App\Http\Controllers\Finance\OwnRevenueImportFileController;
 use App\Http\Controllers\Finance\OwnRevenueInitialAuthorizationController;
+use App\Http\Controllers\Finance\OwnRevenueInternalReportController;
 use App\Http\Controllers\Finance\OwnRevenuePlanningController;
 use App\Http\Controllers\Finance\OwnRevenueProposalAdjustmentController;
 use App\Http\Controllers\Finance\OwnRevenueProposalCalculationController;
@@ -134,6 +135,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('own-revenue/budgets/{budget}/execution', [OwnRevenueBudgetExecutionController::class, 'show'])
             ->name('own-revenue.budgets.execution.show');
+
+        Route::get('own-revenue/budgets/{budget}/reports', OwnRevenueInternalReportController::class)
+            ->name('own-revenue.budgets.reports.show');
 
         Route::get('own-revenue/budgets/{budget}/fuel', [OwnRevenueFuelFundController::class, 'show'])
             ->name('own-revenue.budgets.fuel.show');
