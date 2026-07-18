@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Finance;
 
 use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOffice;
 use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinance;
+use App\Actions\Finance\OwnRevenue\Execution\AuthorizeExpenseRequirementException;
 use App\Actions\Finance\OwnRevenue\Execution\CancelExpenseDossier;
+use App\Actions\Finance\OwnRevenue\Execution\CompleteExpenseRequirement;
 use App\Actions\Finance\OwnRevenue\Execution\ConfirmExpenseSufficiency;
+use App\Actions\Finance\OwnRevenue\Execution\CreateExpenseRequirementRule;
 use App\Actions\Finance\OwnRevenue\Execution\CreateOwnRevenueExpenseDossier;
+use App\Actions\Finance\OwnRevenue\Execution\DeactivateExpenseRequirementRule;
 use App\Actions\Finance\OwnRevenue\Execution\InitializeOwnRevenueModifiedBudget;
 use App\Actions\Finance\OwnRevenue\Execution\MarkExpenseDossierPaid;
 use App\Actions\Finance\OwnRevenue\Execution\RejectExpenseDossier;
@@ -17,14 +21,20 @@ use App\Actions\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModification;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByBudgetOfficeRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpensePaymentByFinanceRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\AuthorizeExpenseRequirementExceptionRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\CancelExpenseDossierRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\CompleteExpenseRequirementRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\DeactivateExpenseRequirementRuleRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\MarkExpenseDossierPaidRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\RejectExpenseDossierRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\RequestExpensePaymentRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StartExpensePurchaseRequest;
+use App\Http\Requests\Finance\OwnRevenue\Execution\StoreExpenseRequirementRuleRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StoreOwnRevenueBudgetModificationRequest;
 use App\Http\Requests\Finance\OwnRevenue\Execution\StoreOwnRevenueExpenseDossierRequest;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossierRequirement;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirementRule;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExecutionViewData;
@@ -195,5 +205,69 @@ class OwnRevenueBudgetExecutionController extends Controller
 
         return to_route('finance.own-revenue.budgets.execution.show', $budget)
             ->with('success', 'El expediente quedó rechazado y el saldo fue liberado.');
+    }
+
+    public function completeExpenseRequirement(
+        CompleteExpenseRequirementRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        OwnRevenueExpenseDossierRequirement $requirement,
+        CompleteExpenseRequirement $complete,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        abort_unless($requirement->own_revenue_expense_dossier_id === $expenseDossier->id, 404);
+        $complete->handle(
+            $requirement,
+            $request->user(),
+            (string) $request->validated('notes', ''),
+            $request->file('evidence'),
+        );
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'El requisito quedó atendido.');
+    }
+
+    public function exceptExpenseRequirement(
+        AuthorizeExpenseRequirementExceptionRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseDossier $expenseDossier,
+        OwnRevenueExpenseDossierRequirement $requirement,
+        AuthorizeExpenseRequirementException $authorizeException,
+    ): RedirectResponse {
+        abort_unless($expenseDossier->own_revenue_budget_id === $budget->id, 404);
+        abort_unless($requirement->own_revenue_expense_dossier_id === $expenseDossier->id, 404);
+        $authorizeException->handle(
+            $requirement,
+            $request->user(),
+            $request->validated('exception_reason'),
+            $request->file('evidence'),
+        );
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'La excepción quedó autorizada con su evidencia.');
+    }
+
+    public function storeExpenseRequirementRule(
+        StoreExpenseRequirementRuleRequest $request,
+        OwnRevenueBudget $budget,
+        CreateExpenseRequirementRule $create,
+    ): RedirectResponse {
+        $create->handle($budget, $request->user(), $request->validated());
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'El requisito quedó agregado a la lista de verificación.');
+    }
+
+    public function deactivateExpenseRequirementRule(
+        DeactivateExpenseRequirementRuleRequest $request,
+        OwnRevenueBudget $budget,
+        OwnRevenueExpenseRequirementRule $expenseRequirementRule,
+        DeactivateExpenseRequirementRule $deactivate,
+    ): RedirectResponse {
+        abort_unless($expenseRequirementRule->own_revenue_budget_id === $budget->id, 404);
+        $deactivate->handle($expenseRequirementRule, $request->user());
+
+        return to_route('finance.own-revenue.budgets.execution.show', $budget)
+            ->with('success', 'El requisito dejó de aplicarse a nuevos avances.');
     }
 }

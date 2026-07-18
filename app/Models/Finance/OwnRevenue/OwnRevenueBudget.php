@@ -7,6 +7,7 @@ use App\Enums\Finance\OwnRevenue\CogCatalogStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueBudgetModification;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
+use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirementRule;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreLine;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueActivityAssignment;
@@ -206,6 +207,12 @@ class OwnRevenueBudget extends Model
     public function expenseDossiers(): HasMany
     {
         return $this->hasMany(OwnRevenueExpenseDossier::class);
+    }
+
+    /** @return HasMany<OwnRevenueExpenseRequirementRule, $this> */
+    public function expenseRequirementRules(): HasMany
+    {
+        return $this->hasMany(OwnRevenueExpenseRequirementRule::class);
     }
 
     /** @return HasMany<OwnRevenueRoute, $this> */

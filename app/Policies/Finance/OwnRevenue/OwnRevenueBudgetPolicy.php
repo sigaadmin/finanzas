@@ -163,6 +163,21 @@ class OwnRevenueBudgetPolicy
         return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
     }
 
+    public function completeExpenseRequirement(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->canManageExpenseDossiers($user, $ownRevenueBudget);
+    }
+
+    public function exceptExpenseRequirement(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
+    }
+
+    public function manageExpenseRequirementRules(User $user, OwnRevenueBudget $ownRevenueBudget): bool
+    {
+        return $this->isExecutable($ownRevenueBudget) && $this->canAdministrate($user);
+    }
+
     private function canManageExpenseDossiers(User $user, OwnRevenueBudget $ownRevenueBudget): bool
     {
         return $this->isExecutable($ownRevenueBudget)

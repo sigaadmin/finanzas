@@ -6,15 +6,19 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class AuthorizeExpensePaymentByBudgetOffice
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     public function handle(OwnRevenueExpenseDossier $dossier, User $user, string $reference): OwnRevenueExpenseDossier
     {
         Gate::forUser($user)->authorize('authorizeExpensePayment', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::BudgetOfficeAuthorized);
         $reference = trim($reference);
         if ($reference === '') {
             throw ValidationException::withMessages([
@@ -32,6 +36,7 @@ class AuthorizeExpensePaymentByBudgetOffice
                     'status' => 'Finanzas debe autorizar el pago antes de registrarlo en Presupuesto o Pagaduría.',
                 ]);
             }
+            $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::BudgetOfficeAuthorized);
 
             $lockedDossier->update([
                 'status' => OwnRevenueExpenseDossierStatus::BudgetOfficeAuthorized,

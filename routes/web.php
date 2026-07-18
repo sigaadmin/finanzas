@@ -140,6 +140,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers', [OwnRevenueBudgetExecutionController::class, 'storeExpenseDossier'])
             ->name('own-revenue.budgets.execution.expense-dossiers.store');
 
+        Route::post('own-revenue/budgets/{budget}/execution/requirement-rules', [OwnRevenueBudgetExecutionController::class, 'storeExpenseRequirementRule'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.requirement-rules.store');
+
+        Route::delete('own-revenue/budgets/{budget}/execution/requirement-rules/{expenseRequirementRule}', [OwnRevenueBudgetExecutionController::class, 'deactivateExpenseRequirementRule'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.requirement-rules.deactivate');
+
         Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/sufficiency-request', [OwnRevenueBudgetExecutionController::class, 'requestSufficiency'])
             ->scopeBindings()
             ->name('own-revenue.budgets.execution.expense-dossiers.sufficiency-request');
@@ -175,6 +183,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/reject', [OwnRevenueBudgetExecutionController::class, 'rejectExpenseDossier'])
             ->scopeBindings()
             ->name('own-revenue.budgets.execution.expense-dossiers.reject');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/requirements/{requirement}/complete', [OwnRevenueBudgetExecutionController::class, 'completeExpenseRequirement'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.requirements.complete');
+
+        Route::post('own-revenue/budgets/{budget}/execution/expense-dossiers/{expenseDossier}/requirements/{requirement}/except', [OwnRevenueBudgetExecutionController::class, 'exceptExpenseRequirement'])
+            ->scopeBindings()
+            ->name('own-revenue.budgets.execution.expense-dossiers.requirements.except');
 
         Route::get('own-revenue/expense-dossier-documents/{expenseDossierDocument}', OwnRevenueExpenseDossierDocumentController::class)
             ->name('own-revenue.expense-dossier-documents.download');

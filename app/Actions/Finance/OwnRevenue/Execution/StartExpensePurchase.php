@@ -6,15 +6,19 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class StartExpensePurchase
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     public function handle(OwnRevenueExpenseDossier $dossier, User $user, string $reference): OwnRevenueExpenseDossier
     {
         Gate::forUser($user)->authorize('manageExpensePurchase', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::PurchaseInProgress);
         $reference = trim($reference);
         if ($reference === '') {
             throw ValidationException::withMessages(['purchase_reference' => 'Captura la referencia de la compra o contratación.']);
@@ -33,6 +37,7 @@ class StartExpensePurchase
                     'status' => 'La suficiencia debe estar confirmada antes de iniciar la compra.',
                 ]);
             }
+            $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::PurchaseInProgress);
 
             $lockedDossier->update([
                 'status' => OwnRevenueExpenseDossierStatus::PurchaseInProgress,

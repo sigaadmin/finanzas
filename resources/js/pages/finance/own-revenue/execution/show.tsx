@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import budgets from '@/routes/finance/own-revenue/budgets';
 import expenseDossierRoutes from '@/routes/finance/own-revenue/budgets/execution/expense-dossiers';
 import modifications from '@/routes/finance/own-revenue/budgets/execution/modifications';
+import requirementRules from '@/routes/finance/own-revenue/budgets/execution/requirement-rules';
 import planning from '@/routes/finance/own-revenue/budgets/planning';
 import expenseDossierDocuments from '@/routes/finance/own-revenue/expense-dossier-documents';
 import type {
@@ -27,6 +28,7 @@ import type {
     ExecutionLine,
     ExecutionSummary,
     ExpenseDossier,
+    ExpenseRequirementRule,
 } from '@/types/finance-own-revenue-execution';
 
 type Props = {
@@ -36,6 +38,7 @@ type Props = {
     classifications: ExecutionClassification[];
     modifications: BudgetModification[];
     expense_dossiers: ExpenseDossier[];
+    requirement_rules: ExpenseRequirementRule[];
     permissions: {
         manage: boolean;
         create_expense_dossier: boolean;
@@ -45,6 +48,9 @@ type Props = {
         authorize_expense_payment: boolean;
         cancel_expense_dossier: boolean;
         reject_expense_dossier: boolean;
+        complete_expense_requirement: boolean;
+        except_expense_requirement: boolean;
+        manage_expense_requirement_rules: boolean;
     };
 };
 
@@ -73,6 +79,18 @@ type PaymentRequestForm = {
     documents: File[];
 };
 
+type RequirementRuleForm = {
+    title: string;
+    description: string;
+    target_status: ExpenseDossier['status'];
+    purchase_responsibility: '' | 'cren' | 'seq';
+    chapter_code: string;
+    specific_item_code: string;
+    minimum_amount_pesos: string;
+    minimum_amount_cents: string | null;
+    requires_evidence: boolean;
+};
+
 type AuthorizationAction = {
     dossier: ExpenseDossier;
     kind: 'finance' | 'budget-office' | 'payment';
@@ -81,6 +99,12 @@ type AuthorizationAction = {
 type ConclusionAction = {
     dossier: ExpenseDossier;
     kind: 'cancel' | 'reject';
+};
+
+type RequirementAction = {
+    dossier: ExpenseDossier;
+    requirement: ExpenseDossier['requirements'][number];
+    kind: 'complete' | 'except';
 };
 
 const authorizationCopy = {
@@ -175,6 +199,7 @@ export default function OwnRevenueExecutionShow({
     classifications,
     modifications: history,
     expense_dossiers: expenseDossiers,
+    requirement_rules: requirementRulesData,
     permissions,
 }: Props) {
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -183,6 +208,8 @@ export default function OwnRevenueExecutionShow({
     const [paymentDossier, setPaymentDossier] = useState<ExpenseDossier | null>(null);
     const [authorizationAction, setAuthorizationAction] = useState<AuthorizationAction | null>(null);
     const [conclusionAction, setConclusionAction] = useState<ConclusionAction | null>(null);
+    const [requirementAction, setRequirementAction] = useState<RequirementAction | null>(null);
+    const [requirementRuleOpen, setRequirementRuleOpen] = useState(false);
     const usableLines = lines.filter(
         (line) => BigInt(line.available_amount_cents) > 0n,
     );
@@ -211,6 +238,22 @@ export default function OwnRevenueExecutionShow({
     });
     const authorizationForm = useForm({ reference: '' });
     const conclusionForm = useForm({ reason: '' });
+    const requirementForm = useForm<{ notes: string; exception_reason: string; evidence: File | null }>({
+        notes: '',
+        exception_reason: '',
+        evidence: null,
+    });
+    const requirementRuleForm = useForm<RequirementRuleForm>({
+        title: '',
+        description: '',
+        target_status: 'sufficiency_requested',
+        purchase_responsibility: '',
+        chapter_code: '',
+        specific_item_code: '',
+        minimum_amount_pesos: '',
+        minimum_amount_cents: null,
+        requires_evidence: false,
+    });
     const selectedSource = lines.find(
         (line) => line.id.toString() === form.data.source_line_id,
     );
@@ -410,6 +453,62 @@ export default function OwnRevenueExecutionShow({
         });
     };
 
+    const openRequirementForm = (
+        dossier: ExpenseDossier,
+        requirement: ExpenseDossier['requirements'][number],
+        kind: RequirementAction['kind'],
+    ): void => {
+        requirementForm.reset();
+        requirementForm.clearErrors();
+        setRequirementAction({ dossier, requirement, kind });
+    };
+
+    const submitRequirement = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+
+        if (requirementAction === null) {
+            return;
+        }
+
+        const parameters: [number, number, number] = [budget.id, requirementAction.dossier.id, requirementAction.requirement.id];
+        const route = requirementAction.kind === 'complete'
+            ? expenseDossierRoutes.requirements.complete(parameters)
+            : expenseDossierRoutes.requirements.except(parameters);
+        requirementForm.post(route.url, {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => setRequirementAction(null),
+        });
+    };
+
+    const submitRequirementRule = (event: FormEvent<HTMLFormElement>): void => {
+        event.preventDefault();
+        const minimumAmount = requirementRuleForm.data.minimum_amount_pesos === ''
+            ? null
+            : pesosToCents(requirementRuleForm.data.minimum_amount_pesos);
+
+        if (requirementRuleForm.data.minimum_amount_pesos !== '' && minimumAmount === null) {
+            requirementRuleForm.setError('minimum_amount_cents', 'Captura un importe válido con máximo dos decimales.');
+
+            return;
+        }
+
+        requirementRuleForm.transform((data) => ({
+            ...data,
+            minimum_amount_cents: minimumAmount,
+            purchase_responsibility: data.purchase_responsibility === '' ? null : data.purchase_responsibility,
+            chapter_code: data.chapter_code === '' ? null : data.chapter_code,
+            specific_item_code: data.specific_item_code === '' ? null : data.specific_item_code,
+        }));
+        requirementRuleForm.post(requirementRules.store(budget.id).url, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setRequirementRuleOpen(false);
+                requirementRuleForm.reset();
+            },
+        });
+    };
+
     return (
         <>
             <Head title={`Presupuesto modificado ${budget.fiscal_year}`} />
@@ -516,6 +615,55 @@ export default function OwnRevenueExecutionShow({
 
                 <Card>
                     <CardHeader className="flex-row items-center justify-between gap-3">
+                        <div>
+                            <CardTitle>Lista de verificación</CardTitle>
+                            <p className="mt-1 text-sm text-muted-foreground">Requisitos que deben cumplirse antes de avanzar cada expediente.</p>
+                        </div>
+                        {permissions.manage_expense_requirement_rules && (
+                            <Button type="button" size="sm" variant="outline" onClick={() => setRequirementRuleOpen(true)}>
+                                <Plus className="size-4" /> Agregar requisito
+                            </Button>
+                        )}
+                    </CardHeader>
+                    <CardContent className="grid gap-2">
+                        {requirementRulesData.map((rule) => (
+                            <div key={rule.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border p-3 text-sm">
+                                <div className="grid gap-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-medium">{rule.title}</span>
+                                        <Badge variant="outline">Antes de: {dossierStatusLabels[rule.target_status]}</Badge>
+                                        {rule.requires_evidence && <Badge variant="secondary">Requiere evidencia</Badge>}
+                                    </div>
+                                    {rule.description !== null && <p className="text-muted-foreground">{rule.description}</p>}
+                                    <p className="text-xs text-muted-foreground">
+                                        {[
+                                            rule.purchase_responsibility === null ? null : `Compra: ${rule.purchase_responsibility === 'cren' ? 'CREN' : 'SEQ'}`,
+                                            rule.chapter_code === null ? null : `Capítulo ${rule.chapter_code}`,
+                                            rule.specific_item_code === null ? null : `Partida ${rule.specific_item_code}`,
+                                            rule.minimum_amount_cents === null ? null : `Desde ${formatCents(rule.minimum_amount_cents)}`,
+                                        ].filter(Boolean).join(' · ') || 'Aplica a todos los expedientes'}
+                                    </p>
+                                </div>
+                                {permissions.manage_expense_requirement_rules && (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => router.delete(requirementRules.deactivate([budget.id, rule.id]).url, { preserveScroll: true })}
+                                    >
+                                        Dejar de aplicar
+                                    </Button>
+                                )}
+                            </div>
+                        ))}
+                        {requirementRulesData.length === 0 && (
+                            <p className="text-sm text-muted-foreground">No hay requisitos configurados para este ejercicio.</p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex-row items-center justify-between gap-3">
                         <CardTitle>Expedientes de gasto</CardTitle>
                         {permissions.create_expense_dossier && usableLines.length > 0 && (
                             <Button type="button" size="sm" onClick={openExpenseForm}>
@@ -569,6 +717,41 @@ export default function OwnRevenueExecutionShow({
                                                         <Download className="size-3" /> {document.original_name}
                                                     </a>
                                                 </Button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {dossier.requirements.length > 0 && (
+                                        <div className="mt-2 grid gap-2 rounded-md border bg-muted/30 p-3">
+                                            <p className="text-xs font-semibold">Requisitos del expediente</p>
+                                            {dossier.requirements.map((requirement) => (
+                                                <div key={requirement.id} className="grid gap-1 rounded-md bg-background p-2 text-xs">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="font-medium">{requirement.title}</span>
+                                                        <Badge variant={requirement.status === 'pending' ? 'secondary' : 'outline'}>
+                                                            {requirement.status === 'pending' ? 'Pendiente' : requirement.status === 'completed' ? 'Cumplido' : 'Excepción autorizada'}
+                                                        </Badge>
+                                                        <span className="text-muted-foreground">
+                                                            Antes de: {dossierStatusLabels[requirement.target_status]}
+                                                        </span>
+                                                    </div>
+                                                    {requirement.description !== null && <p>{requirement.description}</p>}
+                                                    {requirement.notes !== null && <p className="text-muted-foreground">Nota: {requirement.notes}</p>}
+                                                    {requirement.exception_reason !== null && <p className="text-amber-700 dark:text-amber-300">Excepción: {requirement.exception_reason}</p>}
+                                                    {requirement.status === 'pending' && (
+                                                        <div className="flex flex-wrap gap-2 pt-1">
+                                                            {permissions.complete_expense_requirement && (
+                                                                <Button type="button" size="sm" variant="outline" onClick={() => openRequirementForm(dossier, requirement, 'complete')}>
+                                                                    Marcar cumplido
+                                                                </Button>
+                                                            )}
+                                                            {permissions.except_expense_requirement && (
+                                                                <Button type="button" size="sm" variant="outline" onClick={() => openRequirementForm(dossier, requirement, 'except')}>
+                                                                    Autorizar excepción
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             ))}
                                         </div>
                                     )}
@@ -917,6 +1100,107 @@ export default function OwnRevenueExecutionShow({
                                 : conclusionAction?.kind === 'reject'
                                   ? 'Confirmar rechazo'
                                   : 'Confirmar cancelación'}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={requirementAction !== null} onOpenChange={(open) => !open && setRequirementAction(null)}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {requirementAction?.kind === 'except' ? 'Autorizar excepción' : 'Atender requisito'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {requirementAction?.requirement.title}. La evidencia se conservará de forma privada en el expediente.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitRequirement} className="grid gap-4">
+                        {requirementAction?.kind === 'except' ? (
+                            <Field label="Justificación de la excepción" error={requirementForm.errors.exception_reason}>
+                                <textarea
+                                    value={requirementForm.data.exception_reason}
+                                    onChange={(event) => requirementForm.setData('exception_reason', event.target.value)}
+                                    className={`${selectClassName} min-h-28 py-2`}
+                                    minLength={10}
+                                    maxLength={2000}
+                                    required
+                                />
+                            </Field>
+                        ) : (
+                            <Field label="Nota de revisión" error={requirementForm.errors.notes}>
+                                <textarea
+                                    value={requirementForm.data.notes}
+                                    onChange={(event) => requirementForm.setData('notes', event.target.value)}
+                                    className={`${selectClassName} min-h-24 py-2`}
+                                    maxLength={2000}
+                                />
+                            </Field>
+                        )}
+                        <Field label="Evidencia" error={requirementForm.errors.evidence}>
+                            <Input
+                                type="file"
+                                accept=".pdf,.xml,.jpg,.jpeg,.png,.xlsx"
+                                onChange={(event) => requirementForm.setData('evidence', event.target.files?.[0] ?? null)}
+                                required={requirementAction?.kind === 'except' || requirementAction?.requirement.requires_evidence === true}
+                            />
+                            <p className="text-xs text-muted-foreground">PDF, XML, imagen o XLSX; máximo 10 MB.</p>
+                        </Field>
+                        <Button type="submit" disabled={requirementForm.processing}>
+                            {requirementForm.processing
+                                ? 'Guardando…'
+                                : requirementAction?.kind === 'except'
+                                  ? 'Autorizar excepción'
+                                  : 'Marcar como cumplido'}
+                        </Button>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={requirementRuleOpen} onOpenChange={setRequirementRuleOpen}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+                    <DialogHeader>
+                        <DialogTitle>Agregar requisito</DialogTitle>
+                        <DialogDescription>Define cuándo aplica y antes de qué etapa debe estar atendido.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={submitRequirementRule} className="grid gap-4">
+                        <Field label="Nombre del requisito" error={requirementRuleForm.errors.title}>
+                            <Input value={requirementRuleForm.data.title} onChange={(event) => requirementRuleForm.setData('title', event.target.value)} maxLength={255} required />
+                        </Field>
+                        <Field label="Descripción" error={requirementRuleForm.errors.description}>
+                            <textarea value={requirementRuleForm.data.description} onChange={(event) => requirementRuleForm.setData('description', event.target.value)} className={`${selectClassName} min-h-20 py-2`} maxLength={2000} />
+                        </Field>
+                        <Field label="Debe cumplirse antes de" error={requirementRuleForm.errors.target_status}>
+                            <select value={requirementRuleForm.data.target_status} onChange={(event) => requirementRuleForm.setData('target_status', event.target.value as ExpenseDossier['status'])} className={selectClassName}>
+                                {(['sufficiency_requested', 'sufficiency_confirmed', 'purchase_in_progress', 'payment_requested', 'finance_authorized', 'budget_office_authorized', 'paid'] as const).map((status) => (
+                                    <option key={status} value={status}>{dossierStatusLabels[status]}</option>
+                                ))}
+                            </select>
+                        </Field>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="Responsable de compra" error={requirementRuleForm.errors.purchase_responsibility}>
+                                <select value={requirementRuleForm.data.purchase_responsibility} onChange={(event) => requirementRuleForm.setData('purchase_responsibility', event.target.value as RequirementRuleForm['purchase_responsibility'])} className={selectClassName}>
+                                    <option value="">Cualquiera</option>
+                                    <option value="cren">CREN</option>
+                                    <option value="seq">SEQ</option>
+                                </select>
+                            </Field>
+                            <Field label="Importe mínimo (pesos)" error={requirementRuleForm.errors.minimum_amount_cents}>
+                                <Input value={requirementRuleForm.data.minimum_amount_pesos} onChange={(event) => requirementRuleForm.setData('minimum_amount_pesos', event.target.value)} inputMode="decimal" placeholder="Sin mínimo" />
+                            </Field>
+                            <Field label="Capítulo" error={requirementRuleForm.errors.chapter_code}>
+                                <Input value={requirementRuleForm.data.chapter_code} onChange={(event) => requirementRuleForm.setData('chapter_code', event.target.value)} maxLength={10} placeholder="Todos" />
+                            </Field>
+                            <Field label="Partida específica" error={requirementRuleForm.errors.specific_item_code}>
+                                <Input value={requirementRuleForm.data.specific_item_code} onChange={(event) => requirementRuleForm.setData('specific_item_code', event.target.value)} maxLength={20} placeholder="Todas" />
+                            </Field>
+                        </div>
+                        <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={requirementRuleForm.data.requires_evidence} onChange={(event) => requirementRuleForm.setData('requires_evidence', event.target.checked)} className="size-4 rounded border-input" />
+                            Exigir un archivo de evidencia
+                        </label>
+                        <Button type="submit" disabled={requirementRuleForm.processing}>
+                            {requirementRuleForm.processing ? 'Guardando…' : 'Agregar requisito'}
                         </Button>
                     </form>
                 </DialogContent>

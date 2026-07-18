@@ -59,6 +59,18 @@ export type BudgetModification = {
     recorded_at: string | null;
 };
 
+export type ExpenseRequirementRule = {
+    id: number;
+    title: string;
+    description: string | null;
+    target_status: ExpenseDossier['status'];
+    purchase_responsibility: 'cren' | 'seq' | null;
+    chapter_code: string | null;
+    specific_item_code: string | null;
+    minimum_amount_cents: string | null;
+    requires_evidence: boolean;
+};
+
 export type ExpenseDossier = {
     id: number;
     folio: string;
@@ -109,5 +121,19 @@ export type ExpenseDossier = {
         mime_type: string;
         size_bytes: number;
         uploaded_at: string | null;
+    }>;
+    requirements: Array<{
+        id: number;
+        title: string;
+        description: string | null;
+        target_status: ExpenseDossier['status'];
+        requires_evidence: boolean;
+        status: 'pending' | 'completed' | 'excepted';
+        notes: string | null;
+        exception_reason: string | null;
+        actor_name: string | null;
+        acted_at: string | null;
+        evidence_name: string | null;
+        exception_evidence_name: string | null;
     }>;
 };

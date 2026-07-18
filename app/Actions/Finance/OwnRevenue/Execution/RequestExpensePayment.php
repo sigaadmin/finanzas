@@ -7,6 +7,7 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -17,6 +18,8 @@ use Throwable;
 
 class RequestExpensePayment
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     private const ALLOWED_MIME_TYPES = [
         'application/pdf',
         'application/xml',
@@ -45,6 +48,7 @@ class RequestExpensePayment
         array $documents,
     ): OwnRevenueExpenseDossier {
         Gate::forUser($user)->authorize('manageExpensePurchase', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::PaymentRequested);
         $reference = trim($reference);
         $this->validateInput($reference, $documents);
         $storedPaths = [];
@@ -63,6 +67,7 @@ class RequestExpensePayment
                         'status' => 'La compra debe estar en proceso antes de solicitar el pago.',
                     ]);
                 }
+                $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::PaymentRequested);
 
                 foreach ($documents as $document) {
                     $mimeType = (string) $document->getMimeType();

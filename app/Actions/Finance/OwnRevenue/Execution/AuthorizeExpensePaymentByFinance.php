@@ -6,15 +6,19 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class AuthorizeExpensePaymentByFinance
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     public function handle(OwnRevenueExpenseDossier $dossier, User $user, string $reference): OwnRevenueExpenseDossier
     {
         Gate::forUser($user)->authorize('authorizeExpensePayment', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::FinanceAuthorized);
         $reference = $this->validatedReference($reference);
 
         return DB::transaction(function () use ($dossier, $user, $reference): OwnRevenueExpenseDossier {
@@ -25,6 +29,7 @@ class AuthorizeExpensePaymentByFinance
             if ($lockedDossier->status !== OwnRevenueExpenseDossierStatus::PaymentRequested) {
                 throw ValidationException::withMessages(['status' => 'El pago debe estar solicitado antes de autorizarlo en Finanzas.']);
             }
+            $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::FinanceAuthorized);
 
             $lockedDossier->update([
                 'status' => OwnRevenueExpenseDossierStatus::FinanceAuthorized,

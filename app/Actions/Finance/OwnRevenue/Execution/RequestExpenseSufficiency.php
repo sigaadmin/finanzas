@@ -9,17 +9,22 @@ use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Execution\OwnRevenueBudgetBalance;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class RequestExpenseSufficiency
 {
-    public function __construct(private readonly OwnRevenueBudgetBalance $balances) {}
+    public function __construct(
+        private readonly OwnRevenueBudgetBalance $balances,
+        private readonly OwnRevenueExpenseRequirements $requirements,
+    ) {}
 
     public function handle(OwnRevenueExpenseDossier $dossier, User $user): OwnRevenueExpenseDossier
     {
         Gate::forUser($user)->authorize('requestExpenseSufficiency', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::SufficiencyRequested);
 
         return DB::transaction(function () use ($dossier, $user): OwnRevenueExpenseDossier {
             $lockedBudget = OwnRevenueBudget::query()->lockForUpdate()->findOrFail($dossier->own_revenue_budget_id);
@@ -34,6 +39,7 @@ class RequestExpenseSufficiency
                     'status' => 'Solo un expediente en borrador puede solicitar suficiencia.',
                 ]);
             }
+            $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::SufficiencyRequested);
             $line = OwnRevenueModifiedBudgetLine::query()
                 ->whereKey($lockedDossier->own_revenue_modified_budget_line_id)
                 ->lockForUpdate()

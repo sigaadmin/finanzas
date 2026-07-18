@@ -8,12 +8,15 @@ use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class CreateOwnRevenueExpenseDossier
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     /**
      * @param  array{concept: string, amount_cents: int, purchase_responsibility: string, external_reference?: ?string, notes?: ?string}  $data
      */
@@ -73,6 +76,7 @@ class CreateOwnRevenueExpenseDossier
                 'actor_id' => $user->id,
                 'occurred_at' => now(),
             ]);
+            $this->requirements->syncAllStages($dossier);
 
             return $dossier;
         }, attempts: 3);

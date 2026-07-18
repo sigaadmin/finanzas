@@ -120,4 +120,10 @@ class OwnRevenueExpenseDossier extends Model
     {
         return $this->hasMany(OwnRevenueExpenseDossierDocument::class);
     }
+
+    /** @return HasMany<OwnRevenueExpenseDossierRequirement, $this> */
+    public function requirements(): HasMany
+    {
+        return $this->hasMany(OwnRevenueExpenseDossierRequirement::class);
+    }
 }

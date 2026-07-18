@@ -6,15 +6,19 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class MarkExpenseDossierPaid
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     public function handle(OwnRevenueExpenseDossier $dossier, User $user, string $reference): OwnRevenueExpenseDossier
     {
         Gate::forUser($user)->authorize('authorizeExpensePayment', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::Paid);
         $reference = trim($reference);
         if ($reference === '') {
             throw ValidationException::withMessages(['payment_reference' => 'Captura la referencia del pago realizado.']);
@@ -30,6 +34,7 @@ class MarkExpenseDossierPaid
                     'status' => 'Presupuesto o Pagaduría debe autorizar el pago antes de marcarlo como pagado.',
                 ]);
             }
+            $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::Paid);
 
             $lockedDossier->update([
                 'status' => OwnRevenueExpenseDossierStatus::Paid,

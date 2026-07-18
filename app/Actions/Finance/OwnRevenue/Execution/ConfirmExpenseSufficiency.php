@@ -6,15 +6,19 @@ use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
+use App\Services\Finance\OwnRevenue\Execution\OwnRevenueExpenseRequirements;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class ConfirmExpenseSufficiency
 {
+    public function __construct(private readonly OwnRevenueExpenseRequirements $requirements) {}
+
     public function handle(OwnRevenueExpenseDossier $dossier, User $user): OwnRevenueExpenseDossier
     {
         Gate::forUser($user)->authorize('confirmExpenseSufficiency', $dossier->budget);
+        $this->requirements->syncForStage($dossier, OwnRevenueExpenseDossierStatus::SufficiencyConfirmed);
 
         return DB::transaction(function () use ($dossier, $user): OwnRevenueExpenseDossier {
             $lockedBudget = OwnRevenueBudget::query()->lockForUpdate()->findOrFail($dossier->own_revenue_budget_id);
@@ -29,6 +33,7 @@ class ConfirmExpenseSufficiency
                     'status' => 'La suficiencia debe estar solicitada antes de confirmarla.',
                 ]);
             }
+            $this->requirements->assertSatisfied($lockedDossier, OwnRevenueExpenseDossierStatus::SufficiencyConfirmed);
 
             $lockedDossier->update([
                 'status' => OwnRevenueExpenseDossierStatus::SufficiencyConfirmed,

@@ -43,6 +43,22 @@ class OwnRevenueExecutionViewData
             'classifications' => $this->classifications($budget),
             'modifications' => $this->modifications($budget),
             'expense_dossiers' => $this->expenseDossiers($budget),
+            'requirement_rules' => $budget->expenseRequirementRules()
+                ->where('is_active', true)
+                ->orderBy('target_status')
+                ->orderBy('title')
+                ->get()
+                ->map(fn ($rule): array => [
+                    'id' => $rule->id,
+                    'title' => $rule->title,
+                    'description' => $rule->description,
+                    'target_status' => $rule->target_status->value,
+                    'purchase_responsibility' => $rule->purchase_responsibility?->value,
+                    'chapter_code' => $rule->chapter_code,
+                    'specific_item_code' => $rule->specific_item_code,
+                    'minimum_amount_cents' => $rule->minimum_amount_cents === null ? null : (string) $rule->minimum_amount_cents,
+                    'requires_evidence' => $rule->requires_evidence,
+                ])->all(),
             'permissions' => [
                 'manage' => Gate::allows('manageExecution', $budget),
                 'create_expense_dossier' => Gate::allows('createExpenseDossier', $budget),
@@ -52,6 +68,9 @@ class OwnRevenueExecutionViewData
                 'authorize_expense_payment' => Gate::allows('authorizeExpensePayment', $budget),
                 'cancel_expense_dossier' => Gate::allows('cancelExpenseDossier', $budget),
                 'reject_expense_dossier' => Gate::allows('rejectExpenseDossier', $budget),
+                'complete_expense_requirement' => Gate::allows('completeExpenseRequirement', $budget),
+                'except_expense_requirement' => Gate::allows('exceptExpenseRequirement', $budget),
+                'manage_expense_requirement_rules' => Gate::allows('manageExpenseRequirementRules', $budget),
             ],
         ];
     }
@@ -138,6 +157,10 @@ class OwnRevenueExecutionViewData
                 'requester:id,name',
                 'latestTransition.actor:id,name',
                 'documents:id,own_revenue_expense_dossier_id,original_name,mime_type,size_bytes,uploaded_at',
+                'requirements.rule:id,title,description,target_status,requires_evidence',
+                'requirements.actor:id,name',
+                'requirements.evidenceDocument:id,original_name',
+                'requirements.exceptionEvidenceDocument:id,original_name',
             ])
             ->latest('id')
             ->get()
@@ -181,6 +204,20 @@ class OwnRevenueExecutionViewData
                     'mime_type' => $document->mime_type,
                     'size_bytes' => $document->size_bytes,
                     'uploaded_at' => $document->uploaded_at?->toISOString(),
+                ])->all(),
+                'requirements' => $dossier->requirements->map(fn ($requirement): array => [
+                    'id' => $requirement->id,
+                    'title' => $requirement->rule->title,
+                    'description' => $requirement->rule->description,
+                    'target_status' => $requirement->rule->target_status->value,
+                    'requires_evidence' => $requirement->rule->requires_evidence,
+                    'status' => $requirement->status->value,
+                    'notes' => $requirement->notes,
+                    'exception_reason' => $requirement->exception_reason,
+                    'actor_name' => $requirement->actor?->name,
+                    'acted_at' => $requirement->acted_at?->toISOString(),
+                    'evidence_name' => $requirement->evidenceDocument?->original_name,
+                    'exception_evidence_name' => $requirement->exceptionEvidenceDocument?->original_name,
                 ])->all(),
             ])->all();
     }
