@@ -2,6 +2,8 @@
 
 use App\Actions\Settings\ResetLocalData;
 use App\Enums\Settings\LocalDataResetScope;
+use App\Enums\UserRole;
+use App\Models\AuthorizedAccess;
 use App\Models\ChargeConcept;
 use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
@@ -14,6 +16,7 @@ use App\Models\Receipt;
 use App\Models\ReceiptCancellation;
 use App\Models\SeqDeposit;
 use App\Models\SeqReportExport;
+use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -140,6 +143,52 @@ test('reset action refuses to run outside local', function () {
 
     expect(fn () => app(ResetLocalData::class)->handle(LocalDataResetScope::U300))
         ->toThrow(LogicException::class, 'El reinicio sólo está disponible en local.');
+});
+
+test('general reset removes all functional data and recreates only the institutional owner', function () {
+    Storage::fake('local');
+    Storage::fake('public');
+    Storage::disk('local')->put('u300/imports/source.pdf', 'u300');
+    Storage::disk('public')->put('u300/technical-sheets/reference-photos/photo.jpg', 'photo');
+    Storage::disk('local')->put('own-revenue/imports/source.xlsx', 'budget');
+    Storage::disk('local')->put('finance/expense-classifications/imports/source.xlsx', 'catalog');
+
+    $secondaryUser = User::factory()->create(['email' => 'admin.local@crenfcp.edu.mx']);
+    AuthorizedAccess::query()->create([
+        'email' => $secondaryUser->email,
+        'role' => UserRole::Admin,
+        'is_active' => true,
+    ]);
+    ReceiptCancellation::factory()->create();
+    createU300Program();
+    OwnRevenueBudget::factory()->create();
+    createExpenseClassification();
+    ChargeConcept::factory()->create();
+    FinanceFolioSequence::query()->create([
+        'sequence_key' => 'future_module',
+        'year' => 2026,
+        'next_number' => 3,
+    ]);
+
+    $result = app(ResetLocalData::class)->handle(LocalDataResetScope::All);
+
+    expect($result->scope)->toBe(LocalDataResetScope::All)
+        ->and($result->deletedRecords)->toBeGreaterThan(0)
+        ->and(User::query()->pluck('email')->all())->toBe(['administrador.siga@crenfcp.edu.mx'])
+        ->and(AuthorizedAccess::query()->pluck('email')->all())->toBe(['administrador.siga@crenfcp.edu.mx'])
+        ->and(AuthorizedAccess::query()->firstOrFail()->role)->toBe(UserRole::Owner)
+        ->and(DB::table('migrations')->count())->toBeGreaterThan(0)
+        ->and(ExpenseClassification::query()->count())->toBe(0)
+        ->and(ChargeConcept::query()->count())->toBe(0)
+        ->and(U300Program::query()->count())->toBe(0)
+        ->and(OwnRevenueBudget::query()->count())->toBe(0)
+        ->and(PaymentProcedure::query()->count())->toBe(0)
+        ->and(FinanceFolioSequence::query()->count())->toBe(0);
+
+    Storage::disk('local')->assertMissing('u300/imports/source.pdf');
+    Storage::disk('public')->assertMissing('u300/technical-sheets/reference-photos/photo.jpg');
+    Storage::disk('local')->assertMissing('own-revenue/imports/source.xlsx');
+    Storage::disk('local')->assertMissing('finance/expense-classifications/imports/source.xlsx');
 });
 
 function createU300Program(): U300Program

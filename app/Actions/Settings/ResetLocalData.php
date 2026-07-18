@@ -15,16 +15,13 @@ class ResetLocalData
 {
     public function __construct(
         private readonly LocalDataResetCatalog $catalog,
+        private readonly EnsureInstitutionalOwner $ensureOwner,
     ) {}
 
     public function handle(LocalDataResetScope $scope): LocalDataResetResult
     {
         if (! app()->environment('local')) {
             throw new LogicException('El reinicio sólo está disponible en local.');
-        }
-
-        if ($scope === LocalDataResetScope::All) {
-            throw new LogicException('El reinicio general todavía no está habilitado.');
         }
 
         $deletedRecords = DB::transaction(function () use ($scope): int {
@@ -34,7 +31,9 @@ class ResetLocalData
                 $deletedRecords += DB::table($table)->delete();
             }
 
-            if ($scope === LocalDataResetScope::Ventanilla) {
+            if ($scope === LocalDataResetScope::All) {
+                $this->ensureOwner->handle();
+            } elseif ($scope === LocalDataResetScope::Ventanilla) {
                 $deletedRecords += DB::table('finance_folio_sequences')
                     ->whereIn('sequence_key', ['procedure', 'receipt_internal', 'receipt_external'])
                     ->delete();

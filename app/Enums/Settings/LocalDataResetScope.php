@@ -18,4 +18,14 @@ enum LocalDataResetScope: string
             self::All => 'REINICIAR TODO',
         };
     }
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Ventanilla => 'Ventanilla Finanzas',
+            self::U300 => 'U300',
+            self::OwnRevenue => 'Ingresos Propios',
+            self::All => 'Toda la aplicación',
+        };
+    }
 }
