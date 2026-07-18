@@ -9,6 +9,8 @@ import {
     Database,
     FileSpreadsheet,
     Fuel,
+    History,
+    LockKeyhole,
     MapPin,
     Scale,
     Users,
@@ -27,6 +29,8 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { create, index } from '@/routes/finance/own-revenue/budgets';
+import annualClose from '@/routes/finance/own-revenue/budgets/annual-close';
+import audit from '@/routes/finance/own-revenue/budgets/audit';
 import { confirm as confirmCog } from '@/routes/finance/own-revenue/budgets/cog';
 import execution from '@/routes/finance/own-revenue/budgets/execution';
 import fuel from '@/routes/finance/own-revenue/budgets/fuel';
@@ -436,6 +440,62 @@ export default function OwnRevenueBudgetShow({
                         </CardHeader>
                     </Card>
                 )}
+
+                <div className="grid gap-3 lg:grid-cols-2">
+                    <Card>
+                        <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <History className="size-5" />
+                                    Historial consolidado
+                                </CardTitle>
+                                <CardDescription>
+                                    Consulta en orden cronológico los cambios,
+                                    autorizaciones y operaciones del ejercicio.
+                                </CardDescription>
+                            </div>
+                            <Button asChild variant="outline">
+                                <Link href={audit.index(budget.id)}>
+                                    Consultar historial
+                                </Link>
+                            </Button>
+                        </CardHeader>
+                    </Card>
+
+                    {['initial_authorized', 'in_execution', 'closed'].includes(
+                        budget.status,
+                    ) && (
+                        <Card>
+                            <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <LockKeyhole className="size-5" />
+                                        {budget.annual_closure === null
+                                            ? 'Cierre anual'
+                                            : 'Ejercicio cerrado'}
+                                    </CardTitle>
+                                    <CardDescription>
+                                        {budget.annual_closure === null
+                                            ? 'Verifica pendientes y, cuando corresponda, formaliza el cierre definitivo.'
+                                            : 'Consulta el acta y la fotografía definitiva del ejercicio.'}
+                                    </CardDescription>
+                                </div>
+                                <Button
+                                    asChild
+                                    variant={
+                                        permissions.closeAnnualBudget
+                                            ? 'default'
+                                            : 'outline'
+                                    }
+                                >
+                                    <Link href={annualClose.show(budget.id)}>
+                                        Revisar cierre anual
+                                    </Link>
+                                </Button>
+                            </CardHeader>
+                        </Card>
+                    )}
+                </div>
 
                 <Card>
                     <CardHeader>

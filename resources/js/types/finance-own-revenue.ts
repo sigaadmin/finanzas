@@ -19,6 +19,7 @@ export type OwnRevenueDetailPermissions = {
     copy: boolean;
     confirmCog: boolean;
     viewImports: boolean;
+    closeAnnualBudget: boolean;
 };
 
 export type OwnRevenueBudgetListItem = {
@@ -95,6 +96,12 @@ export type OwnRevenueBudgetDetail = {
     activities: OwnRevenueActivity[];
     signatories: OwnRevenueSignatory[];
     cog: OwnRevenueCogSummary;
+    annual_closure: {
+        id: number;
+        fingerprint: string;
+        closed_by: { id: number; name: string };
+        closed_at: string | null;
+    } | null;
     created_at: string | null;
     updated_at: string | null;
 };
