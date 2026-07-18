@@ -87,17 +87,22 @@ test('internal reports calculate budget balances and planning progress', functio
 });
 
 test('internal reports isolate budgets and preserve portable integer amounts', function () {
-    ['budget' => $budget] = internalReportFixture();
+    $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2026]);
+    OwnRevenueModifiedBudgetLine::factory()->create([
+        'own_revenue_budget_id' => $budget->id,
+        'initial_amount_cents' => 9_007_199_254_740_993,
+    ]);
     $otherBudget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2027]);
     OwnRevenueModifiedBudgetLine::factory()->create([
         'own_revenue_budget_id' => $otherBudget->id,
-        'initial_amount_cents' => 9_007_199_254_740_993,
+        'initial_amount_cents' => 8_000,
     ]);
 
     $data = app(OwnRevenueInternalReportData::class)->forBudget($budget, []);
 
-    expect($data['summary']['initial_amount_cents'])->toBe('100000')
-        ->and($data['lines'][0]['initial_amount_cents'])->toBeString();
+    expect($data['summary']['initial_amount_cents'])->toBe('9007199254740993')
+        ->and($data['planning_vs_execution']['planned_amount_cents'])->toBe('9007199254740993')
+        ->and($data['lines'][0]['initial_amount_cents'])->toBe('9007199254740993');
 });
 
 test('internal reports apply valid filters and summarize related operations', function () {
@@ -147,4 +152,20 @@ test('internal reports safely clear filters that do not exist in the budget', fu
         'specific_item_code' => null,
         'month' => null,
     ])->and($data['lines'])->toHaveCount(2);
+});
+
+test('internal reports clear a selected item that does not belong to the selected chapter', function () {
+    ['budget' => $budget] = internalReportFixture();
+
+    $data = app(OwnRevenueInternalReportData::class)->forBudget($budget, [
+        'chapter_code' => '2000',
+        'specific_item_code' => '33901',
+    ]);
+
+    expect($data['filters']['applied'])->toBe([
+        'chapter_code' => '2000',
+        'specific_item_code' => null,
+        'month' => null,
+    ])->and($data['lines'])->toHaveCount(1)
+        ->and($data['lines'][0]['specific_item_code'])->toBe('21101');
 });

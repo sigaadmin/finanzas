@@ -92,7 +92,11 @@ class OwnRevenueInternalReportData
      */
     private function sumRows(array $rows): array
     {
-        $sum = static fn (string $key): string => (string) array_sum(array_column($rows, $key));
+        $sum = static fn (string $key): string => array_reduce(
+            array_column($rows, $key),
+            static fn (string $carry, int|string $amount): string => bcadd($carry, (string) $amount),
+            '0',
+        );
 
         return [
             'initial_amount_cents' => $sum('initial_amount_cents'),
@@ -110,13 +114,14 @@ class OwnRevenueInternalReportData
      */
     private function planningVsExecution(array $rows): array
     {
-        $planned = (string) array_sum(array_column($rows, 'initial_amount_cents'));
-        $paid = (string) array_sum(array_column($rows, 'paid_amount_cents'));
+        $summary = $this->sumRows($rows);
+        $planned = $summary['initial_amount_cents'];
+        $paid = $summary['paid_amount_cents'];
 
         return [
             'planned_amount_cents' => $planned,
             'paid_amount_cents' => $paid,
-            'difference_amount_cents' => (string) ((int) $planned - (int) $paid),
+            'difference_amount_cents' => bcsub($planned, $paid),
             'execution_percentage' => $planned === '0'
                 ? null
                 : bcdiv(bcmul($paid, '100', 2), $planned, 2),
@@ -133,10 +138,14 @@ class OwnRevenueInternalReportData
         $chapter = trim((string) ($input['chapter_code'] ?? ''));
         $item = trim((string) ($input['specific_item_code'] ?? ''));
         $month = filter_var($input['month'] ?? null, FILTER_VALIDATE_INT);
+        $chapter = $chapter !== '' && $lines->contains('chapter_code', $chapter) ? $chapter : null;
+        $itemLines = $chapter === null
+            ? $lines
+            : $lines->where('chapter_code', $chapter);
 
         return [
-            'chapter_code' => $chapter !== '' && $lines->contains('chapter_code', $chapter) ? $chapter : null,
-            'specific_item_code' => $item !== '' && $lines->contains('specific_item_code', $item) ? $item : null,
+            'chapter_code' => $chapter,
+            'specific_item_code' => $item !== '' && $itemLines->contains('specific_item_code', $item) ? $item : null,
             'month' => is_int($month) && $lines->contains('month', $month) ? $month : null,
         ];
     }
