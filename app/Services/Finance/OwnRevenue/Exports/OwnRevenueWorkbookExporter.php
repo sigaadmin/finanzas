@@ -2,6 +2,8 @@
 
 namespace App\Services\Finance\OwnRevenue\Exports;
 
+use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueAbpreJustification;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueWorkbookExport;
 use App\Models\User;
@@ -76,6 +78,30 @@ class OwnRevenueWorkbookExporter
             'region_name' => 'Felipe Carrillo Puerto',
         ]);
         $proposal = $initialBudget->proposal()->with(['technicalNeeds.activity', 'fuelNeeds.activity', 'travelCommissions.activity', 'travelCommissions.participants'])->first();
+        $itemCodes = collect($snapshot['reconciliation']['groups'] ?? [])
+            ->pluck('specific_item_code')
+            ->filter(fn (mixed $itemCode): bool => filled($itemCode))
+            ->map(fn (mixed $itemCode): string => (string) $itemCode)
+            ->unique()
+            ->values();
+        $snapshot['expense_classifications'] = ExpenseClassification::query()
+            ->where('fiscal_year', $budget->fiscal_year)
+            ->whereIn('specific_item_code', $itemCodes)
+            ->get()
+            ->mapWithKeys(fn (ExpenseClassification $classification): array => [
+                $classification->specific_item_code => $classification->only([
+                    'chapter_code', 'chapter_name', 'specific_item_name',
+                ]),
+            ])
+            ->all();
+        $snapshot['justifications'] = OwnRevenueAbpreJustification::query()
+            ->where('own_revenue_import_file_id', $proposal?->source_abpre_file_id ?? $snapshot['sources']['abpre'] ?? 0)
+            ->orderBy('sort_order')
+            ->get()
+            ->map(fn (OwnRevenueAbpreJustification $justification): array => $justification->only([
+                'specific_item_code', 'goals_impact', 'justification',
+            ]))
+            ->all();
 
         if ($proposal !== null) {
             $technical = $proposal->technicalNeeds->keyBy('stable_key');

@@ -4,6 +4,7 @@ use App\Actions\Finance\OwnRevenue\Exports\GenerateOwnRevenueWorkbookExport;
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\OwnRevenueActivity;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueInitialBudget;
@@ -77,7 +78,41 @@ test('an administrator generates a private auditable workbook from the authorize
         ->and($export->sha256)->toBe(hash('sha256', $contents))
         ->and($export->getRawOriginal('total_amount_cents'))->toBe(125000)
         ->and($export->generated_by)->toBe($user->id)
-        ->and($sheet->getCell('A7')->getValue())->toBe($budget->responsible_unit_code);
+        ->and($sheet->getCell('A7')->getValue())->toBe((int) $budget->responsible_unit_code)
+        ->and($sheet->getCell('A7')->getDataType())->toBe('n');
+});
+
+test('the generated ABPRE justification sheet uses the budget COG descriptions', function () {
+    Storage::fake('local');
+    [$budget, $initialBudget] = authorizedInitialBudget();
+    ExpenseClassification::query()->create([
+        'fiscal_year' => $budget->fiscal_year,
+        'chapter_code' => '2000',
+        'chapter_name' => 'Materiales y suministros',
+        'concept_code' => '2100',
+        'concept_name' => 'Materiales de administración, emisión de documentos y artículos oficiales',
+        'generic_item_code' => '21100',
+        'generic_item_name' => 'Materiales, útiles y equipos menores de oficina',
+        'specific_item_code' => '21103',
+        'specific_item_name' => 'Papelería',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
+    $export = app(GenerateOwnRevenueWorkbookExport::class)->handle(
+        $budget,
+        $initialBudget,
+        workbookExportUser(UserRole::FinanceManager),
+        'abpre',
+    );
+    $path = tempnam(sys_get_temp_dir(), 'generated-abpre-justification');
+    file_put_contents($path, Storage::disk('local')->get($export->storage_path));
+    $sheet = IOFactory::load($path)->getSheetByName('Formato Justificación Partidas');
+    unlink($path);
+
+    expect($sheet)->not->toBeNull()
+        ->and($sheet->getCell('C7')->getValue())->toBe(2000)
+        ->and($sheet->getCell('D7')->getValue())->toBe('Materiales y suministros')
+        ->and($sheet->getCell('F7')->getValue())->toBe('Papelería');
 });
 
 test('generation rejects budgets that are not authorized', function () {
@@ -172,6 +207,6 @@ test('older authorized snapshots recover descriptive fields without changing aut
     $sheet = IOFactory::load($path)->getActiveSheet();
     unlink($path);
 
-    expect($sheet->getCell('E2')->getValue())->toBe('Papel institucional')
-        ->and($sheet->getCell('I2')->getValue())->toBe(1250);
+    expect($sheet->getCell('E17')->getValue())->toBe('Papel institucional')
+        ->and($sheet->getCell('I17')->getValue())->toBe(1250);
 });
