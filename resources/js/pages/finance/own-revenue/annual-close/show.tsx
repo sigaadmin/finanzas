@@ -321,6 +321,17 @@ function CloseReadiness({
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4">
+                                <InputError
+                                    role="alert"
+                                    message={
+                                        (
+                                            form.errors as Record<
+                                                string,
+                                                string | undefined
+                                            >
+                                        ).closure
+                                    }
+                                />
                                 <div className="grid gap-2">
                                     <Label htmlFor="close-confirmation">
                                         Escribe{' '}

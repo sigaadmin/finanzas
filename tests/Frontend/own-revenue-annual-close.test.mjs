@@ -26,6 +26,8 @@ test('annual close requires the exact phrase and a meaningful note', () => {
     assert.match(page, /permissions\.close/);
     assert.match(page, /Dialog/);
     assert.match(page, /Cierre definitivo/);
+    assert.match(page, /form\.errors as Record/);
+    assert.match(page, /\.closure/);
 });
 
 test('annual close explains blockers and displays the immutable act', () => {
