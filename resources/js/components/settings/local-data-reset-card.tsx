@@ -1,6 +1,7 @@
 import { useForm } from '@inertiajs/react';
 import { CircleCheck, LoaderCircle, TriangleAlert } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {

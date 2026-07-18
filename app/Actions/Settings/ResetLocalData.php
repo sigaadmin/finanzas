@@ -27,6 +27,11 @@ class ResetLocalData
         $deletedRecords = DB::transaction(function () use ($scope): int {
             $deletedRecords = 0;
 
+            if (in_array($scope, [LocalDataResetScope::OwnRevenue, LocalDataResetScope::All], true)) {
+                DB::table('own_revenue_proposals')->update(['based_on_proposal_id' => null]);
+                DB::table('own_revenue_import_files')->update(['abpre_import_file_id_at_analysis' => null]);
+            }
+
             foreach ($this->catalog->tablesFor($scope) as $table) {
                 $deletedRecords += DB::table($table)->delete();
             }

@@ -261,6 +261,7 @@ function ReconciliationGroupRow({
 
     const handleActivityChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
         const value = event.target.value;
+
         if (value === '') {
             return;
         }

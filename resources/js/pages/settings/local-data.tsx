@@ -1,9 +1,8 @@
 import { Head } from '@inertiajs/react';
 import { ShieldAlert } from 'lucide-react';
 import Heading from '@/components/heading';
-import LocalDataResetCard, {
-    type LocalDataResetScopeDefinition,
-} from '@/components/settings/local-data-reset-card';
+import LocalDataResetCard from '@/components/settings/local-data-reset-card';
+import type { LocalDataResetScopeDefinition } from '@/components/settings/local-data-reset-card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { index } from '@/routes/local-data';
 

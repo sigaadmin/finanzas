@@ -50,7 +50,7 @@ Run:
 php artisan make:enum Settings/LocalDataResetScope --no-interaction
 php artisan make:class Data/Settings/LocalDataResetResult --no-interaction
 php artisan make:class Services/Settings/LocalDataResetCatalog --no-interaction
-php artisan make:test --pest LocalDataResetCatalogTest --no-interaction
+php artisan make:test --pest Settings/LocalDataResetCatalogTest --no-interaction
 ```
 
 Expected: se crean los cuatro archivos sin modificar dependencias.
@@ -171,7 +171,7 @@ Run:
 
 ```bash
 php artisan make:class Actions/Settings/ResetLocalData --no-interaction
-php artisan make:test --pest ResetLocalDataTest --no-interaction
+php artisan make:test --pest Settings/ResetLocalDataTest --no-interaction
 ```
 
 Expected: ambos archivos son creados.
@@ -306,7 +306,7 @@ Run:
 ```bash
 php artisan make:class Actions/Settings/EnsureInstitutionalOwner --no-interaction
 php artisan make:command ResetLocalDataCommand --command=finance:reset-local-data --no-interaction
-php artisan make:test --pest ResetLocalDataCommandTest --no-interaction
+php artisan make:test --pest Settings/ResetLocalDataCommandTest --no-interaction
 ```
 
 Expected: Laravel crea los archivos en sus ubicaciones convencionales.
@@ -424,7 +424,7 @@ Run:
 php artisan make:middleware EnsureLocalDataResetIsAvailable --no-interaction
 php artisan make:request Settings/ResetLocalDataRequest --no-interaction
 php artisan make:controller Settings/LocalDataResetController --no-interaction
-php artisan make:test --pest LocalDataResetHttpTest --no-interaction
+php artisan make:test --pest Settings/LocalDataResetHttpTest --no-interaction
 ```
 
 Expected: archivos generados con namespaces convencionales.
@@ -518,7 +518,7 @@ Expected: PASS; se generan `@/routes/local-data` y las rutas mantienen sus nombr
 - [ ] **Step 7: Commit**
 
 ```bash
-git add app/Http/Middleware/EnsureLocalDataResetIsAvailable.php app/Http/Requests/Settings/ResetLocalDataRequest.php app/Http/Controllers/Settings/LocalDataResetController.php app/Http/Middleware/HandleInertiaRequests.php resources/js/types/global.d.ts routes/settings.php resources/js/routes/local-data tests/Feature/Settings/LocalDataResetHttpTest.php
+git add app/Http/Middleware/EnsureLocalDataResetIsAvailable.php app/Http/Requests/Settings/ResetLocalDataRequest.php app/Http/Controllers/Settings/LocalDataResetController.php app/Http/Middleware/HandleInertiaRequests.php resources/js/types/global.d.ts routes/settings.php tests/Feature/Settings/LocalDataResetHttpTest.php
 git commit -m "feat: expose owner-only local reset endpoints"
 ```
 
@@ -551,7 +551,7 @@ Agregar una inspección del texto de la página que confirme las cuatro operacio
 
 - [ ] **Step 2: Ejecutar la prueba y comprobar el fallo**
 
-Run: `npm run test:frontend -- --test-name-pattern="reset"`
+Run: `node --test --test-name-pattern="reset" tests/Frontend/local-data-reset.test.mjs`
 
 Expected: FAIL porque el helper y la página no existen.
 
@@ -588,9 +588,9 @@ Mostrar descripción funcional, datos conservados, frase requerida, error de val
 Run:
 
 ```bash
-npm run test:frontend -- --test-name-pattern="reset"
+npm run test:frontend
 npm run types:check
-npm run format -- resources/js/pages/settings/local-data.tsx resources/js/components/settings/local-data-reset-card.tsx resources/js/layouts/settings/layout.tsx
+npm exec prettier -- --write resources/js/pages/settings/local-data.tsx resources/js/components/settings/local-data-reset-card.tsx resources/js/layouts/settings/layout.tsx
 ```
 
 Expected: pruebas y TypeScript PASS; Prettier deja los archivos estables.
@@ -619,7 +619,7 @@ Run:
 
 ```bash
 php artisan test --compact tests/Feature/Settings/LocalDataResetCatalogTest.php tests/Feature/Settings/ResetLocalDataTest.php tests/Feature/Settings/ResetLocalDataCommandTest.php tests/Feature/Settings/LocalDataResetHttpTest.php tests/Feature/Settings/AppearanceSettingsTest.php tests/Feature/Finance/AuthorizedAccessTest.php
-npm run test:frontend -- --test-name-pattern="reset"
+npm run test:frontend
 ```
 
 Expected: todas las pruebas PASS.

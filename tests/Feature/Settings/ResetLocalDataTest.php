@@ -6,7 +6,9 @@ use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\ChargeConcept;
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
+use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
 use App\Models\Finance\U300\U300Program;
 use App\Models\FinanceFolioSequence;
 use App\Models\OfficialFeeSchedule;
@@ -110,6 +112,35 @@ test('own revenue reset preserves shared classifications and their source file',
     Storage::disk('local')->assertMissing('own-revenue/exports/export.xlsx');
     Storage::disk('local')->assertMissing('finance/own-revenue/1/expense-dossiers/evidence.pdf');
     Storage::disk('local')->assertExists('finance/expense-classifications/imports/source.xlsx');
+});
+
+test('own revenue reset removes proposal revisions with restricted self references', function () {
+    $proposal = OwnRevenueProposal::factory()->create();
+    OwnRevenueProposal::factory()->create([
+        'own_revenue_budget_id' => $proposal->own_revenue_budget_id,
+        'version_number' => 2,
+        'based_on_proposal_id' => $proposal->id,
+        'created_by' => $proposal->created_by,
+    ]);
+
+    app(ResetLocalData::class)->handle(LocalDataResetScope::OwnRevenue);
+
+    expect(OwnRevenueProposal::query()->count())->toBe(0);
+});
+
+test('own revenue reset removes import analyses with restricted self references', function () {
+    $abpreFile = OwnRevenueImportFile::factory()->create();
+    OwnRevenueImportFile::factory()->create([
+        'own_revenue_import_session_id' => $abpreFile->own_revenue_import_session_id,
+        'own_revenue_budget_id' => $abpreFile->own_revenue_budget_id,
+        'version_number' => 2,
+        'abpre_import_file_id_at_analysis' => $abpreFile->id,
+        'uploaded_by' => $abpreFile->uploaded_by,
+    ]);
+
+    app(ResetLocalData::class)->handle(LocalDataResetScope::OwnRevenue);
+
+    expect(OwnRevenueImportFile::query()->count())->toBe(0);
 });
 
 test('database failures roll back the module and keep its files', function () {
