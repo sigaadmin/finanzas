@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Gate;
 
 class OwnRevenueFuelViewData
 {
+    public function __construct(private readonly OwnRevenueFuelSummary $summary) {}
+
     /** @return array<string, mixed> */
     public function forBudget(OwnRevenueBudget $budget): array
     {
@@ -31,12 +33,7 @@ class OwnRevenueFuelViewData
                 'opened_by_name' => $fund->openedBy->name,
                 'opened_at' => $fund->opened_at?->toISOString(),
             ],
-            'summary' => [
-                'acquired_amount_cents' => (string) ($fund?->getRawOriginal('acquired_amount_cents') ?? 0),
-                'confirmed_consumption_cents' => '0',
-                'pending_needs_cents' => '0',
-                'available_amount_cents' => (string) ($fund?->getRawOriginal('acquired_amount_cents') ?? 0),
-            ],
+            'summary' => $this->summary->forBudget($budget),
             'eligible_dossiers' => $budget->expenseDossiers()
                 ->where('status', OwnRevenueExpenseDossierStatus::Paid)
                 ->whereHas('budgetLine', fn ($query) => $query

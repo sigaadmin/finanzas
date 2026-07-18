@@ -1,10 +1,13 @@
 <?php
 
 use App\Enums\Finance\OwnRevenue\OwnRevenueExpenseDossierStatus;
+use App\Enums\Finance\OwnRevenue\OwnRevenueFuelCommissionStatus;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueExpenseDossier;
 use App\Models\Finance\OwnRevenue\Execution\OwnRevenueModifiedBudgetLine;
+use App\Models\Finance\OwnRevenue\Fuel\OwnRevenueFuelCommission;
+use App\Models\Finance\OwnRevenue\Fuel\OwnRevenueFuelFund;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -74,6 +77,38 @@ test('a manager opens the fund from the workspace while an assistant cannot', fu
         'source_expense_dossier_id' => $dossier->id,
         'acquired_amount_cents' => 78_500,
     ]);
+});
+
+test('the fuel workspace reports real commission balances', function () {
+    $manager = fuelNavigationUser(UserRole::FinanceManager);
+    $fund = OwnRevenueFuelFund::factory()->create([
+        'acquired_amount_cents' => 100_000,
+        'opened_by' => $manager->id,
+    ]);
+    OwnRevenueFuelCommission::factory()->create([
+        'own_revenue_fuel_fund_id' => $fund->id,
+        'status' => OwnRevenueFuelCommissionStatus::Pending,
+        'amount_cents' => 30_000,
+        'created_by' => $manager->id,
+    ]);
+    OwnRevenueFuelCommission::factory()->create([
+        'own_revenue_fuel_fund_id' => $fund->id,
+        'status' => OwnRevenueFuelCommissionStatus::Confirmed,
+        'amount_cents' => 25_000,
+        'balance_after_cents' => 75_000,
+        'created_by' => $manager->id,
+        'confirmed_by' => $manager->id,
+        'confirmed_at' => now(),
+    ]);
+
+    $this->actingAs($manager)
+        ->get(route('finance.own-revenue.budgets.fuel.show', $fund->budget))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.acquired_amount_cents', '100000')
+            ->where('summary.confirmed_consumption_cents', '25000')
+            ->where('summary.pending_needs_cents', '30000')
+            ->where('summary.available_amount_cents', '75000'));
 });
 
 test('the fuel page uses same-window navigation and readable labels', function () {
