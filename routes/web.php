@@ -10,6 +10,7 @@ use App\Http\Controllers\Finance\OwnRevenueAbprePreviewController;
 use App\Http\Controllers\Finance\OwnRevenueActivityExceptionController;
 use App\Http\Controllers\Finance\OwnRevenueActivityReconciliationController;
 use App\Http\Controllers\Finance\OwnRevenueActivityRuleController;
+use App\Http\Controllers\Finance\OwnRevenueAnnualCloseController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetController;
 use App\Http\Controllers\Finance\OwnRevenueBudgetExecutionController;
 use App\Http\Controllers\Finance\OwnRevenueCogConfirmationController;
@@ -138,6 +139,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('own-revenue/budgets/{budget}/reports', OwnRevenueInternalReportController::class)
             ->name('own-revenue.budgets.reports.show');
+
+        Route::get('own-revenue/budgets/{budget}/annual-close', [OwnRevenueAnnualCloseController::class, 'show'])
+            ->name('own-revenue.budgets.annual-close.show');
+
+        Route::post('own-revenue/budgets/{budget}/annual-close', [OwnRevenueAnnualCloseController::class, 'store'])
+            ->name('own-revenue.budgets.annual-close.store');
 
         Route::get('own-revenue/budgets/{budget}/fuel', [OwnRevenueFuelFundController::class, 'show'])
             ->name('own-revenue.budgets.fuel.show');

@@ -111,6 +111,7 @@ class OwnRevenueBudgetController extends Controller
             'activities' => fn ($query) => $query->orderBy('sort_order'),
             'signatories' => fn ($query) => $query->orderBy('sort_order'),
             'cogConfirmedBy:id,name',
+            'annualClosure.closedBy:id,name',
         ]);
 
         return Inertia::render('finance/own-revenue/budgets/show', [
@@ -121,6 +122,7 @@ class OwnRevenueBudgetController extends Controller
                 'copy' => Gate::allows('copy', $budget),
                 'confirmCog' => Gate::allows('confirmCog', $budget),
                 'viewImports' => Gate::allows('viewImports', $budget),
+                'closeAnnualBudget' => Gate::allows('closeAnnualBudget', $budget),
             ],
         ]);
     }
@@ -200,6 +202,15 @@ class OwnRevenueBudgetController extends Controller
                     'name' => $budget->cogConfirmedBy->name,
                 ],
                 'confirmed_at' => $budget->cog_confirmed_at?->toISOString(),
+            ],
+            'annual_closure' => $budget->annualClosure === null ? null : [
+                'id' => $budget->annualClosure->id,
+                'fingerprint' => $budget->annualClosure->fingerprint,
+                'closed_by' => [
+                    'id' => $budget->annualClosure->closedBy->id,
+                    'name' => $budget->annualClosure->closedBy->name,
+                ],
+                'closed_at' => $budget->annualClosure->closed_at?->toISOString(),
             ],
             'created_at' => $budget->created_at?->toISOString(),
             'updated_at' => $budget->updated_at?->toISOString(),
