@@ -5,6 +5,7 @@ import {
     BarChart3,
     ClipboardList,
     Fuel,
+    GitCompareArrows,
     WalletCards,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +38,19 @@ type ReportLine = AmountSummary & {
     month: number;
 };
 
+type PlanningVersion = {
+    id: number;
+    version_number: number;
+    status: 'draft' | 'calculated' | 'adjusted';
+    based_on_version_number: number | null;
+    total_amount_cents: string;
+    difference_from_previous_cents: string | null;
+    applied_cut_amount_cents: string;
+    uma_values: string[];
+    has_mixed_uma: boolean;
+    calculated_at: string | null;
+};
+
 type Props = {
     budget: {
         id: number;
@@ -65,6 +79,19 @@ type Props = {
         paid_amount_cents: string;
         difference_amount_cents: string;
         execution_percentage: string | null;
+    };
+    planning_adjustments: {
+        version_count: number;
+        distributed_cut_amount_cents: string;
+        versions: PlanningVersion[];
+        initial_authorization: {
+            proposal_version_number: number;
+            proposal_total_amount_cents: string;
+            authorized_total_amount_cents: string;
+            difference_amount_cents: string;
+            uma_value: string | null;
+            authorized_at: string | null;
+        } | null;
     };
     modifications: {
         total: number;
@@ -131,6 +158,12 @@ const dossierLabels: Record<string, string> = {
     cancelled: 'Cancelado',
 };
 
+const proposalStatusLabels: Record<PlanningVersion['status'], string> = {
+    draft: 'En preparación',
+    calculated: 'Calculada',
+    adjusted: 'Ajustada',
+};
+
 const selectClassName =
     'h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none';
 
@@ -142,6 +175,28 @@ function formatCents(value: string): string {
     const fraction = (absolute % 100n).toString().padStart(2, '0');
 
     return `${sign}$${pesos.toLocaleString('es-MX')}.${fraction}`;
+}
+
+function formatSignedCents(value: string): string {
+    return BigInt(value) > 0n ? `+${formatCents(value)}` : formatCents(value);
+}
+
+function formatDecimal(value: string): string {
+    return Number(value).toLocaleString('es-MX', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+    });
+}
+
+function formatDate(value: string | null): string {
+    if (value === null) {
+        return 'Pendiente';
+    }
+
+    return new Intl.DateTimeFormat('es-MX', {
+        dateStyle: 'medium',
+        timeZone: 'America/Cancun',
+    }).format(new Date(value));
 }
 
 export default function OwnRevenueInternalReportShow(props: Props) {
@@ -316,6 +371,10 @@ export default function OwnRevenueInternalReportShow(props: Props) {
 
                 <BudgetTable lines={props.lines} />
 
+                <PlanningAdjustmentsCard
+                    comparison={props.planning_adjustments}
+                />
+
                 <div className="grid gap-6 xl:grid-cols-2">
                     <Card>
                         <CardHeader>
@@ -356,6 +415,218 @@ export default function OwnRevenueInternalReportShow(props: Props) {
                 </div>
             </main>
         </>
+    );
+}
+
+function PlanningAdjustmentsCard({
+    comparison,
+}: {
+    comparison: Props['planning_adjustments'];
+}) {
+    const authorization = comparison.initial_authorization;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <GitCompareArrows className="size-5" />
+                    <span>Planeación y ajustes</span>
+                </CardTitle>
+                <CardDescription>
+                    Evolución de la propuesta hasta el presupuesto inicial
+                    autorizado. Esta historia corresponde al ejercicio completo
+                    y no cambia con los filtros de partida o mes.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                    <Metric
+                        label="Versiones"
+                        value={comparison.version_count.toLocaleString('es-MX')}
+                    />
+                    <Metric
+                        label="Reducciones distribuidas"
+                        value={formatCents(
+                            comparison.distributed_cut_amount_cents,
+                        )}
+                    />
+                    <Metric
+                        label="Presupuesto inicial"
+                        value={
+                            authorization === null ? 'Pendiente' : 'Autorizado'
+                        }
+                    />
+                </div>
+
+                {comparison.versions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        Todavía no hay versiones de planeación para comparar.
+                    </p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-5xl text-sm">
+                            <thead>
+                                <tr className="border-b text-left text-muted-foreground">
+                                    <th scope="col" className="px-2 py-3">
+                                        Versión
+                                    </th>
+                                    <th scope="col" className="px-2 py-3">
+                                        Estado
+                                    </th>
+                                    <th scope="col" className="px-2 py-3">
+                                        Origen
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        className="px-2 py-3 text-right"
+                                    >
+                                        Importe
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        className="px-2 py-3 text-right"
+                                    >
+                                        Variación
+                                    </th>
+                                    <th scope="col" className="px-2 py-3">
+                                        UMA aplicada
+                                    </th>
+                                    <th
+                                        scope="col"
+                                        className="px-2 py-3 text-right"
+                                    >
+                                        Reducciones
+                                    </th>
+                                    <th scope="col" className="px-2 py-3">
+                                        Cálculo
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {comparison.versions.map((version) => (
+                                    <tr
+                                        key={version.id}
+                                        className="border-b last:border-0"
+                                    >
+                                        <td className="px-2 py-3 font-medium">
+                                            V{version.version_number}
+                                        </td>
+                                        <td className="px-2 py-3">
+                                            <Badge variant="outline">
+                                                {
+                                                    proposalStatusLabels[
+                                                        version.status
+                                                    ]
+                                                }
+                                            </Badge>
+                                        </td>
+                                        <td className="px-2 py-3">
+                                            {version.based_on_version_number ===
+                                            null
+                                                ? 'Primera versión'
+                                                : `V${version.based_on_version_number}`}
+                                        </td>
+                                        <td className="px-2 py-3 text-right font-medium tabular-nums">
+                                            {formatCents(
+                                                version.total_amount_cents,
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-3 text-right tabular-nums">
+                                            {version.difference_from_previous_cents ===
+                                            null
+                                                ? 'Sin comparación'
+                                                : formatSignedCents(
+                                                      version.difference_from_previous_cents,
+                                                  )}
+                                        </td>
+                                        <td className="px-2 py-3">
+                                            <UmaValues version={version} />
+                                        </td>
+                                        <td className="px-2 py-3 text-right tabular-nums">
+                                            {formatCents(
+                                                version.applied_cut_amount_cents,
+                                            )}
+                                        </td>
+                                        <td className="px-2 py-3">
+                                            {formatDate(version.calculated_at)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {authorization === null ? (
+                    <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                        El presupuesto inicial todavía no ha sido autorizado.
+                    </p>
+                ) : (
+                    <section className="grid gap-3 rounded-lg border p-4">
+                        <div>
+                            <h3 className="font-semibold">
+                                Presupuesto inicial autorizado
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                Se autorizó desde la versión V
+                                {authorization.proposal_version_number} el{' '}
+                                {formatDate(authorization.authorized_at)}.
+                            </p>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <Metric
+                                label="Total de la propuesta"
+                                value={formatCents(
+                                    authorization.proposal_total_amount_cents,
+                                )}
+                            />
+                            <Metric
+                                label="Total autorizado"
+                                value={formatCents(
+                                    authorization.authorized_total_amount_cents,
+                                )}
+                            />
+                            <Metric
+                                label="Diferencia"
+                                value={formatSignedCents(
+                                    authorization.difference_amount_cents,
+                                )}
+                            />
+                            <Metric
+                                label="UMA autorizada"
+                                value={
+                                    authorization.uma_value === null
+                                        ? 'No registrada'
+                                        : `$${formatDecimal(authorization.uma_value)}`
+                                }
+                            />
+                        </div>
+                    </section>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+function UmaValues({ version }: { version: PlanningVersion }) {
+    if (version.uma_values.length === 0) {
+        return <span className="text-muted-foreground">No aplica</span>;
+    }
+
+    const first = formatDecimal(version.uma_values[0]);
+    const last = formatDecimal(
+        version.uma_values[version.uma_values.length - 1],
+    );
+
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            <span className="tabular-nums">
+                ${version.has_mixed_uma ? `${first} a $${last}` : first}
+            </span>
+            {version.has_mixed_uma && (
+                <Badge variant="secondary">Valores distintos</Badge>
+            )}
+        </div>
     );
 }
 

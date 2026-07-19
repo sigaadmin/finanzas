@@ -18,6 +18,7 @@ class OwnRevenueInternalReportData
     public function __construct(
         private readonly OwnRevenueBudgetBalance $balances,
         private readonly OwnRevenueFuelSummary $fuelSummary,
+        private readonly OwnRevenuePlanningComparison $planningComparison,
     ) {}
 
     /**
@@ -56,6 +57,7 @@ class OwnRevenueInternalReportData
             'summary' => $this->sumRows($rows),
             'lines' => $rows,
             'planning_vs_execution' => $this->planningVsExecution($rows),
+            'planning_adjustments' => $this->planningComparison->forBudget($budget),
             'modifications' => $this->modifications($budget, $lines->modelKeys()),
             'expense_dossiers' => $this->expenseDossiers($budget, $lines->modelKeys()),
             'fuel' => $this->fuelSummary->forBudget($budget),

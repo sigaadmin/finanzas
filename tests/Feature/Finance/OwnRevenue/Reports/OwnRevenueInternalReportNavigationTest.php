@@ -42,6 +42,7 @@ test('authorized finance roles can consult internal reports', function (UserRole
             ->component('finance/own-revenue/reports/show', false)
             ->where('budget.id', $line->own_revenue_budget_id)
             ->where('filters.applied.month', 5)
+            ->where('planning_adjustments.version_count', 1)
             ->where('permissions.read_only', true));
 })->with([
     'manager' => UserRole::FinanceManager,
@@ -55,4 +56,16 @@ test('users without financial access cannot consult internal reports', function 
     $this->actingAs(User::factory()->create())
         ->get(route('finance.own-revenue.budgets.reports.show', $line->budget))
         ->assertForbidden();
+});
+
+test('internal report page presents planning versions and adjustments in operational language', function () {
+    $source = file_get_contents(resource_path('js/pages/finance/own-revenue/reports/show.tsx'));
+
+    expect($source)
+        ->toContain('Planeación y ajustes')
+        ->toContain('Reducciones distribuidas')
+        ->toContain('UMA aplicada')
+        ->toContain('Presupuesto inicial autorizado')
+        ->toContain('Valores distintos')
+        ->toContain('Todavía no hay versiones de planeación para comparar.');
 });

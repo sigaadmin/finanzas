@@ -86,6 +86,16 @@ test('internal reports calculate budget balances and planning progress', functio
     ])->and($data['lines'])->toHaveCount(2);
 });
 
+test('internal reports include the planning and adjustment comparison', function () {
+    ['budget' => $budget] = internalReportFixture();
+    $budget->proposals()->firstOrFail()->update(['total_amount_cents' => 100_000]);
+
+    $data = app(OwnRevenueInternalReportData::class)->forBudget($budget, []);
+
+    expect($data['planning_adjustments']['version_count'])->toBe(1)
+        ->and($data['planning_adjustments']['versions'][0]['total_amount_cents'])->toBe('100000');
+});
+
 test('internal reports isolate budgets and preserve portable integer amounts', function () {
     $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2026]);
     OwnRevenueModifiedBudgetLine::factory()->create([
