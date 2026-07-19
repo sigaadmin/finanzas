@@ -239,6 +239,19 @@ test('file statuses use operational language and expose only available ABPRE act
     );
 });
 
+test('legacy parser pending status is presented as pending analysis', () => {
+    assert.equal(
+        importFilePresentation({
+            status: 'parser_pending',
+            format: null,
+            analyzed: false,
+            issueCount: 0,
+            canReclassify: false,
+        }).label,
+        'Pendiente de análisis',
+    );
+});
+
 test('work sheet files expose analysis and preview actions with operational language', () => {
     assert.deepEqual(
         importFilePresentation({

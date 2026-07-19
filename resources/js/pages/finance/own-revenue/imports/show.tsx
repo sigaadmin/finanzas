@@ -147,7 +147,7 @@ export default function OwnRevenueImportShow({
                         tone="warning"
                     />
                     <Summary
-                        label="Revisión no disponible"
+                        label="Pendiente de análisis"
                         value={parserPendingCount}
                     />
                     <Summary

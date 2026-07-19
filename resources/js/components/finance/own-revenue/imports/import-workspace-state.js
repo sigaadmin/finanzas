@@ -10,7 +10,7 @@ const importFileStatusLabels = {
     ready: 'Listo para revisar',
     confirmed: 'Confirmado',
     failed: 'No se pudo analizar',
-    parser_pending: 'Revisión no disponible',
+    parser_pending: 'Pendiente de análisis',
     replaced: 'Reemplazado por otra versión',
     discarded: 'Descartado',
 };

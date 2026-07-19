@@ -127,3 +127,21 @@ it('does not merge header fragments separated by blank physical rows', function 
 
     expect($detection->format)->not->toBe(OwnRevenueImportFormat::WorkSheet);
 });
+
+it('does not confuse a monthly goals calendar with ABPRE', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'METAS' => [
+            2 => ['A' => 'Calendario de metas por región'],
+            3 => [
+                'A' => 'Enero', 'B' => 'Febrero', 'C' => 'Marzo', 'D' => 'Abril',
+                'E' => 'Mayo', 'F' => 'Junio', 'G' => 'Julio', 'H' => 'Agosto',
+                'I' => 'Septiembre', 'J' => 'Octubre', 'K' => 'Noviembre',
+                'L' => 'Diciembre', 'M' => 'Anual',
+            ],
+        ],
+    ]);
+
+    $detection = (new OwnRevenueWorkbookFormatDetector)->detect((new XlsxWorkbookReader)->read($fixture));
+
+    expect($detection->format)->toBeNull();
+});

@@ -51,7 +51,9 @@ class OwnRevenueWorkbookFormatDetector
         $best = $scores[$bestFormat];
         $second = $scores[$formats[1]];
         $ambiguous = $best['confidence'] >= 80 && $best['confidence'] === $second['confidence'];
-        $detectedFormat = $best['confidence'] >= 80 && ! $ambiguous
+        $detectedFormat = $best['confidence'] >= 80
+            && ! $ambiguous
+            && $this->hasRequiredAnchors($bestFormat, $best['matches'])
             ? OwnRevenueImportFormat::from($bestFormat)
             : null;
         $evidence = array_map(
@@ -144,5 +146,16 @@ class OwnRevenueWorkbookFormatDetector
             'insumos' => 'concepto',
             default => $normalized,
         };
+    }
+
+    /** @param list<string> $matches */
+    private function hasRequiredAnchors(string $format, array $matches): bool
+    {
+        $requiredAnchors = match ($format) {
+            OwnRevenueImportFormat::Abpre->value => ['clave unidad responsable', 'partida'],
+            default => [],
+        };
+
+        return array_diff($requiredAnchors, $matches) === [];
     }
 }
