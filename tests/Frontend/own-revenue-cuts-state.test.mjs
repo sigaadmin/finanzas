@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+    cutCentsToPesos,
     cutFiltersQuery,
+    cutPesosToCents,
     visibleCutCandidates,
 } from '../../resources/js/components/finance/own-revenue/planning/cuts-state.js';
 
@@ -50,6 +52,13 @@ test('cut filter navigation stays in the same window and clears empty values', (
     );
 });
 
+test('cut inputs display pesos while preserving exact cents for submission', () => {
+    assert.equal(cutCentsToPesos('2500000'), '25000.00');
+    assert.equal(cutPesosToCents('25000'), '2500000');
+    assert.equal(cutPesosToCents('25000.50'), '2500050');
+    assert.equal(cutPesosToCents('25000.501'), null);
+});
+
 test('the workspace presents ABPRE differences as a bidirectional reconciliation', () => {
     const cutsPage = readFileSync(
         new URL(
@@ -69,6 +78,7 @@ test('the workspace presents ABPRE differences as a bidirectional reconciliation
     assert.match(cutsPage, /Conciliación con ABPRE/);
     assert.match(cutsPage, /Aumentos por conciliación/);
     assert.match(cutsPage, /Ajustes automáticos a favor/);
+    assert.match(cutsPage, /Importe a\s+disminuir\s+\(pesos\)/);
     assert.doesNotMatch(cutsPage, /Distribución de reducciones/);
     assert.match(planningPage, /Conciliar con ABPRE/);
 });

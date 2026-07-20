@@ -34,3 +34,29 @@ export function cutFiltersQuery(currentUrl, filters) {
 
     return Object.fromEntries(url.searchParams.entries());
 }
+
+/** @param {string} cents */
+export function cutCentsToPesos(cents) {
+    const normalized = cents.trim();
+
+    if (!/^\d+$/.test(normalized)) {
+        return '';
+    }
+
+    const digits = normalized.replace(/^0+(?=\d)/, '').padStart(3, '0');
+
+    return `${digits.slice(0, -2)}.${digits.slice(-2)}`;
+}
+
+/** @param {string} pesos */
+export function cutPesosToCents(pesos) {
+    const normalized = pesos.trim();
+
+    if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) {
+        return null;
+    }
+
+    const [whole, fraction = ''] = normalized.split('.');
+
+    return `${whole}${fraction.padEnd(2, '0')}`.replace(/^0+(?=\d)/, '');
+}

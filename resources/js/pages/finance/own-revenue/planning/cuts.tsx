@@ -1,7 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { ArrowLeft, CircleAlert, Scale, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { visibleCutCandidates } from '@/components/finance/own-revenue/planning/cuts-state.js';
+import {
+    cutCentsToPesos,
+    cutPesosToCents,
+    visibleCutCandidates,
+} from '@/components/finance/own-revenue/planning/cuts-state.js';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -108,7 +112,7 @@ export default function OwnRevenuePlanningCuts({
         Object.fromEntries(
             candidates.map((candidate) => [
                 candidate.stable_key,
-                candidate.distributed_amount_cents,
+                cutCentsToPesos(candidate.distributed_amount_cents),
             ]),
         ),
     );
@@ -136,11 +140,13 @@ export default function OwnRevenuePlanningCuts({
             ),
         ).sort();
     const amountFor = (candidate: CutCandidate) =>
-        amounts[candidate.stable_key] ?? '0';
+        amounts[candidate.stable_key] ?? '0.00';
+    const centsFor = (candidate: CutCandidate) =>
+        cutPesosToCents(amountFor(candidate));
     const submitsCut = (candidate: CutCandidate) => {
-        const amount = amountFor(candidate).trim();
+        const cents = centsFor(candidate);
 
-        return amount !== '' && amount !== '0';
+        return cents !== null && cents !== '0';
     };
     const cards: Array<[string, string]> = [
         ['Propuesta calculada', summary.calculated_amount_cents],
@@ -326,7 +332,20 @@ export default function OwnRevenuePlanningCuts({
                                     type="button"
                                     variant="outline"
                                     className="w-fit"
-                                    onClick={() => setAmounts(suggestion)}
+                                    onClick={() =>
+                                        setAmounts(
+                                            Object.fromEntries(
+                                                candidates.map((candidate) => [
+                                                    candidate.stable_key,
+                                                    cutCentsToPesos(
+                                                        suggestion[
+                                                            candidate.stable_key
+                                                        ] ?? '0',
+                                                    ),
+                                                ]),
+                                            ),
+                                        )
+                                    }
                                 >
                                     <Sparkles className="size-4" />
                                     Usar distribución proporcional
@@ -387,17 +406,14 @@ export default function OwnRevenuePlanningCuts({
                                                             >
                                                                 Importe a
                                                                 disminuir
+                                                                (pesos)
                                                             </Label>
                                                             <Input
                                                                 id={`cut-${index}`}
-                                                                name={
-                                                                    submitsCut(
-                                                                        candidate,
-                                                                    )
-                                                                        ? `cuts[${index}][amount_cents]`
-                                                                        : undefined
-                                                                }
-                                                                inputMode="numeric"
+                                                                inputMode="decimal"
+                                                                pattern="[0-9]+(?:\.[0-9]{0,2})?"
+                                                                title="Captura un importe en pesos con máximo dos decimales."
+                                                                placeholder="0.00"
                                                                 value={amountFor(
                                                                     candidate,
                                                                 )}
@@ -425,6 +441,15 @@ export default function OwnRevenuePlanningCuts({
                                                             candidate,
                                                         ) && (
                                                             <>
+                                                                <input
+                                                                    type="hidden"
+                                                                    name={`cuts[${index}][amount_cents]`}
+                                                                    value={
+                                                                        centsFor(
+                                                                            candidate,
+                                                                        ) ?? '0'
+                                                                    }
+                                                                />
                                                                 <input
                                                                     type="hidden"
                                                                     name={`cuts[${index}][target_type]`}
