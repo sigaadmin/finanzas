@@ -70,8 +70,12 @@ class OwnRevenueCutReconciliation
                 'calculated_amount_cents' => '0',
                 'target_amount_cents' => $targets[$key] ?? '0',
                 'required_cut_cents' => '0',
+                'required_reduction_cents' => '0',
+                'required_increase_cents' => '0',
                 'distributed_cut_cents' => '0',
+                'distributed_reduction_cents' => '0',
                 'pending_cut_cents' => '0',
+                'pending_reduction_cents' => '0',
                 'candidates' => [],
             ];
             $groups[$key]['calculated_amount_cents'] = $this->add(
@@ -94,17 +98,23 @@ class OwnRevenueCutReconciliation
             $calculated = BigInteger::of($group['calculated_amount_cents']);
             $target = BigInteger::of($group['target_amount_cents']);
             if ($target->isGreaterThan($calculated)) {
-                $blockers[] = 'La propuesta calculada es menor que la Hoja de trabajo en una actividad, partida y mes.';
-                $required = BigInteger::zero();
+                $requiredReduction = BigInteger::zero();
+                $requiredIncrease = $target->minus($calculated);
             } else {
-                $required = $calculated->minus($target);
+                $requiredReduction = $calculated->minus($target);
+                $requiredIncrease = BigInteger::zero();
             }
             $distributed = BigInteger::of($group['distributed_cut_cents']);
-            $group['required_cut_cents'] = (string) $required;
-            $group['pending_cut_cents'] = $distributed->isGreaterThan($required)
+            $pendingReduction = $distributed->isGreaterThan($requiredReduction)
                 ? '0'
-                : (string) $required->minus($distributed);
-            if ($distributed->isGreaterThan($required)) {
+                : (string) $requiredReduction->minus($distributed);
+            $group['required_cut_cents'] = (string) $requiredReduction;
+            $group['required_reduction_cents'] = (string) $requiredReduction;
+            $group['required_increase_cents'] = (string) $requiredIncrease;
+            $group['distributed_reduction_cents'] = (string) $distributed;
+            $group['pending_cut_cents'] = $pendingReduction;
+            $group['pending_reduction_cents'] = $pendingReduction;
+            if ($distributed->isGreaterThan($requiredReduction)) {
                 $blockers[] = 'La reducción distribuida supera lo requerido en una actividad, partida y mes.';
             }
         }
@@ -115,11 +125,16 @@ class OwnRevenueCutReconciliation
             'calculated_amount_cents' => $this->sumColumn($groups, 'calculated_amount_cents'),
             'abpre_amount_cents' => $this->sum($abpre),
             'required_cut_cents' => $this->sumColumn($groups, 'required_cut_cents'),
+            'required_reduction_cents' => $this->sumColumn($groups, 'required_reduction_cents'),
+            'required_increase_cents' => $this->sumColumn($groups, 'required_increase_cents'),
             'distributed_cut_cents' => $this->sumColumn($groups, 'distributed_cut_cents'),
+            'distributed_reduction_cents' => $this->sumColumn($groups, 'distributed_reduction_cents'),
             'pending_cut_cents' => $this->sumColumn($groups, 'pending_cut_cents'),
+            'pending_reduction_cents' => $this->sumColumn($groups, 'pending_reduction_cents'),
         ];
         $summary['adjusted_amount_cents'] = (string) BigInteger::of($summary['calculated_amount_cents'])
-            ->minus($summary['distributed_cut_cents']);
+            ->minus($summary['distributed_cut_cents'])
+            ->plus($summary['required_increase_cents']);
         $groups = array_values($groups);
         $fingerprint = $this->canonicalJson->hash([
             'proposal' => $this->proposalFingerprint->forProposal($proposal),

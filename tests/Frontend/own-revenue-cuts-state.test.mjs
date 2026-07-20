@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
     cutFiltersQuery,
@@ -6,18 +7,68 @@ import {
 } from '../../resources/js/components/finance/own-revenue/planning/cuts-state.js';
 
 const candidates = [
-    { stable_key: 'technical:a', format: 'Ficha técnica', activity_code: 'A01', specific_item_code: '21101', month: 5 },
-    { stable_key: 'fuel:b', format: 'Combustible', activity_code: 'A02', specific_item_code: '26101', month: 4 },
+    {
+        stable_key: 'technical:a',
+        format: 'Ficha técnica',
+        activity_code: 'A01',
+        specific_item_code: '21101',
+        month: 5,
+    },
+    {
+        stable_key: 'fuel:b',
+        format: 'Combustible',
+        activity_code: 'A02',
+        specific_item_code: '26101',
+        month: 4,
+    },
 ];
 
 test('cut filters combine format activity item and month without technical field names', () => {
-    assert.deepEqual(visibleCutCandidates(candidates, {
-        format: 'Combustible', activity: 'A02', item: '26101', month: '4',
-    }), [candidates[1]]);
+    assert.deepEqual(
+        visibleCutCandidates(candidates, {
+            format: 'Combustible',
+            activity: 'A02',
+            item: '26101',
+            month: '4',
+        }),
+        [candidates[1]],
+    );
 });
 
 test('cut filter navigation stays in the same window and clears empty values', () => {
-    assert.deepEqual(cutFiltersQuery('/finance/own-revenue/budgets/1/proposals/1/cuts?format=Ficha%20t%C3%A9cnica&month=5', {
-        format: '', activity: 'A01', item: '', month: '',
-    }), { activity: 'A01' });
+    assert.deepEqual(
+        cutFiltersQuery(
+            '/finance/own-revenue/budgets/1/proposals/1/cuts?format=Ficha%20t%C3%A9cnica&month=5',
+            {
+                format: '',
+                activity: 'A01',
+                item: '',
+                month: '',
+            },
+        ),
+        { activity: 'A01' },
+    );
+});
+
+test('the workspace presents ABPRE differences as a bidirectional reconciliation', () => {
+    const cutsPage = readFileSync(
+        new URL(
+            '../../resources/js/pages/finance/own-revenue/planning/cuts.tsx',
+            import.meta.url,
+        ),
+        'utf8',
+    );
+    const planningPage = readFileSync(
+        new URL(
+            '../../resources/js/pages/finance/own-revenue/planning/show.tsx',
+            import.meta.url,
+        ),
+        'utf8',
+    );
+
+    assert.match(cutsPage, /Conciliación con ABPRE/);
+    assert.match(cutsPage, /Aumentos por conciliación/);
+    assert.match(cutsPage, /Ajustes automáticos a favor/);
+    assert.doesNotMatch(cutsPage, /Distribución de reducciones/);
+    assert.match(planningPage, /Conciliar con ABPRE/);
 });

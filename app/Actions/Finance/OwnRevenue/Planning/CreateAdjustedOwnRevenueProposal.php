@@ -4,6 +4,7 @@ namespace App\Actions\Finance\OwnRevenue\Planning;
 
 use App\Enums\Finance\OwnRevenue\OwnRevenueBudgetStatus;
 use App\Enums\Finance\OwnRevenue\OwnRevenueProposalStatus;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\OwnRevenue\Imports\OwnRevenueImportFile;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\Finance\OwnRevenue\Planning\OwnRevenueProposal;
@@ -63,7 +64,7 @@ class CreateAdjustedOwnRevenueProposal
             if ($reconciliation['summary']['pending_cut_cents'] !== '0'
                 || $reconciliation['summary']['adjusted_amount_cents'] !== $reconciliation['summary']['abpre_amount_cents']) {
                 throw ValidationException::withMessages([
-                    'cuts' => 'Aún falta distribuir parte de la reducción requerida.',
+                    'cuts' => 'Aún falta distribuir parte de las disminuciones requeridas.',
                 ]);
             }
 
@@ -86,6 +87,7 @@ class CreateAdjustedOwnRevenueProposal
 
             $copies = $this->copyRows($lockedSource, $adjusted);
             $this->applyCuts($cuts, $copies);
+            $this->applyIncreases($adjusted, $reconciliation['groups']);
             foreach ($adjusted->travelCommissions()->with('participants')->get() as $commission) {
                 $participants = $commission->participants->sum('total_amount_cents');
                 $commission->update([
@@ -100,6 +102,7 @@ class CreateAdjustedOwnRevenueProposal
             $adjustedReconciliation = $this->reconciliation->forProposal($adjusted);
             if (! $adjustedReconciliation['ready']
                 || $adjustedReconciliation['summary']['required_cut_cents'] !== '0'
+                || $adjustedReconciliation['summary']['required_increase_cents'] !== '0'
                 || $adjustedReconciliation['summary']['calculated_amount_cents'] !== $adjustedReconciliation['summary']['abpre_amount_cents']) {
                 throw ValidationException::withMessages([
                     'cuts' => 'La propuesta ajustada no concilia por actividad, partida y mes.',
@@ -175,6 +178,61 @@ class CreateAdjustedOwnRevenueProposal
                 'travel_lodging' => $this->reduceTravelParticipants($copies['travel'][$cut->target_id], 'lodging_amount_cents', $amount),
                 default => throw ValidationException::withMessages(['cuts' => 'Existe una reducción con un destino no reconocido.']),
             };
+        }
+    }
+
+    /** @param list<array<string, mixed>> $groups */
+    private function applyIncreases(OwnRevenueProposal $adjusted, array $groups): void
+    {
+        $increases = collect($groups)
+            ->filter(fn (array $group): bool => $group['required_increase_cents'] !== '0')
+            ->values();
+        if ($increases->isEmpty()) {
+            return;
+        }
+
+        $classifications = ExpenseClassification::query()
+            ->where('fiscal_year', $adjusted->budget->fiscal_year)
+            ->whereIn('specific_item_code', $increases->pluck('specific_item_code')->unique())
+            ->get()
+            ->keyBy('specific_item_code');
+        $sortOrder = (int) $adjusted->technicalNeeds()->max('sort_order');
+
+        foreach ($increases as $group) {
+            $classification = $classifications->get($group['specific_item_code']);
+            if ($classification === null) {
+                throw ValidationException::withMessages([
+                    'cuts' => "No se encontró la partida {$group['specific_item_code']} para crear el ajuste de conciliación.",
+                ]);
+            }
+            $amount = (string) $group['required_increase_cents'];
+            $adjusted->technicalNeeds()->create([
+                'own_revenue_budget_id' => $adjusted->own_revenue_budget_id,
+                'own_revenue_activity_id' => $group['activity_id'],
+                'expense_classification_id' => $classification->id,
+                'stable_key' => implode(':', [
+                    'abpre-adjustment',
+                    $group['activity_id'],
+                    $group['specific_item_code'],
+                    str_pad((string) $group['month'], 2, '0', STR_PAD_LEFT),
+                ]),
+                'specific_item_code' => $classification->specific_item_code,
+                'specific_item_name' => $classification->specific_item_name,
+                'chapter_code' => $classification->chapter_code,
+                'chapter_name' => $classification->chapter_name,
+                'sequence' => (string) (++$sortOrder),
+                'quantity' => '1.0000',
+                'unit' => 'AJUSTE',
+                'description' => 'Ajuste de conciliación con ABPRE',
+                'unit_price_cents' => $amount,
+                'reference_amount_cents' => $amount,
+                'budget_amount_cents' => $amount,
+                'budget_month' => $group['month'],
+                'impact_on_goals' => null,
+                'region_code' => '02-001',
+                'region_name' => 'Felipe Carrillo Puerto',
+                'sort_order' => $sortOrder,
+            ]);
         }
     }
 

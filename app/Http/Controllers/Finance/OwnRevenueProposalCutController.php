@@ -53,7 +53,7 @@ class OwnRevenueProposalCutController extends Controller
             array_values($request->validated('cuts', [])),
             $request->validated('reconciliation_fingerprint'),
         );
-        Inertia::flash('success', 'La distribución de reducciones quedó guardada.');
+        Inertia::flash('success', 'La distribución de disminuciones quedó guardada.');
 
         return to_route('finance.own-revenue.budgets.proposals.cuts.show', [$budget, $proposal]);
     }

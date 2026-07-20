@@ -160,7 +160,7 @@ export default function OwnRevenuePlanningShow({
                                             ])}
                                         >
                                             <Scale className="size-4" />
-                                            Distribuir reducciones
+                                            Conciliar con ABPRE
                                         </Link>
                                     </Button>
                                 )}
