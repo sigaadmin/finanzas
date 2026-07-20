@@ -21,6 +21,7 @@ class OwnRevenueCutReconciliation
     {
         $proposal->loadMissing([
             'budget',
+            'sourceWorkSheetFile.workSheetLines.activity',
             'sourceWorkSheetFile.workSheetLines.months',
             'sourceAbpreFile.abpreLines.months',
             'technicalNeeds.activity',
@@ -45,6 +46,7 @@ class OwnRevenueCutReconciliation
         }
 
         $workSheet = $this->workSheetTargets($proposal);
+        $workSheetGroups = $this->workSheetGroups($proposal);
         $abpre = $this->abpreTargets($proposal);
         $candidates = $this->candidates($proposal);
         $targets = $this->allocateAbpreTargets($workSheet, $abpre, $candidates, $blockers);
@@ -60,24 +62,15 @@ class OwnRevenueCutReconciliation
         $groups = [];
         foreach ($candidates as $candidate) {
             $key = $candidate['group_key'];
-            $groups[$key] ??= [
-                'key' => $key,
-                'activity_id' => $candidate['activity_id'],
-                'activity_code' => $candidate['activity_code'],
-                'activity_name' => $candidate['activity_name'],
-                'specific_item_code' => $candidate['specific_item_code'],
-                'month' => $candidate['month'],
-                'calculated_amount_cents' => '0',
-                'target_amount_cents' => $targets[$key] ?? '0',
-                'required_cut_cents' => '0',
-                'required_reduction_cents' => '0',
-                'required_increase_cents' => '0',
-                'distributed_cut_cents' => '0',
-                'distributed_reduction_cents' => '0',
-                'pending_cut_cents' => '0',
-                'pending_reduction_cents' => '0',
-                'candidates' => [],
-            ];
+            $groups[$key] ??= $this->emptyGroup(
+                $key,
+                (int) $candidate['activity_id'],
+                (string) $candidate['activity_code'],
+                (string) $candidate['activity_name'],
+                (string) $candidate['specific_item_code'],
+                (int) $candidate['month'],
+                $targets[$key] ?? '0',
+            );
             $groups[$key]['calculated_amount_cents'] = $this->add(
                 $groups[$key]['calculated_amount_cents'],
                 $candidate['available_amount_cents'],
@@ -89,9 +82,24 @@ class OwnRevenueCutReconciliation
             $groups[$key]['candidates'][] = $candidate;
         }
         foreach ($targets as $key => $target) {
-            if (! isset($groups[$key]) && $target !== '0') {
-                $blockers[] = 'La propuesta no cubre uno de los importes de la Hoja de trabajo confirmada.';
+            if (isset($groups[$key]) || $target === '0') {
+                continue;
             }
+            $metadata = $workSheetGroups[$key] ?? null;
+            if ($metadata === null) {
+                $blockers[] = 'El ABPRE contiene un importe sin actividad compatible en la planeación.';
+
+                continue;
+            }
+            $groups[$key] = $this->emptyGroup(
+                $key,
+                $metadata['activity_id'],
+                $metadata['activity_code'],
+                $metadata['activity_name'],
+                $metadata['specific_item_code'],
+                $metadata['month'],
+                $target,
+            );
         }
 
         foreach ($groups as &$group) {
@@ -135,6 +143,9 @@ class OwnRevenueCutReconciliation
         $summary['adjusted_amount_cents'] = (string) BigInteger::of($summary['calculated_amount_cents'])
             ->minus($summary['distributed_cut_cents'])
             ->plus($summary['required_increase_cents']);
+        if ($this->sumColumn($groups, 'target_amount_cents') !== $summary['abpre_amount_cents']) {
+            $blockers[] = 'La conciliación no incorporó el total completo del ABPRE.';
+        }
         $groups = array_values($groups);
         $fingerprint = $this->canonicalJson->hash([
             'proposal' => $this->proposalFingerprint->forProposal($proposal),
@@ -168,6 +179,26 @@ class OwnRevenueCutReconciliation
         ksort($targets);
 
         return $targets;
+    }
+
+    /** @return array<string, array{activity_id: int, activity_code: string, activity_name: string, specific_item_code: string, month: int}> */
+    private function workSheetGroups(OwnRevenueProposal $proposal): array
+    {
+        $groups = [];
+        foreach ($proposal->sourceWorkSheetFile->workSheetLines as $line) {
+            foreach ($line->months as $month) {
+                $key = $this->groupKey($line->own_revenue_activity_id, $line->specific_item_code, $month->month);
+                $groups[$key] = [
+                    'activity_id' => $line->own_revenue_activity_id,
+                    'activity_code' => $line->activity->code,
+                    'activity_name' => $line->activity->name,
+                    'specific_item_code' => $line->specific_item_code,
+                    'month' => $month->month,
+                ];
+            }
+        }
+
+        return $groups;
     }
 
     /** @return array<string, string> */
@@ -254,7 +285,13 @@ class OwnRevenueCutReconciliation
 
         $targets = [];
         foreach ($abpre as $itemMonth => $amount) {
-            $weights = $workSheetWeights[$itemMonth] ?? $candidateWeights[$itemMonth] ?? [];
+            $weights = $workSheetWeights[$itemMonth] ?? [];
+            if ($weights === [] || $this->sum($weights) === '0') {
+                $weights = $candidateWeights[$itemMonth] ?? $weights;
+            }
+            if ($weights !== [] && $this->sum($weights) === '0') {
+                $weights = array_fill_keys(array_keys($weights), '1');
+            }
             if ($weights === [] && $amount !== '0') {
                 $blockers[] = 'El ABPRE contiene un importe sin actividad compatible en la planeación.';
 
@@ -267,6 +304,36 @@ class OwnRevenueCutReconciliation
         ksort($targets);
 
         return $targets;
+    }
+
+    /** @return array<string, mixed> */
+    private function emptyGroup(
+        string $key,
+        int $activityId,
+        string $activityCode,
+        string $activityName,
+        string $item,
+        int $month,
+        string $target,
+    ): array {
+        return [
+            'key' => $key,
+            'activity_id' => $activityId,
+            'activity_code' => $activityCode,
+            'activity_name' => $activityName,
+            'specific_item_code' => $item,
+            'month' => $month,
+            'calculated_amount_cents' => '0',
+            'target_amount_cents' => $target,
+            'required_cut_cents' => '0',
+            'required_reduction_cents' => '0',
+            'required_increase_cents' => '0',
+            'distributed_cut_cents' => '0',
+            'distributed_reduction_cents' => '0',
+            'pending_cut_cents' => '0',
+            'pending_reduction_cents' => '0',
+            'candidates' => [],
+        ];
     }
 
     /** @return array<string, int|string> */

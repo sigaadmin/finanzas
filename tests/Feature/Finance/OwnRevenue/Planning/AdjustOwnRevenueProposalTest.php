@@ -234,6 +234,67 @@ test('a favorable ABPRE difference is reported as an automatic reconciliation in
         ]);
 });
 
+test('an ABPRE amount in a zero work sheet month becomes a reconciliation increase', function () {
+    [
+        'budget' => $budget,
+        'proposal' => $proposal,
+        'manager' => $manager,
+        'first' => $first,
+        'second' => $second,
+        'files' => $files,
+    ] = cutFixture();
+    $workSheetLine = $files['work_sheet']->workSheetLines()->sole();
+    $workSheetLine->months()->create(['month' => 6, 'amount_cents' => 0]);
+    $abpreLine = $files['abpre']->abpreLines()->sole();
+    $abpreLine->update(['annual_amount_cents' => 1_080_600]);
+    $abpreLine->months()->create(['month' => 6, 'amount_cents' => 1_080_000]);
+
+    $reconciliation = app(OwnRevenueCutReconciliation::class)->forProposal($proposal->fresh());
+    $june = collect($reconciliation['groups'])->firstWhere('month', 6);
+
+    expect($reconciliation['ready'])->toBeTrue()
+        ->and($june)->not->toBeNull()
+        ->and($june)->toMatchArray([
+            'activity_code' => 'A01',
+            'specific_item_code' => '21101',
+            'calculated_amount_cents' => '0',
+            'target_amount_cents' => '1080000',
+            'required_increase_cents' => '1080000',
+            'candidates' => [],
+        ])
+        ->and($reconciliation['summary'])->toMatchArray([
+            'abpre_amount_cents' => '1080600',
+            'required_cut_cents' => '400',
+            'required_increase_cents' => '1080000',
+            'adjusted_amount_cents' => '1081000',
+        ]);
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.proposals.cuts.store', [$budget, $proposal]), [
+        'reconciliation_fingerprint' => $reconciliation['fingerprint'],
+        'cuts' => [
+            ['target_type' => 'technical', 'target_id' => $first->id, 'stable_key' => 'technical:a', 'specific_item_code' => '21101', 'amount_cents' => '280'],
+            ['target_type' => 'technical', 'target_id' => $second->id, 'stable_key' => 'technical:b', 'specific_item_code' => '21101', 'amount_cents' => '120'],
+        ],
+    ])->assertSessionHasNoErrors();
+    $current = app(OwnRevenueCutReconciliation::class)->forProposal($proposal->fresh());
+
+    expect($current['summary']['adjusted_amount_cents'])->toBe('1080600');
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.proposals.adjust', [$budget, $proposal]), [
+        'reconciliation_fingerprint' => $current['fingerprint'],
+    ])->assertSessionHasNoErrors();
+
+    $adjusted = OwnRevenueProposal::query()->where('version_number', 2)->sole();
+    expect($adjusted->total_amount_cents)->toBe(1_080_600)
+        ->and($adjusted->technicalNeeds()->where('stable_key', 'like', 'abpre-adjustment:%')->sole())
+        ->toMatchArray([
+            'own_revenue_activity_id' => $workSheetLine->own_revenue_activity_id,
+            'specific_item_code' => '21101',
+            'budget_month' => 6,
+            'budget_amount_cents' => 1_080_000,
+        ]);
+});
+
 test('mixed ABPRE differences keep reductions and increases separate', function () {
     [
         'budget' => $budget,
