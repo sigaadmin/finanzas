@@ -108,6 +108,7 @@ class AnalyzeOwnRevenueImportFile
                     $snapshot->cogMap,
                     (int) $snapshot->budget['fiscal_year'],
                     $detectedYear,
+                    $snapshot->activityMap,
                 ),
             };
 

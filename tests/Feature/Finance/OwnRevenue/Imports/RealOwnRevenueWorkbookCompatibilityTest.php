@@ -10,6 +10,7 @@ use App\Models\AuthorizedAccess;
 use App\Models\Finance\OwnRevenue\OwnRevenueBudget;
 use App\Models\User;
 use App\Services\Finance\OwnRevenue\Imports\OwnRevenueWorkbookFormatDetector;
+use App\Services\Finance\OwnRevenue\Imports\SupportingWorkbookParser;
 use App\Services\Finance\OwnRevenue\Imports\XlsxWorkbookReader;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -49,6 +50,9 @@ function realOwnRevenueWorkbookCases(): array
 function realOwnRevenueWorkbookPath(string $directory, string $pattern): string
 {
     $matches = glob($directory.DIRECTORY_SEPARATOR.$pattern);
+    $matches = is_array($matches)
+        ? array_values(array_filter($matches, fn (string $path): bool => ! str_starts_with(basename($path), '~$')))
+        : $matches;
 
     expect($matches)
         ->not->toBeFalse()
@@ -137,4 +141,57 @@ test('the five institutional workbooks are detected and analyzed without changin
 
     expect($calendarDetection->format)->toBeNull()
         ->and(hash_file('sha256', $calendarPath))->toBe($calendarHash);
+});
+
+test('the revised supporting workbooks preserve activity region and travel components', function () {
+    $directory = getenv('OWN_REVENUE_REAL_SUPPORTING_WORKBOOK_DIR');
+
+    if (! is_string($directory) || $directory === '' || ! is_dir($directory)) {
+        $this->markTestSkipped('Defina OWN_REVENUE_REAL_SUPPORTING_WORKBOOK_DIR para validar los formatos complementarios revisados.');
+    }
+
+    $cases = [
+        'technical_sheet' => ['pattern' => '*FICHA T*CNICA.xlsx', 'format' => OwnRevenueImportFormat::TechnicalSheet],
+        'fuel' => ['pattern' => 'CRENFCP - COMBUSTIBLE.xlsx', 'format' => OwnRevenueImportFormat::Fuel],
+        'travel_expenses' => ['pattern' => 'CRENFCP - VI*TICOS.xlsx', 'format' => OwnRevenueImportFormat::TravelExpenses],
+    ];
+    $activityMap = ['A01' => 1, 'A02' => 2, 'A03' => 3, 'A04' => 4];
+    $reader = app(XlsxWorkbookReader::class);
+    $detector = app(OwnRevenueWorkbookFormatDetector::class);
+    $parser = app(SupportingWorkbookParser::class);
+
+    foreach ($cases as $case) {
+        $path = realOwnRevenueWorkbookPath($directory, $case['pattern']);
+        $originalHash = hash_file('sha256', $path);
+        $workbook = $reader->read($path);
+
+        expect($detector->detect($workbook)->format)->toBe($case['format']);
+
+        $analysis = $parser->parse(
+            $workbook,
+            $case['format'],
+            [],
+            2026,
+            null,
+            $activityMap,
+        );
+        $rows = collect($analysis->lines)->pluck('values');
+
+        expect($rows)->not->toBeEmpty()
+            ->and($rows->pluck('activityCode')->filter()->count())->toBe($rows->count())
+            ->and($rows->pluck('activityCode')->unique()->diff(array_keys($activityMap)))->toBeEmpty()
+            ->and(hash_file('sha256', $path))->toBe($originalHash);
+
+        if ($case['format'] === OwnRevenueImportFormat::TechnicalSheet) {
+            expect($rows->pluck('regionCode')->unique()->all())->toBe(['02-001'])
+                ->and($rows->pluck('regionName')->unique()->all())->toBe(['Felipe Carrillo Puerto']);
+        }
+
+        if ($case['format'] === OwnRevenueImportFormat::TravelExpenses) {
+            expect($rows->every(fn (array $row): bool => is_string($row['perDiemAmountCents'])))->toBeTrue()
+                ->and($rows->every(fn (array $row): bool => is_string($row['lodgingAmountCents'])))->toBeTrue()
+                ->and($rows->every(fn (array $row): bool => is_string($row['flightAmountCents'])))->toBeTrue()
+                ->and($rows->pluck('flightAmountCents')->filter(fn (string $amount): bool => $amount !== '0')->count())->toBeGreaterThan(0);
+        }
+    }
 });

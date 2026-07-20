@@ -58,10 +58,13 @@ class ConfirmOwnRevenueSupportingImport
             if ($rows->isEmpty()) {
                 throw ValidationException::withMessages(['file' => 'El análisis no contiene renglones para confirmar.']);
             }
+            $activityIds = $budget->activities()->pluck('id', 'code')->all();
 
             foreach ($rows as $row) {
-                $record = $this->createRecord($lockedFile, $budget, $row);
-                $this->applyActivityRule->handle($record, $lockedFile->format, $lockedFile, $user);
+                $record = $this->createRecord($lockedFile, $budget, $row, $activityIds);
+                if ($record->getAttribute('own_revenue_activity_id') === null) {
+                    $this->applyActivityRule->handle($record, $lockedFile->format, $lockedFile, $user);
+                }
             }
 
             OwnRevenueImportFile::query()
@@ -149,8 +152,13 @@ class ConfirmOwnRevenueSupportingImport
         }
     }
 
-    private function createRecord(OwnRevenueImportFile $file, OwnRevenueBudget $budget, OwnRevenueImportRow $row): Model
-    {
+    /** @param  array<string, int>  $activityIds */
+    private function createRecord(
+        OwnRevenueImportFile $file,
+        OwnRevenueBudget $budget,
+        OwnRevenueImportRow $row,
+        array $activityIds,
+    ): Model {
         $payload = $row->normalized_payload;
         if (! is_array($payload) || ! hash_equals($row->row_hash, $this->canonicalJson->hash($payload))) {
             throw ValidationException::withMessages(['file' => 'Los datos analizados ya no son íntegros.']);
@@ -167,7 +175,7 @@ class ConfirmOwnRevenueSupportingImport
         $base = [
             'own_revenue_budget_id' => $budget->id,
             'own_revenue_import_file_id' => $file->id,
-            'own_revenue_activity_id' => null,
+            'own_revenue_activity_id' => $this->activityId($payload, $activityIds),
             'source_row_id' => $sourceRow->id,
             'sort_order' => $row->row_number,
         ];
@@ -281,5 +289,23 @@ class ConfirmOwnRevenueSupportingImport
         }
 
         return (int) $amount;
+    }
+
+    /** @param  array<string, mixed>  $payload @param  array<string, int>  $activityIds */
+    private function activityId(array $payload, array $activityIds): ?int
+    {
+        $activityCode = $this->optionalString($payload, 'activityCode');
+        if ($activityCode === null || $activityCode === '') {
+            return null;
+        }
+
+        $activityId = $activityIds[$activityCode] ?? null;
+        if (! is_int($activityId)) {
+            throw ValidationException::withMessages([
+                'file' => 'La actividad secundaria ya no existe en el presupuesto; vuelva a analizar el archivo.',
+            ]);
+        }
+
+        return $activityId;
     }
 }

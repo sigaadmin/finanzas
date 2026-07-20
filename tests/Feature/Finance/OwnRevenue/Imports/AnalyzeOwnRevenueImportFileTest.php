@@ -105,12 +105,13 @@ test('analysis accepts a supporting format and stores its review rows', function
     Storage::fake('local');
     $manager = analyzeImportUser();
     $budget = OwnRevenueBudget::factory()->create(['fiscal_year' => 2026]);
+    $activity = $budget->activities()->create(['code' => 'A04', 'name' => 'Gestión', 'sort_order' => 4]);
     analyzeCog(2026);
     $session = app(StartOwnRevenueImportSession::class)->handle($budget, $manager);
     $fixture = OwnRevenueXlsxFixtureFactory::create([
         'Partida 21101' => [
-            16 => ['A' => 'Partida', 'B' => '#', 'C' => 'Cantidad', 'D' => 'Unidad', 'E' => 'Descripción', 'F' => 'Ragión', 'G' => 'Nombre de la Región', 'H' => 'Costo', 'I' => 'Mes Presupuestado'],
-            17 => ['A' => '21101', 'B' => '1', 'C' => '2', 'D' => 'PIEZA', 'E' => 'Insumo', 'F' => '02-001', 'G' => 'Felipe Carrillo Puerto', 'H' => '25.50', 'I' => 'ABRIL'],
+            16 => ['A' => 'Partida', 'B' => '#', 'C' => 'Cantidad', 'D' => 'Unidad', 'E' => 'Descripción', 'F' => 'ACT', 'G' => 'Región', 'H' => 'Nombre de la Región', 'I' => 'Costo', 'J' => '#MES', 'K' => 'Mes Presupuestado'],
+            17 => ['A' => '21101', 'B' => '1', 'C' => '2', 'D' => 'PIEZA', 'E' => 'Insumo', 'F' => 'A04', 'G' => '02-001', 'H' => 'Felipe Carrillo Puerto', 'I' => '25.50', 'J' => '4', 'K' => 'ABRIL'],
         ],
     ]);
     $file = app(UploadOwnRevenueImportFile::class)->handle(
@@ -125,7 +126,8 @@ test('analysis accepts a supporting format and stores its review rows', function
     expect($result->format)->toBe(OwnRevenueImportFormat::TechnicalSheet)
         ->and($result->status)->toBe(OwnRevenueImportFileStatus::Ready)
         ->and($result->rows()->where('row_kind', 'technical_sheet_normalized_line')->count())->toBe(1)
-        ->and($result->rows()->where('row_kind', 'technical_sheet_line')->count())->toBe(1);
+        ->and($result->rows()->where('row_kind', 'technical_sheet_line')->count())->toBe(1)
+        ->and($result->rows()->where('row_kind', 'technical_sheet_normalized_line')->sole()->normalized_payload['activityCode'])->toBe($activity->code);
 
     $this->withoutVite();
     $this->actingAs($manager)
@@ -137,6 +139,7 @@ test('analysis accepts a supporting format and stores its review rows', function
         ->assertInertia(fn (Assert $page): Assert => $page
             ->where('selected_file.format', 'technical_sheet')
             ->where('preview.data.0.values.description', 'Insumo')
+            ->where('preview.data.0.values.activityCode', 'A04')
             ->where('preview.data.0.values.amountCents', '2550'));
 });
 

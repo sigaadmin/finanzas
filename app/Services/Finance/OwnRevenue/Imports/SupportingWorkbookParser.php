@@ -26,9 +26,14 @@ class SupportingWorkbookParser
         array $cogMap,
         int $fiscalYear = 0,
         ?int $detectedYear = null,
+        array $activityMap = [],
     ): SupportingFormatAnalysis {
         $profile = $this->profile($format);
-        [$sheet, $headerRow, $headers] = $this->findHeader($workbook, $profile['headers']);
+        [$sheet, $headerRow, $headers] = $this->findHeader(
+            $workbook,
+            $profile['headers'],
+            $profile['optional_headers'],
+        );
         $issues = [];
         $lines = [];
         $sourceRows = [];
@@ -62,7 +67,7 @@ class SupportingWorkbookParser
             }
 
             $normalized = $this->normalizeRow($format, $values);
-            $rowIssues = $this->validateRow($format, $normalized, $cogMap, $sheet, $rowNumber);
+            $rowIssues = $this->validateRow($format, $normalized, $cogMap, $activityMap, $sheet, $rowNumber);
             $issues = [...$issues, ...$rowIssues];
             $sourceRows[] = [
                 'sheet_name' => $sheet->name,
@@ -92,12 +97,15 @@ class SupportingWorkbookParser
         return new SupportingFormatAnalysis($lines, $issues, $sourceRows);
     }
 
-    /** @return array{identity:string,headers:array<string, list<string>>} */
+    /** @return array{identity:string,headers:array<string, list<string>>,optional_headers:array<string, list<string>>} */
     private function profile(OwnRevenueImportFormat $format): array
     {
         return match ($format) {
             OwnRevenueImportFormat::TechnicalSheet => [
                 'identity' => 'specific_item_code',
+                'optional_headers' => [
+                    'activity_code' => ['act', 'actividad secundaria', 'actividad'],
+                ],
                 'headers' => [
                     'specific_item_code' => ['partida'],
                     'sequence' => ['#'],
@@ -112,6 +120,9 @@ class SupportingWorkbookParser
             ],
             OwnRevenueImportFormat::Fuel => [
                 'identity' => 'reason',
+                'optional_headers' => [
+                    'activity_code' => ['act', 'actividad secundaria', 'actividad'],
+                ],
                 'headers' => [
                     'commission_date_label' => ['fechas de la comision'],
                     'month' => ['mes'],
@@ -131,6 +142,9 @@ class SupportingWorkbookParser
             ],
             OwnRevenueImportFormat::TravelExpenses => [
                 'identity' => 'reason',
+                'optional_headers' => [
+                    'activity_code' => ['act', 'actividad secundaria', 'actividad'],
+                ],
                 'headers' => [
                     'commission_date_label' => ['fechas de la comision'],
                     'month' => ['mes'],
@@ -154,9 +168,10 @@ class SupportingWorkbookParser
 
     /**
      * @param  array<string, list<string>>  $definitions
+     * @param  array<string, list<string>>  $optionalDefinitions
      * @return array{XlsxSheet, int, array<string, string>}
      */
-    private function findHeader(XlsxWorkbook $workbook, array $definitions): array
+    private function findHeader(XlsxWorkbook $workbook, array $definitions, array $optionalDefinitions): array
     {
         foreach ($workbook->sheets() as $sheet) {
             foreach ($sheet->rows() as $row) {
@@ -182,6 +197,18 @@ class SupportingWorkbookParser
                 }
 
                 if (array_diff(array_keys($definitions), array_keys($headers)) === []) {
+                    foreach ($optionalDefinitions as $field => $aliases) {
+                        foreach ($aliases as $alias) {
+                            $columns = $normalizedColumns[$alias] ?? [];
+                            $column = array_shift($columns);
+                            if ($column !== null) {
+                                $headers[$field] = $column;
+                                $normalizedColumns[$alias] = $columns;
+                                break;
+                            }
+                        }
+                    }
+
                     return [$sheet, $row->number, $headers];
                 }
             }
@@ -213,6 +240,7 @@ class SupportingWorkbookParser
     {
         return match ($format) {
             OwnRevenueImportFormat::TechnicalSheet => [
+                'activityCode' => $this->activityCode($values['activity_code'] ?? ''),
                 'specificItemCode' => $values['specific_item_code'],
                 'sequence' => $values['sequence'] ?: null,
                 'quantity' => $this->decimal($values['quantity']),
@@ -226,6 +254,7 @@ class SupportingWorkbookParser
                 'budgetMonth' => $this->month($values['budget_month']),
             ],
             OwnRevenueImportFormat::Fuel => [
+                'activityCode' => $this->activityCode($values['activity_code'] ?? ''),
                 'commissionDateLabel' => $values['commission_date_label'],
                 'month' => $this->month($values['month']) ?? $this->month($values['commission_date_label']),
                 'reason' => $values['reason'],
@@ -242,6 +271,7 @@ class SupportingWorkbookParser
                 'amountCents' => $this->pesosToCents($values['amount']),
             ],
             OwnRevenueImportFormat::TravelExpenses => [
+                'activityCode' => $this->activityCode($values['activity_code'] ?? ''),
                 'commissionDateLabel' => $values['commission_date_label'],
                 'month' => $this->month($values['month']) ?? $this->month($values['commission_date_label']),
                 'reason' => $values['reason'],
@@ -264,16 +294,31 @@ class SupportingWorkbookParser
     /**
      * @param  array<string, int|string|null>  $values
      * @param  array<string, int>  $cogMap
+     * @param  array<string, int|string>  $activityMap
      * @return list<ImportIssueData>
      */
     private function validateRow(
         OwnRevenueImportFormat $format,
         array $values,
         array $cogMap,
+        array $activityMap,
         XlsxSheet $sheet,
         int $rowNumber,
     ): array {
         $issues = [];
+
+        $activityCode = $values['activityCode'] ?? null;
+        if (is_string($activityCode) && ! array_key_exists($activityCode, $activityMap)) {
+            $issues[] = new ImportIssueData(
+                OwnRevenueImportIssueSeverity::Error,
+                'activity.missing',
+                'activity_code',
+                'La actividad secundaria no existe en el presupuesto seleccionado.',
+                ['activity_code' => $activityCode],
+                $sheet->name,
+                $rowNumber,
+            );
+        }
 
         if ($format === OwnRevenueImportFormat::TechnicalSheet) {
             $itemCode = (string) $values['specificItemCode'];
@@ -368,6 +413,13 @@ class SupportingWorkbookParser
         }
 
         return preg_match('/^(?:[1-9]|1[0-2])$/', $normalized) ? (int) $normalized : null;
+    }
+
+    private function activityCode(string $value): ?string
+    {
+        $code = Str::upper(trim($value));
+
+        return $code === '' ? null : $code;
     }
 
     private function normalize(string $value): string

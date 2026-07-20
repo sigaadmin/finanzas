@@ -328,6 +328,38 @@ test('inactive and foreign activity rules are ignored during confirmation', func
         ->and(OwnRevenueActivityAssignment::query()->count())->toBe(0);
 });
 
+test('an explicit supporting activity takes precedence over an automatic rule', function () {
+    Storage::fake('local');
+    $manager = supportingConfirmationUser();
+    ['file' => $file] = readySupportingFile($manager, OwnRevenueImportFormat::TravelExpenses);
+    $sourceActivity = OwnRevenueActivity::factory()->for($file->budget, 'budget')->create(['code' => 'A04']);
+    $ruleActivity = OwnRevenueActivity::factory()->for($file->budget, 'budget')->create(['code' => 'A02']);
+    $groupKey = 'COMISION';
+    OwnRevenueActivityRule::factory()->recycle([$file->budget, $ruleActivity, $manager])->create([
+        'format' => OwnRevenueImportFormat::TravelExpenses,
+        'group_key' => $groupKey,
+        'group_hash' => app(OwnRevenueActivityGroupKey::class)->hash(OwnRevenueImportFormat::TravelExpenses, $groupKey),
+    ]);
+    $normalizedRow = $file->rows()->where('row_kind', 'travel_expenses_normalized_line')->sole();
+    $payload = [...$normalizedRow->normalized_payload, 'activityCode' => 'A04'];
+    $normalizedRow->update([
+        'normalized_payload' => $payload,
+        'row_hash' => app(CanonicalJson::class)->hash($payload),
+    ]);
+    $file = refreshSupportingConfirmationSnapshot($file);
+
+    $this->actingAs($manager)->post(route('finance.own-revenue.budgets.imports.files.supporting.confirm', [
+        $file->budget, $file,
+    ]), ['analysis_revision' => $file->analysis_revision])->assertSessionHasNoErrors();
+
+    $record = DB::table('own_revenue_travel_commissions')
+        ->where('own_revenue_import_file_id', $file->id)
+        ->sole();
+
+    expect($record->own_revenue_activity_id)->toBe($sourceActivity->id)
+        ->and(OwnRevenueActivityAssignment::query()->count())->toBe(0);
+});
+
 test('an invalid rule activity rolls back records and confirmation', function () {
     Storage::fake('local');
     $manager = supportingConfirmationUser();

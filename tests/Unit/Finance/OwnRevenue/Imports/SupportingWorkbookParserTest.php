@@ -121,3 +121,68 @@ test('technical sheet reports unknown items and region normalization', function 
             'requires_decision' => true,
         ]);
 });
+
+test('supporting formats preserve the explicit secondary activity', function (
+    OwnRevenueImportFormat $format,
+    array $sheets,
+) {
+    $fixture = OwnRevenueXlsxFixtureFactory::create($sheets);
+
+    $analysis = (new SupportingWorkbookParser)->parse(
+        (new XlsxWorkbookReader)->read($fixture),
+        $format,
+        ['21101' => 1],
+        activityMap: ['A04' => 4],
+    );
+
+    expect($analysis->lines)->toHaveCount(1)
+        ->and($analysis->lines[0]->values['activityCode'])->toBe('A04')
+        ->and($analysis->issues)->toBeEmpty();
+})->with([
+    'ficha técnica' => [
+        OwnRevenueImportFormat::TechnicalSheet,
+        [
+            'Partida 21103' => [
+                16 => ['A' => 'Partida', 'B' => '#', 'C' => 'Cantidad', 'D' => 'Unidad', 'E' => 'Descripción', 'F' => 'ACT', 'G' => 'Región', 'H' => 'Nombre de la Región', 'I' => 'Costo', 'J' => '#MES', 'K' => 'Mes Presupuestado'],
+                17 => ['A' => '21101', 'B' => '1', 'C' => '60', 'D' => 'PAQUETE', 'E' => 'Barras de silicón', 'F' => 'A04', 'G' => '02-001', 'H' => 'Felipe Carrillo Puerto', 'I' => '3300.25', 'J' => '4', 'K' => 'ABRIL'],
+            ],
+        ],
+    ],
+    'combustible' => [
+        OwnRevenueImportFormat::Fuel,
+        [
+            'FICHA' => [
+                5 => ['A' => 'ACT', 'B' => 'FECHAS DE LA COMISION', 'C' => 'MES', 'D' => 'MOTIVO DE LA COMISIÓN', 'E' => 'MODELO DE VEHÍCULO', 'F' => 'RENDIMIENTO DE LITRO DE GASOLINA POR KILOMETRO', 'G' => 'LUGAR DONDE INICIA EL RECORRIDO', 'H' => 'LUGAR DONDE FINALIZA EL RECORRIDO', 'I' => 'KILOMETRAJE', 'J' => 'LUGAR DONDE INICIA EL RECORRIDO', 'K' => 'LUGAR DONDE FINALIZA EL RECORRIDO', 'L' => 'KILOMETRAJE2', 'M' => 'RECORRIDO', 'N' => 'COSTO DE COMBUSTIBLE X LITRO', 'O' => 'IMPORTE'],
+                6 => ['A' => 'A04', 'B' => 'ABRIL', 'C' => '4', 'D' => 'Gestión administrativa', 'E' => 'PARTICULAR', 'F' => '10', 'G' => 'FELIPE CARRILLO PUERTO', 'H' => 'CHETUMAL', 'I' => '150', 'J' => 'CHETUMAL', 'K' => 'FELIPE CARRILLO PUERTO', 'L' => '150', 'M' => '30', 'N' => '24.03', 'O' => '793'],
+            ],
+        ],
+    ],
+    'viáticos' => [
+        OwnRevenueImportFormat::TravelExpenses,
+        [
+            'FICHA' => [
+                3 => ['A' => 'ACT', 'B' => 'FECHAS DE LA COMISION', 'C' => 'MES', 'D' => 'MOTIVO DE LA COMISIÓN', 'E' => 'NOMBRE DE PERSONAL COMISIONADO', 'F' => 'CARGO', 'G' => 'DIAS DE COMISIÓN', 'H' => 'LUGAR DE LA COMISIÓN', 'I' => 'VIATICOS', 'J' => 'HOSPEDAJE', 'K' => 'COSTO UMA', 'L' => 'VIATICOS2', 'M' => 'HOSPEDAJE3', 'N' => 'AVIÓN', 'O' => 'TOTAL'],
+                4 => ['A' => 'A04', 'B' => 'MAYO', 'C' => '5', 'D' => 'Estancia académica', 'E' => 'DOCENTE', 'F' => 'DOCENTE', 'G' => '0.5', 'H' => 'YUCATÁN', 'I' => '8', 'J' => '9', 'K' => '108.57', 'L' => '2606', 'M' => '2932', 'N' => '9000', 'O' => '14538'],
+            ],
+        ],
+    ],
+]);
+
+test('supporting formats reject an unknown explicit secondary activity', function () {
+    $fixture = OwnRevenueXlsxFixtureFactory::create([
+        'FICHA' => [
+            5 => ['A' => 'ACT', 'B' => 'FECHAS DE LA COMISION', 'C' => 'MES', 'D' => 'MOTIVO DE LA COMISIÓN', 'E' => 'MODELO DE VEHÍCULO', 'F' => 'RENDIMIENTO DE LITRO DE GASOLINA POR KILOMETRO', 'G' => 'LUGAR DONDE INICIA EL RECORRIDO', 'H' => 'LUGAR DONDE FINALIZA EL RECORRIDO', 'I' => 'KILOMETRAJE', 'J' => 'LUGAR DONDE INICIA EL RECORRIDO', 'K' => 'LUGAR DONDE FINALIZA EL RECORRIDO', 'L' => 'KILOMETRAJE2', 'M' => 'RECORRIDO', 'N' => 'COSTO DE COMBUSTIBLE X LITRO', 'O' => 'IMPORTE'],
+            6 => ['A' => 'A99', 'B' => 'ABRIL', 'C' => '4', 'D' => 'Gestión administrativa', 'E' => 'PARTICULAR', 'F' => '10', 'G' => 'FELIPE CARRILLO PUERTO', 'H' => 'CHETUMAL', 'I' => '150', 'J' => 'CHETUMAL', 'K' => 'FELIPE CARRILLO PUERTO', 'L' => '150', 'M' => '30', 'N' => '24.03', 'O' => '793'],
+        ],
+    ]);
+
+    $analysis = (new SupportingWorkbookParser)->parse(
+        (new XlsxWorkbookReader)->read($fixture),
+        OwnRevenueImportFormat::Fuel,
+        ['21101' => 1],
+        activityMap: ['A04' => 4],
+    );
+
+    expect(array_column($analysis->issues, 'code'))->toContain('activity.missing')
+        ->and($analysis->lines)->toBeEmpty();
+});
