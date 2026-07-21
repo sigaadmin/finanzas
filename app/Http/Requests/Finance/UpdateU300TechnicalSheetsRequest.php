@@ -108,10 +108,10 @@ class UpdateU300TechnicalSheetsRequest extends FormRequest
                         continue;
                     }
 
-                    if ($this->goodsProfileLength($goods) > 5000) {
+                    if ($this->goodsProfileLength($goods) > 50000) {
                         $validator->errors()->add(
                             "sheets.{$sheetIndex}.goods",
-                            'El perfil de bienes no debe exceder 5,000 caracteres.',
+                            'El perfil de bienes no debe exceder 50,000 caracteres.',
                         );
                     }
 

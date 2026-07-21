@@ -180,7 +180,13 @@ test('finance operator can import the COG catalog and assign classifications wit
     ]);
     $program->load('budgetVersions.budgetLines');
     $line = $program->budgetVersions->firstWhere('kind', 'adjusted')->budgetLines->first();
-    $line->update(['justification' => 'Justificación anterior de partida.']);
+    $line->update([
+        'exercise_month' => 'AGO',
+        'justification' => 'Justificación anterior de partida.',
+    ]);
+    $line->technicalSheet()->create([
+        'scheduled_date' => 'Agosto de 2026',
+    ]);
     $action = $line->action()->firstOrFail();
 
     $this->actingAs($user)
@@ -232,6 +238,10 @@ test('finance operator can import the COG catalog and assign classifications wit
         'amount_cents' => 10000000,
         'exercise_month' => 'OCT',
         'justification' => null,
+    ]);
+    $this->assertDatabaseHas('u300_technical_sheets', [
+        'u300_budget_line_id' => $line->id,
+        'scheduled_date' => 'Octubre de 2026',
     ]);
     $this->assertDatabaseHas('u300_budget_lines', [
         'u300_action_id' => $line->u300_action_id,

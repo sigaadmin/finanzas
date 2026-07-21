@@ -280,6 +280,8 @@ async function cropPhotoFile(
 
     canvas.width = cropWidth;
     canvas.height = cropHeight;
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, cropWidth, cropHeight);
     context.drawImage(
         rotatedCanvas,
         cropLeft,

@@ -437,6 +437,38 @@ test('finance operator can save requested goods with a reference photo', functio
         ->toStartWith('storage/u300/technical-sheets/reference-photos/');
 });
 
+test('finance operator can save a detailed legacy-sized goods profile', function () {
+    $user = u300TechnicalSheetUser();
+    $program = u300ProgramWithMaterialsLine($user);
+    $line = $program->budgetVersions()->first()->budgetLines()->first();
+    $detailedSpecifications = str_repeat('Especificación técnica detallada. ', 80);
+
+    $this->actingAs($user)
+        ->put(route('finance.u300.programs.technical-sheets.update', $program), [
+            'stay_on_page' => true,
+            'return_to_line_id' => $line->id,
+            'sheets' => [
+                [
+                    'u300_budget_line_id' => $line->id,
+                    'goods' => [
+                        [
+                            'description' => 'Equipo de red principal',
+                            'specifications' => $detailedSpecifications,
+                        ],
+                        [
+                            'description' => 'Equipo de red secundario',
+                            'specifications' => $detailedSpecifications,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+    expect($line->technicalSheet()->first()?->goods_profile)
+        ->toBeArray()
+        ->toHaveCount(2);
+});
+
 test('finance operator cannot persist an arbitrary requested good reference photo path', function () {
     $user = u300TechnicalSheetUser();
     $program = u300ProgramWithMaterialsLine($user);
@@ -499,16 +531,12 @@ test('requested goods profile cannot exceed the technical specifications limit',
             'sheets' => [
                 [
                     'u300_budget_line_id' => $line->id,
-                    'goods' => [
-                        [
-                            'description' => 'Primer bien',
+                    'goods' => collect(range(1, 17))
+                        ->map(fn (int $index): array => [
+                            'description' => 'Bien '.$index,
                             'specifications' => str_repeat('a', 3000),
-                        ],
-                        [
-                            'description' => 'Segundo bien',
-                            'specifications' => str_repeat('b', 3000),
-                        ],
-                    ],
+                        ])
+                        ->all(),
                 ],
             ],
         ])
@@ -794,9 +822,10 @@ test('requested goods profile accounts for persisted photo path lengths', functi
     $user = u300TechnicalSheetUser();
     $program = u300ProgramWithMaterialsLine($user);
     $line = $program->budgetVersions()->first()->budgetLines()->first();
-    $goods = collect(range(1, 30))
+    $goods = collect(range(1, 50))
         ->map(fn (int $index): array => [
             'description' => 'Bien '.$index,
+            'specifications' => str_repeat('a', 1000),
             'reference_photo' => UploadedFile::fake()->image("bien-{$index}.jpg", 10, 10),
         ])
         ->all();

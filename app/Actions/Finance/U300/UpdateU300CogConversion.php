@@ -20,7 +20,7 @@ class UpdateU300CogConversion
         return DB::transaction(function () use ($program, $lines, $actions): U300Program {
             $adjustedVersion = $program->budgetVersions()
                 ->where('kind', 'adjusted')
-                ->with('budgetLines.movements')
+                ->with(['budgetLines.movements', 'budgetLines.technicalSheet'])
                 ->first();
 
             if (! $adjustedVersion) {
@@ -130,7 +130,21 @@ class UpdateU300CogConversion
                 ];
 
                 if ($budgetLine) {
+                    $previousScheduledDate = $this->formatExerciseMonth(
+                        $budgetLine->exercise_month,
+                        $program->fiscal_year,
+                    );
+
                     $budgetLine->update($attributes);
+
+                    if ($budgetLine->technicalSheet?->scheduled_date === $previousScheduledDate) {
+                        $budgetLine->technicalSheet->update([
+                            'scheduled_date' => $this->formatExerciseMonth(
+                                $lineData['exercise_month'],
+                                $program->fiscal_year,
+                            ),
+                        ]);
+                    }
 
                     continue;
                 }
@@ -140,5 +154,20 @@ class UpdateU300CogConversion
 
             return $program->refresh()->load('budgetVersions.budgetLines.expenseClassification');
         });
+    }
+
+    private function formatExerciseMonth(?string $exerciseMonth, int $fiscalYear): ?string
+    {
+        $months = [
+            'AGO' => 'Agosto',
+            'SEP' => 'Septiembre',
+            'OCT' => 'Octubre',
+            'NOV' => 'Noviembre',
+            'DIC' => 'Diciembre',
+        ];
+
+        return $exerciseMonth !== null && isset($months[$exerciseMonth])
+            ? $months[$exerciseMonth].' de '.$fiscalYear
+            : null;
     }
 }
