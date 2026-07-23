@@ -1,5 +1,6 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { FileUp, FolderOpen } from 'lucide-react';
+import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -106,10 +107,16 @@ export default function U300ProgramsIndex({
                                         <form
                                             onSubmit={(event) => {
                                                 event.preventDefault();
-                                                restore.post(
-                                                    finance.u300.backups.restore()
-                                                        .url,
-                                                );
+                                                restore
+                                                    .transform((data) => ({
+                                                        ...data,
+                                                        preview_token:
+                                                            restore_preview.token,
+                                                    }))
+                                                    .post(
+                                                        finance.u300.backups.restore()
+                                                            .url,
+                                                    );
                                             }}
                                             className="space-y-3"
                                         >
@@ -130,6 +137,16 @@ export default function U300ProgramsIndex({
                                                     )
                                                 }
                                                 placeholder={`RESTAURAR U300 ${restore_preview.fiscal_year}`}
+                                            />
+                                            <InputError
+                                                message={
+                                                    restore.errors.confirmation
+                                                }
+                                            />
+                                            <InputError
+                                                message={
+                                                    restore.errors.preview_token
+                                                }
                                             />
                                             <DialogFooter>
                                                 <Button
@@ -168,6 +185,9 @@ export default function U300ProgramsIndex({
                                                             .files?.[0] ?? null,
                                                     )
                                                 }
+                                            />
+                                            <InputError
+                                                message={upload.errors.archive}
                                             />
                                             <DialogFooter>
                                                 <Button
