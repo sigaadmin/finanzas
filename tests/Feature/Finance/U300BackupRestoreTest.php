@@ -110,3 +110,38 @@ test('a U300 backup includes its original source document', function () {
     expect($zip->getFromName('files/source/proyecto-u300.pdf'))->toBe('PDF U300');
     $zip->close();
 });
+
+test('a U300 backup includes only referenced technical sheet photos', function () {
+    Storage::fake('local');
+    Storage::fake('public');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id,
+        'fiscal_year' => 2026,
+        'name' => 'Proyecto U300 2026',
+        'objective' => 'Objetivo.',
+        'justification' => 'Justificación.',
+        'requested_total_cents' => 100,
+        'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección',
+        'responsible_academic_degree' => 'Maestría',
+        'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+    $version = $program->budgetVersions()->create(['created_by' => $user->id, 'kind' => 'adjusted', 'name' => 'Adecuación', 'status' => 'draft', 'total_cents' => 100]);
+    $project = $program->projects()->create(['number' => '1', 'name' => 'Proyecto']);
+    $goal = $project->goals()->create(['number' => '1.1', 'description' => 'Meta']);
+    $action = $goal->actions()->create(['number' => '1.1.1', 'name' => 'Acción']);
+    $line = $version->budgetLines()->create(['u300_action_id' => $action->id, 'amount_cents' => 100]);
+    $line->technicalSheet()->create(['goods_profile' => [['reference_photo_path' => 'storage/u300/technical-sheets/reference-photos/evidencia.jpg']]]);
+    Storage::disk('public')->put('u300/technical-sheets/reference-photos/evidencia.jpg', 'FOTO');
+    Storage::disk('public')->put('u300/technical-sheets/reference-photos/ajena.jpg', 'AJENA');
+
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+    $zip = new ZipArchive;
+    $zip->open(Storage::disk('local')->path($archive->path));
+
+    expect($zip->getFromName('files/technical-sheets/evidencia.jpg'))->toBe('FOTO')
+        ->and($zip->locateName('files/technical-sheets/ajena.jpg'))->toBeFalse();
+    $zip->close();
+});

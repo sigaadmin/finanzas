@@ -33,6 +33,25 @@ class CreateU300BackupArchive
             $files['files/source/'.basename($program->source_filename ?? $program->source_path)] = $sourceContents;
         }
 
+        $program->budgetVersions
+            ->flatMap(fn ($version) => $version->budgetLines)
+            ->map(fn ($line) => $line->technicalSheet)
+            ->filter()
+            ->flatMap(fn ($sheet) => $sheet->goods_profile ?? [])
+            ->pluck('reference_photo_path')
+            ->filter(fn ($path) => is_string($path) && preg_match(
+                '/\Astorage\/u300\/technical-sheets\/reference-photos\/[A-Za-z0-9._-]+\z/',
+                $path,
+            ) === 1)
+            ->unique()
+            ->each(function (string $photoPath) use (&$files): void {
+                $relativePath = substr($photoPath, strlen('storage/'));
+
+                if (Storage::disk('public')->exists($relativePath)) {
+                    $files['files/technical-sheets/'.basename($relativePath)] = Storage::disk('public')->get($relativePath);
+                }
+            });
+
         $manifest = [
             'format_version' => 1,
             'fiscal_year' => $program->fiscal_year,
