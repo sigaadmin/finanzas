@@ -13,7 +13,10 @@ use ZipArchive;
 
 class RestoreU300BackupArchive
 {
-    public function __construct(private InspectU300BackupArchive $inspector) {}
+    public function __construct(
+        private InspectU300BackupArchive $inspector,
+        private CreateU300BackupArchive $createBackup,
+    ) {}
 
     public function handle(string $archivePath, User $restoredBy): U300Program
     {
@@ -48,6 +51,15 @@ class RestoreU300BackupArchive
         if (($programData['fiscal_year'] ?? null) !== $preview['fiscal_year']) {
             throw new RuntimeException('El contenido no corresponde al ejercicio del respaldo.');
         }
+
+        U300Program::query()
+            ->where('fiscal_year', $preview['fiscal_year'])
+            ->get()
+            ->each(fn (U300Program $program) => $this->createBackup->handle(
+                $program,
+                $restoredBy,
+                'pre_restore',
+            ));
 
         if (is_string($sourceContents) && is_string($programData['source_path'] ?? null)) {
             Storage::disk('local')->put($programData['source_path'], $sourceContents);

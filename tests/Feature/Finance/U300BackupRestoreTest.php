@@ -213,6 +213,7 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->count())->toBe(1)
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->first()->expenseClassification->specific_item_code)->toBe('37501')
         ->and(U300Program::query()->find($otherYear->id))->not->toBeNull();
+    expect(U300BackupArchive::query()->where('fiscal_year', 2026)->where('kind', 'pre_restore')->exists())->toBeTrue();
 });
 
 test('restoring a U300 archive recreates its source file', function () {
