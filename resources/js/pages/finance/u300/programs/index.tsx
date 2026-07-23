@@ -1,7 +1,6 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { FileUp, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
     Dialog,
     DialogContent,
@@ -11,6 +10,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import finance from '@/routes/finance';
 
 type Program = {
@@ -32,6 +32,14 @@ type Props = {
         fiscal_year: number;
         files_count: number;
     } | null;
+    backup_operations: {
+        id: number;
+        fiscal_year: number;
+        type: string;
+        status: string;
+        created_at: string | null;
+        performed_by: string | null;
+    }[];
 };
 
 function money(cents: number): string {
@@ -49,12 +57,14 @@ export default function U300ProgramsIndex({
     programs,
     can_manage_backups,
     restore_preview,
+    backup_operations,
 }: Props) {
     const upload = useForm<{ archive: File | null }>({ archive: null });
     const restore = useForm({
         preview_token: restore_preview?.token ?? '',
         confirmation: '',
     });
+
     return (
         <>
             <Head title="Presupuesto U300" />
@@ -261,6 +271,24 @@ export default function U300ProgramsIndex({
                         </tbody>
                     </table>
                 </section>
+                {can_manage_backups && (
+                    <section className="rounded-lg border p-3 text-sm">
+                        <h2 className="font-medium">Bitácora de respaldos</h2>
+                        <ul className="mt-2 space-y-1 text-muted-foreground">
+                            {backup_operations.map((operation) => (
+                                <li key={operation.id}>
+                                    {operation.created_at ?? '—'} ·{' '}
+                                    {operation.fiscal_year} · {operation.type} ·{' '}
+                                    {operation.status} ·{' '}
+                                    {operation.performed_by ?? '—'}
+                                </li>
+                            ))}
+                            {backup_operations.length === 0 && (
+                                <li>Sin operaciones registradas</li>
+                            )}
+                        </ul>
+                    </section>
+                )}
             </main>
         </>
     );

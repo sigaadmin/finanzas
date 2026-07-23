@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
+use App\Models\Finance\U300\U300BackupOperation;
 use App\Models\Finance\U300\U300BudgetLine;
 use App\Models\Finance\U300\U300BudgetMovement;
 use App\Models\Finance\U300\U300Program;
@@ -35,6 +36,7 @@ class U300ProgramController extends Controller
             'programs' => $programs,
             'can_manage_backups' => request()->user()?->can('manage-u300-backups') === true,
             'restore_preview' => session('finance.u300.restore_preview'),
+            'backup_operations' => U300BackupOperation::query()->with('performedBy')->latest('created_at')->limit(30)->get()->map(fn (U300BackupOperation $operation): array => ['id' => $operation->id, 'fiscal_year' => $operation->fiscal_year, 'type' => $operation->type, 'status' => $operation->status, 'created_at' => $operation->created_at?->toDateTimeString(), 'performed_by' => $operation->performedBy?->email]),
         ]);
     }
 
