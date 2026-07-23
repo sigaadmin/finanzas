@@ -1,6 +1,16 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { FileUp, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 import finance from '@/routes/finance';
 
 type Program = {
@@ -16,6 +26,12 @@ type Program = {
 
 type Props = {
     programs: Program[];
+    can_manage_backups: boolean;
+    restore_preview: {
+        token: string;
+        fiscal_year: number;
+        files_count: number;
+    } | null;
 };
 
 function money(cents: number): string {
@@ -29,7 +45,16 @@ function moneyOrPending(cents: number | null): string {
     return cents === null ? 'Pendiente' : money(cents);
 }
 
-export default function U300ProgramsIndex({ programs }: Props) {
+export default function U300ProgramsIndex({
+    programs,
+    can_manage_backups,
+    restore_preview,
+}: Props) {
+    const upload = useForm<{ archive: File | null }>({ archive: null });
+    const restore = useForm({
+        preview_token: restore_preview?.token ?? '',
+        confirmation: '',
+    });
     return (
         <>
             <Head title="Presupuesto U300" />
@@ -43,12 +68,115 @@ export default function U300ProgramsIndex({ programs }: Props) {
                             Presupuesto U300
                         </h1>
                     </div>
-                    <Button asChild>
-                        <Link href={finance.u300.imports.create()}>
-                            <FileUp className="size-4" />
-                            Importar proyecto
-                        </Link>
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button asChild>
+                            <Link href={finance.u300.imports.create()}>
+                                <FileUp className="size-4" />
+                                Importar proyecto
+                            </Link>
+                        </Button>
+                        {can_manage_backups && (
+                            <Dialog>
+                                <DialogTrigger asChild>
+                                    <Button variant="outline">
+                                        Restaurar respaldo
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>
+                                            Restaurar U300
+                                        </DialogTitle>
+                                        <DialogDescription>
+                                            El paquete reemplazará por completo
+                                            el U300 del año incluido.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    {restore_preview ? (
+                                        <form
+                                            onSubmit={(event) => {
+                                                event.preventDefault();
+                                                restore.post(
+                                                    finance.u300.backups.restore()
+                                                        .url,
+                                                );
+                                            }}
+                                            className="space-y-3"
+                                        >
+                                            <p>
+                                                Respaldo{' '}
+                                                {restore_preview.fiscal_year}:{' '}
+                                                {restore_preview.files_count}{' '}
+                                                archivos.
+                                            </p>
+                                            <Input
+                                                value={
+                                                    restore.data.confirmation
+                                                }
+                                                onChange={(event) =>
+                                                    restore.setData(
+                                                        'confirmation',
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                placeholder={`RESTAURAR U300 ${restore_preview.fiscal_year}`}
+                                            />
+                                            <DialogFooter>
+                                                <Button
+                                                    type="submit"
+                                                    variant="destructive"
+                                                    disabled={
+                                                        restore.processing ||
+                                                        restore.data
+                                                            .confirmation !==
+                                                            `RESTAURAR U300 ${restore_preview.fiscal_year}`
+                                                    }
+                                                >
+                                                    Restaurar
+                                                </Button>
+                                            </DialogFooter>
+                                        </form>
+                                    ) : (
+                                        <form
+                                            onSubmit={(event) => {
+                                                event.preventDefault();
+                                                upload.post(
+                                                    finance.u300.backups.preview()
+                                                        .url,
+                                                    { forceFormData: true },
+                                                );
+                                            }}
+                                            className="space-y-3"
+                                        >
+                                            <Input
+                                                type="file"
+                                                accept=".zip,application/zip"
+                                                onChange={(event) =>
+                                                    upload.setData(
+                                                        'archive',
+                                                        event.target
+                                                            .files?.[0] ?? null,
+                                                    )
+                                                }
+                                            />
+                                            <DialogFooter>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={
+                                                        upload.processing ||
+                                                        upload.data.archive ===
+                                                            null
+                                                    }
+                                                >
+                                                    Validar respaldo
+                                                </Button>
+                                            </DialogFooter>
+                                        </form>
+                                    )}
+                                </DialogContent>
+                            </Dialog>
+                        )}
+                    </div>
                 </header>
 
                 <section className="overflow-hidden rounded-lg border">

@@ -33,6 +33,8 @@ class U300ProgramController extends Controller
 
         return Inertia::render('finance/u300/programs/index', [
             'programs' => $programs,
+            'can_manage_backups' => request()->user()?->can('manage-u300-backups') === true,
+            'restore_preview' => session('finance.u300.restore_preview'),
         ]);
     }
 
