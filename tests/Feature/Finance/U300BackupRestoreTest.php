@@ -10,6 +10,7 @@ use App\Models\Finance\U300\U300BackupArchive;
 use App\Models\Finance\U300\U300BackupOperation;
 use App\Models\Finance\U300\U300Program;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 function u300BackupUser(UserRole $role): User
@@ -32,6 +33,14 @@ test('only authorized finance roles may manage U300 backups', function () {
         ->and(u300BackupUser(UserRole::FinanceAuditor)->canManageU300Backups())->toBeFalse()
         ->and(u300BackupUser(UserRole::FinanceManager)->canManageU300Backups())->toBeTrue()
         ->and(u300BackupUser(UserRole::Admin)->canManageU300Backups())->toBeTrue();
+});
+
+test('a finance manager may upload a U300 backup for preview', function () {
+    $user = u300BackupUser(UserRole::FinanceManager);
+
+    $this->actingAs($user)
+        ->post(route('finance.u300.backups.preview'), ['archive' => UploadedFile::fake()->create('u300.zip', 10, 'application/zip')])
+        ->assertSessionHasNoErrors();
 });
 
 test('backup archives and operations preserve their audit metadata', function () {

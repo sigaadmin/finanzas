@@ -49,6 +49,7 @@ use App\Http\Controllers\Finance\SeqDepositController;
 use App\Http\Controllers\Finance\SeqReportController;
 use App\Http\Controllers\Finance\SeqReportExportController;
 use App\Http\Controllers\Finance\StudentLookupController;
+use App\Http\Controllers\Finance\U300BackupController;
 use App\Http\Controllers\Finance\U300BudgetAdjustmentController;
 use App\Http\Controllers\Finance\U300BudgetExecutionController;
 use App\Http\Controllers\Finance\U300CogConversionController;
@@ -406,6 +407,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('u300/programs', [U300ProgramController::class, 'index'])
             ->name('u300.programs.index');
+
+        Route::post('u300/backups/preview', [U300BackupController::class, 'preview'])
+            ->name('u300.backups.preview');
+
+        Route::post('u300/backups/restore', [U300BackupController::class, 'restore'])
+            ->name('u300.backups.restore');
 
         Route::get('u300/programs/{program}/verdict', [U300FederalVerdictController::class, 'edit'])
             ->name('u300.programs.verdict.edit');
