@@ -3,6 +3,7 @@
 namespace App\Actions\Finance\U300;
 
 use App\Models\Finance\ExpenseClassification;
+use App\Models\Finance\U300\U300BackupOperation;
 use App\Models\Finance\U300\U300Program;
 use App\Models\User;
 use Illuminate\Support\Arr;
@@ -69,7 +70,7 @@ class RestoreU300BackupArchive
             Storage::disk('public')->put('u300/technical-sheets/reference-photos/'.$filename, $contents);
         }
 
-        return DB::transaction(function () use ($preview, $programData, $restoredBy): U300Program {
+        $restoredProgram = DB::transaction(function () use ($preview, $programData, $restoredBy): U300Program {
             U300Program::query()->where('fiscal_year', $preview['fiscal_year'])->lockForUpdate()->get()->each->delete();
 
             $program = U300Program::query()->create([
@@ -159,5 +160,15 @@ class RestoreU300BackupArchive
 
             return $program;
         });
+
+        U300BackupOperation::query()->create([
+            'fiscal_year' => $preview['fiscal_year'],
+            'type' => 'restored',
+            'status' => 'succeeded',
+            'performed_by' => $restoredBy->id,
+            'details' => ['program_id' => $restoredProgram->id],
+        ]);
+
+        return $restoredProgram;
     }
 }
