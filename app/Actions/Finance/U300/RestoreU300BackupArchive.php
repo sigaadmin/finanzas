@@ -76,6 +76,32 @@ class RestoreU300BackupArchive
                         ]);
                     }
                 }
+
+                foreach ($versionData['budget_lines'] ?? [] as $lineData) {
+                    $action = $actions[(int) $lineData['u300_action_id']] ?? null;
+
+                    if ($action !== null) {
+                        $line = $version->budgetLines()->create([
+                            ...Arr::only($lineData, ['amount_cents', 'exercise_month', 'description', 'justification', 'sort_order']),
+                            'u300_action_id' => $action->id,
+                        ]);
+
+                        if (is_array($lineData['technical_sheet'] ?? null)) {
+                            $line->technicalSheet()->create(Arr::only($lineData['technical_sheet'], [
+                                'item_name', 'objective', 'work_description', 'technical_specs', 'goods_profile',
+                                'beneficiaries', 'scheduled_date', 'deliverables', 'delivery_location', 'supervisor', 'payment_terms',
+                            ]));
+                        }
+
+                        foreach ($lineData['movements'] ?? [] as $movementData) {
+                            $line->movements()->create([
+                                ...Arr::only($movementData, ['type', 'movement_date', 'concept', 'document_reference', 'amount_cents', 'cancelled_at', 'cancellation_reason']),
+                                'recorded_by' => $restoredBy->id,
+                                'cancelled_by' => $movementData['cancelled_at'] === null ? null : $restoredBy->id,
+                            ]);
+                        }
+                    }
+                }
             }
 
             return $program;

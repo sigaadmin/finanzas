@@ -179,6 +179,7 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
     $goal = $project->goals()->create(['number' => '1.1', 'description' => 'Meta']);
     $action = $goal->actions()->create(['number' => '1.1.1', 'name' => 'Acción']);
     $action->requestedItems()->create(['u300_budget_version_id' => $version->id, 'expense_concept' => 'Concepto', 'expense_item' => 'Partida', 'period' => 1, 'quantity' => 1, 'unit_price_cents' => 100, 'total_cents' => 100]);
+    $version->budgetLines()->create(['u300_action_id' => $action->id, 'amount_cents' => 100, 'exercise_month' => 'ENE', 'description' => 'Partida']);
     $archive = app(CreateU300BackupArchive::class)->handle($source, $user, 'manual');
     U300Program::query()->whereKey($source)->update(['name' => 'Datos actuales']);
     $otherYear = U300Program::query()->create([
@@ -193,5 +194,6 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
     expect(U300Program::query()->where('fiscal_year', 2026)->sole()->name)->toBe('Respaldo 2026')
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->projects()->count())->toBe(1)
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->requestedItems()->count())->toBe(1)
+        ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->count())->toBe(1)
         ->and(U300Program::query()->find($otherYear->id))->not->toBeNull();
 });
