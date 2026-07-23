@@ -24,15 +24,22 @@ class CreateU300BackupArchive
         ]);
 
         $data = json_encode($program->toArray(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $files = [
+            'data/program.json' => $data,
+        ];
+
+        if ($program->source_path !== null && Storage::disk('local')->exists($program->source_path)) {
+            $sourceContents = Storage::disk('local')->get($program->source_path);
+            $files['files/source/'.basename($program->source_filename ?? $program->source_path)] = $sourceContents;
+        }
+
         $manifest = [
             'format_version' => 1,
             'fiscal_year' => $program->fiscal_year,
-            'files' => [
-                'data/program.json' => [
-                    'sha256' => hash('sha256', $data),
-                    'size_bytes' => strlen($data),
-                ],
-            ],
+            'files' => collect($files)->map(fn (string $contents): array => [
+                'sha256' => hash('sha256', $contents),
+                'size_bytes' => strlen($contents),
+            ])->all(),
         ];
         $temporaryPath = tempnam(sys_get_temp_dir(), 'u300-backup-');
 
@@ -47,7 +54,9 @@ class CreateU300BackupArchive
                 throw new RuntimeException('No fue posible crear el archivo ZIP.');
             }
 
-            $zip->addFromString('data/program.json', $data);
+            foreach ($files as $path => $contents) {
+                $zip->addFromString($path, $contents);
+            }
             $zip->addFromString('manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
             $zip->close();
 

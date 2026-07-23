@@ -82,3 +82,31 @@ test('a U300 backup contains a versioned manifest and the program data', functio
         ->and($archive->manifest['fiscal_year'])->toBe(2026)
         ->and($archive->manifest['files'])->toHaveKey('data/program.json');
 });
+
+test('a U300 backup includes its original source document', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    Storage::disk('local')->put('u300/imports/proyecto-u300.pdf', 'PDF U300');
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id,
+        'fiscal_year' => 2026,
+        'name' => 'Proyecto U300 2026',
+        'objective' => 'Objetivo.',
+        'justification' => 'Justificación.',
+        'requested_total_cents' => 10000,
+        'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección',
+        'responsible_academic_degree' => 'Maestría',
+        'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+        'source_filename' => 'proyecto-u300.pdf',
+        'source_path' => 'u300/imports/proyecto-u300.pdf',
+    ]);
+
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+    $zip = new ZipArchive;
+    $zip->open(Storage::disk('local')->path($archive->path));
+
+    expect($zip->getFromName('files/source/proyecto-u300.pdf'))->toBe('PDF U300');
+    $zip->close();
+});
