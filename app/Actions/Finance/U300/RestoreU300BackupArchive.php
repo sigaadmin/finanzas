@@ -21,6 +21,23 @@ class RestoreU300BackupArchive
 
     public function handle(string $archivePath, User $restoredBy): U300Program
     {
+        try {
+            return $this->restore($archivePath, $restoredBy);
+        } catch (\Throwable $exception) {
+            U300BackupOperation::query()->create([
+                'fiscal_year' => $this->fiscalYear($archivePath),
+                'type' => 'restored',
+                'status' => 'failed',
+                'performed_by' => $restoredBy->id,
+                'failure_reason' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
+        }
+    }
+
+    private function restore(string $archivePath, User $restoredBy): U300Program
+    {
         $preview = $this->inspector->handle($archivePath);
         $zip = new ZipArchive;
 
@@ -176,5 +193,14 @@ class RestoreU300BackupArchive
         ]);
 
         return $restoredProgram;
+    }
+
+    private function fiscalYear(string $archivePath): int
+    {
+        try {
+            return $this->inspector->handle($archivePath)['fiscal_year'];
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 }
