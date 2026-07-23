@@ -147,6 +147,11 @@ test('a U300 backup includes only referenced technical sheet photos', function (
     expect($zip->getFromName('files/technical-sheets/evidencia.jpg'))->toBe('FOTO')
         ->and($zip->locateName('files/technical-sheets/ajena.jpg'))->toBeFalse();
     $zip->close();
+
+    Storage::disk('public')->delete('u300/technical-sheets/reference-photos/evidencia.jpg');
+    app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user);
+
+    expect(Storage::disk('public')->get('u300/technical-sheets/reference-photos/evidencia.jpg'))->toBe('FOTO');
 });
 
 test('a valid U300 archive produces a restore preview', function () {

@@ -30,6 +30,17 @@ class RestoreU300BackupArchive
             $sourceContents = $sourceFilename === null
                 ? null
                 : $zip->getFromName('files/source/'.basename((string) $sourceFilename));
+            $photos = [];
+
+            foreach (array_keys($preview['manifest']['files'] ?? []) as $path) {
+                if (str_starts_with($path, 'files/technical-sheets/')) {
+                    $contents = $zip->getFromName($path);
+
+                    if (is_string($contents)) {
+                        $photos[basename($path)] = $contents;
+                    }
+                }
+            }
         } finally {
             $zip->close();
         }
@@ -40,6 +51,10 @@ class RestoreU300BackupArchive
 
         if (is_string($sourceContents) && is_string($programData['source_path'] ?? null)) {
             Storage::disk('local')->put($programData['source_path'], $sourceContents);
+        }
+
+        foreach ($photos as $filename => $contents) {
+            Storage::disk('public')->put('u300/technical-sheets/reference-photos/'.$filename, $contents);
         }
 
         return DB::transaction(function () use ($preview, $programData, $restoredBy): U300Program {
