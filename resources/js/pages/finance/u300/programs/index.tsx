@@ -247,13 +247,13 @@ export default function U300ProgramsIndex({
                                                 size="sm"
                                                 variant="ghost"
                                             >
-                                                <Link
-                                                    href={finance.u300.programs.backups.download(
+                                                <a
+                                                    href={finance.u300.programs.backups.download.url(
                                                         program,
                                                     )}
                                                 >
                                                     Respaldar
-                                                </Link>
+                                                </a>
                                             </Button>
                                         )}
                                         <Button
