@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Finance\U300\CreateU300BackupArchive;
+use App\Actions\Finance\U300\InspectU300BackupArchive;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\U300\U300BackupArchive;
@@ -144,4 +145,21 @@ test('a U300 backup includes only referenced technical sheet photos', function (
     expect($zip->getFromName('files/technical-sheets/evidencia.jpg'))->toBe('FOTO')
         ->and($zip->locateName('files/technical-sheets/ajena.jpg'))->toBeFalse();
     $zip->close();
+});
+
+test('a valid U300 archive produces a restore preview', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id, 'fiscal_year' => 2026, 'name' => 'Proyecto', 'objective' => 'Objetivo.',
+        'justification' => 'Justificación.', 'requested_total_cents' => 100, 'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+
+    $preview = app(InspectU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path));
+
+    expect($preview['fiscal_year'])->toBe(2026)
+        ->and($preview['files_count'])->toBe(1);
 });
