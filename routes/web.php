@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Finance\ChargeConceptController;
 use App\Http\Controllers\Finance\ChargeConceptOfficialLinkController;
@@ -60,6 +61,11 @@ use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', WelcomeController::class)->name('home');
+
+Route::middleware(['guest', 'throttle:google-oauth'])->prefix('auth/google')->name('auth.google.')->group(function () {
+    Route::get('redirect', [GoogleAuthController::class, 'redirect'])->name('redirect');
+    Route::get('callback', [GoogleAuthController::class, 'callback'])->name('callback');
+});
 
 Route::prefix('finance')->name('finance.')->group(function () {
     Route::get('receipts/validate/{token}', ReceiptValidationController::class)
