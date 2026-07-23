@@ -83,6 +83,16 @@ class User extends Authenticatable implements PasskeyUser
             ], true);
     }
 
+    public function canManageU300Backups(): bool
+    {
+        return $this->authorizedAccess?->is_active === true
+            && in_array($this->authorizedAccess->role, [
+                UserRole::Owner,
+                UserRole::Admin,
+                UserRole::FinanceManager,
+            ], true);
+    }
+
     /**
      * Get the attributes that should be cast.
      *

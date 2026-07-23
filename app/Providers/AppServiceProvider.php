@@ -45,6 +45,7 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('operate-finance', fn ($user): bool => $user->canOperateFinance());
         Gate::define('manage-expense-classifications', fn (User $user): bool => $user->canManageExpenseClassifications());
+        Gate::define('manage-u300-backups', fn (User $user): bool => $user->canManageU300Backups());
 
         DB::prohibitDestructiveCommands(
             app()->isProduction(),
