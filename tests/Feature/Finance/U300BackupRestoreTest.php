@@ -1,10 +1,13 @@
 <?php
 
+use App\Actions\Finance\U300\CreateU300BackupArchive;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\U300\U300BackupArchive;
 use App\Models\Finance\U300\U300BackupOperation;
+use App\Models\Finance\U300\U300Program;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 
 function u300BackupUser(UserRole $role): User
 {
@@ -53,4 +56,29 @@ test('backup archives and operations preserve their audit metadata', function ()
 
     expect($archive->manifest)->toBe(['format_version' => 1])
         ->and($operation->details)->toBe(['programs' => 1]);
+});
+
+test('a U300 backup contains a versioned manifest and the program data', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id,
+        'fiscal_year' => 2026,
+        'name' => 'Proyecto U300 2026',
+        'objective' => 'Objetivo.',
+        'justification' => 'Justificación.',
+        'requested_total_cents' => 10000,
+        'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección',
+        'responsible_academic_degree' => 'Maestría',
+        'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+
+    Storage::disk('local')->assertExists($archive->path);
+    expect($archive->manifest['format_version'])->toBe(1)
+        ->and($archive->manifest['fiscal_year'])->toBe(2026)
+        ->and($archive->manifest['files'])->toHaveKey('data/program.json');
 });
