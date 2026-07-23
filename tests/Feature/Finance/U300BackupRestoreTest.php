@@ -5,6 +5,7 @@ use App\Actions\Finance\U300\InspectU300BackupArchive;
 use App\Actions\Finance\U300\RestoreU300BackupArchive;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\U300\U300BackupArchive;
 use App\Models\Finance\U300\U300BackupOperation;
 use App\Models\Finance\U300\U300Program;
@@ -179,7 +180,8 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
     $goal = $project->goals()->create(['number' => '1.1', 'description' => 'Meta']);
     $action = $goal->actions()->create(['number' => '1.1.1', 'name' => 'Acción']);
     $action->requestedItems()->create(['u300_budget_version_id' => $version->id, 'expense_concept' => 'Concepto', 'expense_item' => 'Partida', 'period' => 1, 'quantity' => 1, 'unit_price_cents' => 100, 'total_cents' => 100]);
-    $version->budgetLines()->create(['u300_action_id' => $action->id, 'amount_cents' => 100, 'exercise_month' => 'ENE', 'description' => 'Partida']);
+    $cog = ExpenseClassification::query()->create(['fiscal_year' => 2026, 'chapter_code' => '3000', 'chapter_name' => 'Servicios', 'concept_code' => '3700', 'concept_name' => 'Traslados', 'generic_item_code' => '3750', 'generic_item_name' => 'Viáticos', 'specific_item_code' => '37501', 'specific_item_name' => 'Viáticos nacionales', 'expense_type_code' => '1', 'expense_type_name' => 'Corriente']);
+    $version->budgetLines()->create(['u300_action_id' => $action->id, 'expense_classification_id' => $cog->id, 'amount_cents' => 100, 'exercise_month' => 'ENE', 'description' => 'Partida']);
     $archive = app(CreateU300BackupArchive::class)->handle($source, $user, 'manual');
     U300Program::query()->whereKey($source)->update(['name' => 'Datos actuales']);
     $otherYear = U300Program::query()->create([
@@ -195,5 +197,6 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->projects()->count())->toBe(1)
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->requestedItems()->count())->toBe(1)
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->count())->toBe(1)
+        ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->first()->expenseClassification->specific_item_code)->toBe('37501')
         ->and(U300Program::query()->find($otherYear->id))->not->toBeNull();
 });

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Finance\U300;
 
+use App\Models\Finance\ExpenseClassification;
 use App\Models\Finance\U300\U300Program;
 use App\Models\User;
 use Illuminate\Support\Arr;
@@ -81,9 +82,25 @@ class RestoreU300BackupArchive
                     $action = $actions[(int) $lineData['u300_action_id']] ?? null;
 
                     if ($action !== null) {
+                        $expenseClassificationId = null;
+
+                        if (is_array($lineData['expense_classification'] ?? null)) {
+                            $classification = ExpenseClassification::query()
+                                ->where('fiscal_year', $preview['fiscal_year'])
+                                ->where('specific_item_code', $lineData['expense_classification']['specific_item_code'] ?? null)
+                                ->first();
+
+                            if ($classification === null) {
+                                throw new RuntimeException('El catálogo COG requerido por el respaldo no está disponible.');
+                            }
+
+                            $expenseClassificationId = $classification->id;
+                        }
+
                         $line = $version->budgetLines()->create([
                             ...Arr::only($lineData, ['amount_cents', 'exercise_month', 'description', 'justification', 'sort_order']),
                             'u300_action_id' => $action->id,
+                            'expense_classification_id' => $expenseClassificationId,
                         ]);
 
                         if (is_array($lineData['technical_sheet'] ?? null)) {
