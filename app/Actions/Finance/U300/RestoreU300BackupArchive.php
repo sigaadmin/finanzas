@@ -35,7 +35,7 @@ class RestoreU300BackupArchive
         return DB::transaction(function () use ($preview, $programData, $restoredBy): U300Program {
             U300Program::query()->where('fiscal_year', $preview['fiscal_year'])->lockForUpdate()->get()->each->delete();
 
-            return U300Program::query()->create([
+            $program = U300Program::query()->create([
                 ...Arr::only($programData, [
                     'fiscal_year', 'name', 'objective', 'justification', 'requested_total_cents',
                     'approved_total_cents', 'federal_authorized_total_cents', 'responsible_name',
@@ -44,6 +44,41 @@ class RestoreU300BackupArchive
                 ]),
                 'imported_by' => $restoredBy->id,
             ]);
+
+            $actions = [];
+
+            foreach ($programData['projects'] ?? [] as $projectData) {
+                $project = $program->projects()->create(Arr::only($projectData, ['number', 'name', 'justification', 'sort_order']));
+
+                foreach ($projectData['goals'] ?? [] as $goalData) {
+                    $goal = $project->goals()->create(Arr::only($goalData, ['number', 'description', 'requested_total_cents', 'approved_total_cents', 'sort_order']));
+
+                    foreach ($goalData['actions'] ?? [] as $actionData) {
+                        $action = $goal->actions()->create(Arr::only($actionData, ['number', 'name', 'justification', 'requested_total_cents', 'approved_total_cents', 'sort_order']));
+                        $actions[(int) $actionData['id']] = $action;
+                    }
+                }
+            }
+
+            foreach ($programData['budget_versions'] ?? [] as $versionData) {
+                $version = $program->budgetVersions()->create([
+                    ...Arr::only($versionData, ['kind', 'name', 'status', 'total_cents']),
+                    'created_by' => $restoredBy->id,
+                ]);
+
+                foreach ($versionData['requested_items'] ?? [] as $itemData) {
+                    $action = $actions[(int) $itemData['u300_action_id']] ?? null;
+
+                    if ($action !== null) {
+                        $action->requestedItems()->create([
+                            ...Arr::only($itemData, ['expense_concept', 'expense_item', 'period', 'quantity', 'unit_price_cents', 'total_cents', 'approved_amount_cents', 'approved_percentage', 'sort_order']),
+                            'u300_budget_version_id' => $version->id,
+                        ]);
+                    }
+                }
+            }
+
+            return $program;
         });
     }
 }

@@ -174,6 +174,11 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
         'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
         'responsible_email' => 'responsable@crenfcp.edu.mx',
     ]);
+    $version = $source->budgetVersions()->create(['created_by' => $user->id, 'kind' => 'original_requested', 'name' => 'Original', 'status' => 'confirmed', 'total_cents' => 100]);
+    $project = $source->projects()->create(['number' => '1', 'name' => 'Proyecto']);
+    $goal = $project->goals()->create(['number' => '1.1', 'description' => 'Meta']);
+    $action = $goal->actions()->create(['number' => '1.1.1', 'name' => 'Acción']);
+    $action->requestedItems()->create(['u300_budget_version_id' => $version->id, 'expense_concept' => 'Concepto', 'expense_item' => 'Partida', 'period' => 1, 'quantity' => 1, 'unit_price_cents' => 100, 'total_cents' => 100]);
     $archive = app(CreateU300BackupArchive::class)->handle($source, $user, 'manual');
     U300Program::query()->whereKey($source)->update(['name' => 'Datos actuales']);
     $otherYear = U300Program::query()->create([
@@ -186,5 +191,7 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
     app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user);
 
     expect(U300Program::query()->where('fiscal_year', 2026)->sole()->name)->toBe('Respaldo 2026')
+        ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->projects()->count())->toBe(1)
+        ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->requestedItems()->count())->toBe(1)
         ->and(U300Program::query()->find($otherYear->id))->not->toBeNull();
 });
