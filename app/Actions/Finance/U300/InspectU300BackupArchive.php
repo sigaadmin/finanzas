@@ -32,6 +32,19 @@ class InspectU300BackupArchive
                 throw new RuntimeException('La versión o ejercicio del respaldo no es válido.');
             }
 
+            $allowedPaths = ['manifest.json', ...array_keys($manifest['files'] ?? [])];
+
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $entry = $zip->getNameIndex($index);
+
+                if (! is_string($entry)
+                    || str_starts_with($entry, '/')
+                    || str_contains($entry, '..')
+                    || ! in_array($entry, $allowedPaths, true)) {
+                    throw new RuntimeException('El paquete contiene una ruta no permitida.');
+                }
+            }
+
             foreach ($manifest['files'] ?? [] as $path => $metadata) {
                 if (! is_string($path) || ! is_array($metadata) || str_contains($path, '..')) {
                     throw new RuntimeException('El paquete contiene una ruta inválida.');
