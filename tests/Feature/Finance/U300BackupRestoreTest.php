@@ -180,6 +180,25 @@ test('a valid U300 archive produces a restore preview', function () {
         ->and($preview['files_count'])->toBe(1);
 });
 
+test('a tampered U300 archive is rejected before restoration', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id, 'fiscal_year' => 2026, 'name' => 'Proyecto', 'objective' => 'Objetivo.',
+        'justification' => 'Justificación.', 'requested_total_cents' => 100, 'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+    $zip = new ZipArchive;
+    $zip->open(Storage::disk('local')->path($archive->path));
+    $zip->addFromString('data/program.json', '{"altered":true}');
+    $zip->close();
+
+    expect(fn () => app(InspectU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path)))
+        ->toThrow(RuntimeException::class);
+});
+
 test('restoring a U300 archive replaces only its fiscal year', function () {
     Storage::fake('local');
     $user = u300BackupUser(UserRole::FinanceManager);
