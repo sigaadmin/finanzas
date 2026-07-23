@@ -2,6 +2,7 @@
 
 use App\Actions\Finance\U300\CreateU300BackupArchive;
 use App\Actions\Finance\U300\InspectU300BackupArchive;
+use App\Actions\Finance\U300\RestoreU300BackupArchive;
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\Finance\U300\U300BackupArchive;
@@ -162,4 +163,28 @@ test('a valid U300 archive produces a restore preview', function () {
 
     expect($preview['fiscal_year'])->toBe(2026)
         ->and($preview['files_count'])->toBe(1);
+});
+
+test('restoring a U300 archive replaces only its fiscal year', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    $source = U300Program::query()->create([
+        'imported_by' => $user->id, 'fiscal_year' => 2026, 'name' => 'Respaldo 2026', 'objective' => 'Objetivo.',
+        'justification' => 'Justificación.', 'requested_total_cents' => 100, 'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+    $archive = app(CreateU300BackupArchive::class)->handle($source, $user, 'manual');
+    U300Program::query()->whereKey($source)->update(['name' => 'Datos actuales']);
+    $otherYear = U300Program::query()->create([
+        'imported_by' => $user->id, 'fiscal_year' => 2027, 'name' => 'Conservar 2027', 'objective' => 'Objetivo.',
+        'justification' => 'Justificación.', 'requested_total_cents' => 100, 'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+
+    app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user);
+
+    expect(U300Program::query()->where('fiscal_year', 2026)->sole()->name)->toBe('Respaldo 2026')
+        ->and(U300Program::query()->find($otherYear->id))->not->toBeNull();
 });
