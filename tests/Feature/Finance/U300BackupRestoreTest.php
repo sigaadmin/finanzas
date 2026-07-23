@@ -200,3 +200,22 @@ test('restoring a U300 archive replaces only its fiscal year', function () {
         ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->first()->expenseClassification->specific_item_code)->toBe('37501')
         ->and(U300Program::query()->find($otherYear->id))->not->toBeNull();
 });
+
+test('restoring a U300 archive recreates its source file', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    Storage::disk('local')->put('u300/imports/original.pdf', 'ORIGINAL');
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id, 'fiscal_year' => 2026, 'name' => 'Proyecto', 'objective' => 'Objetivo.',
+        'justification' => 'Justificación.', 'requested_total_cents' => 100, 'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx', 'source_filename' => 'original.pdf', 'source_path' => 'u300/imports/original.pdf',
+    ]);
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+    Storage::disk('local')->delete('u300/imports/original.pdf');
+
+    app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user);
+
+    Storage::disk('local')->assertExists('u300/imports/original.pdf');
+    expect(Storage::disk('local')->get('u300/imports/original.pdf'))->toBe('ORIGINAL');
+});

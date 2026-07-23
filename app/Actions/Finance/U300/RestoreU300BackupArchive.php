@@ -7,6 +7,7 @@ use App\Models\Finance\U300\U300Program;
 use App\Models\User;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
 
@@ -25,12 +26,20 @@ class RestoreU300BackupArchive
 
         try {
             $programData = json_decode((string) $zip->getFromName('data/program.json'), true, 512, JSON_THROW_ON_ERROR);
+            $sourceFilename = $programData['source_filename'] ?? null;
+            $sourceContents = $sourceFilename === null
+                ? null
+                : $zip->getFromName('files/source/'.basename((string) $sourceFilename));
         } finally {
             $zip->close();
         }
 
         if (($programData['fiscal_year'] ?? null) !== $preview['fiscal_year']) {
             throw new RuntimeException('El contenido no corresponde al ejercicio del respaldo.');
+        }
+
+        if (is_string($sourceContents) && is_string($programData['source_path'] ?? null)) {
+            Storage::disk('local')->put($programData['source_path'], $sourceContents);
         }
 
         return DB::transaction(function () use ($preview, $programData, $restoredBy): U300Program {
