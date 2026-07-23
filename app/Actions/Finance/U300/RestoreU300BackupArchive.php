@@ -14,6 +14,9 @@ use ZipArchive;
 
 class RestoreU300BackupArchive
 {
+    /** @var list<array{disk: string, path: string}> */
+    private array $createdFiles = [];
+
     public function __construct(
         private InspectU300BackupArchive $inspector,
         private CreateU300BackupArchive $createBackup,
@@ -21,9 +24,15 @@ class RestoreU300BackupArchive
 
     public function handle(string $archivePath, User $restoredBy): U300Program
     {
+        $this->createdFiles = [];
+
         try {
             return $this->restore($archivePath, $restoredBy);
         } catch (\Throwable $exception) {
+            foreach ($this->createdFiles as $file) {
+                Storage::disk($file['disk'])->delete($file['path']);
+            }
+
             U300BackupOperation::query()->create([
                 'fiscal_year' => $this->fiscalYear($archivePath),
                 'type' => 'restored',
@@ -80,11 +89,11 @@ class RestoreU300BackupArchive
             ));
 
         if (is_string($sourceContents) && is_string($programData['source_path'] ?? null)) {
-            Storage::disk('local')->put($programData['source_path'], $sourceContents);
+            $this->storeRestoredFile('local', $programData['source_path'], $sourceContents);
         }
 
         foreach ($photos as $filename => $contents) {
-            Storage::disk('public')->put('u300/technical-sheets/reference-photos/'.$filename, $contents);
+            $this->storeRestoredFile('public', 'u300/technical-sheets/reference-photos/'.$filename, $contents);
         }
 
         $restoredProgram = DB::transaction(function () use ($preview, $programData, $restoredBy): U300Program {
@@ -201,6 +210,17 @@ class RestoreU300BackupArchive
             return $this->inspector->handle($archivePath)['fiscal_year'];
         } catch (\Throwable) {
             return 0;
+        }
+    }
+
+    private function storeRestoredFile(string $disk, string $path, string $contents): void
+    {
+        $filesystem = Storage::disk($disk);
+        $alreadyExists = $filesystem->exists($path);
+        $filesystem->put($path, $contents);
+
+        if (! $alreadyExists) {
+            $this->createdFiles[] = ['disk' => $disk, 'path' => $path];
         }
     }
 }
