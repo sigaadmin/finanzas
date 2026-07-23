@@ -408,6 +408,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('u300/programs', [U300ProgramController::class, 'index'])
             ->name('u300.programs.index');
 
+        Route::get('u300/programs/{program}/backups/download', [U300BackupController::class, 'download'])
+            ->name('u300.programs.backups.download');
+
         Route::post('u300/backups/preview', [U300BackupController::class, 'preview'])
             ->name('u300.backups.preview');
 

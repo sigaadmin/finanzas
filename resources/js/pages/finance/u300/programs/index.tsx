@@ -241,6 +241,21 @@ export default function U300ProgramsIndex({
                                         {money(program.adjusted_total_cents)}
                                     </td>
                                     <td className="px-3 py-2 text-right">
+                                        {can_manage_backups && (
+                                            <Button
+                                                asChild
+                                                size="sm"
+                                                variant="ghost"
+                                            >
+                                                <Link
+                                                    href={finance.u300.programs.backups.download(
+                                                        program,
+                                                    )}
+                                                >
+                                                    Respaldar
+                                                </Link>
+                                            </Button>
+                                        )}
                                         <Button
                                             asChild
                                             size="sm"

@@ -2,17 +2,28 @@
 
 namespace App\Http\Controllers\Finance;
 
+use App\Actions\Finance\U300\CreateU300BackupArchive;
 use App\Actions\Finance\U300\InspectU300BackupArchive;
 use App\Actions\Finance\U300\RestoreU300BackupArchive;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\PreviewU300BackupRestoreRequest;
 use App\Http\Requests\Finance\RestoreU300BackupRequest;
+use App\Models\Finance\U300\U300Program;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class U300BackupController extends Controller
 {
+    public function download(U300Program $program, CreateU300BackupArchive $create): StreamedResponse
+    {
+        abort_unless(request()->user()?->can('manage-u300-backups'), 403);
+        $archive = $create->handle($program, request()->user(), 'manual');
+
+        return Storage::disk($archive->disk)->download($archive->path, $archive->original_filename);
+    }
+
     public function preview(PreviewU300BackupRestoreRequest $request, InspectU300BackupArchive $inspector): RedirectResponse
     {
         $path = $request->file('archive')->store('u300/restore-previews', 'local');
