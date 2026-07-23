@@ -131,6 +131,12 @@ class RestoreU300BackupArchive
                                 throw new RuntimeException('El catálogo COG requerido por el respaldo no está disponible.');
                             }
 
+                            foreach (['chapter_code', 'chapter_name', 'concept_code', 'concept_name', 'generic_item_code', 'generic_item_name', 'specific_item_name', 'expense_type_code', 'expense_type_name'] as $field) {
+                                if (($classification->{$field} ?? null) !== ($lineData['expense_classification'][$field] ?? null)) {
+                                    throw new RuntimeException('El catálogo COG no es compatible con el respaldo.');
+                                }
+                            }
+
                             $expenseClassificationId = $classification->id;
                         }
 
