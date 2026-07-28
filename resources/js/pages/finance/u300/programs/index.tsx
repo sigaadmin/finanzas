@@ -119,26 +119,25 @@ export default function U300ProgramsIndex({
                                         <form
                                             onSubmit={(event) => {
                                                 event.preventDefault();
-                                                restore
-                                                    .transform((data) => ({
-                                                        ...data,
-                                                        preview_token:
-                                                            restore_preview.token,
-                                                    }))
-                                                    .post(
-                                                        finance.u300.backups.restore()
-                                                            .url,
-                                                        {
-                                                            preserveScroll: true,
-                                                            onSuccess: () => {
-                                                                setRestoreDialogOpen(
-                                                                    false,
-                                                                );
-                                                                restore.reset();
-                                                                restore.clearErrors();
-                                                            },
+                                                restore.transform((data) => ({
+                                                    ...data,
+                                                    preview_token:
+                                                        restore_preview.token,
+                                                }));
+                                                restore.post(
+                                                    finance.u300.backups.restore()
+                                                        .url,
+                                                    {
+                                                        preserveScroll: true,
+                                                        onSuccess: () => {
+                                                            setRestoreDialogOpen(
+                                                                false,
+                                                            );
+                                                            restore.reset();
+                                                            restore.clearErrors();
                                                         },
-                                                    );
+                                                    },
+                                                );
                                             }}
                                             className="space-y-3"
                                         >

@@ -27,6 +27,9 @@ test('U300 restore submits the current preview token and displays form errors', 
     );
 
     assert.match(restoreSection, /preview_token:\s*restore_preview\.token/);
+    assert.match(restoreSection, /restore\s*\.transform/);
+    assert.match(restoreSection, /restore\s*\.post/);
+    assert.doesNotMatch(restoreSection, /\.transform\([\s\S]*?\)\s*\.post\(/);
     assert.match(
         restoreSection,
         /<InputError\s+message=\{\s*restore\.errors\.preview_token\s*\}\s*\/>/,
