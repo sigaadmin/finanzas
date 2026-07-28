@@ -12,6 +12,8 @@ use App\Models\Finance\U300\U300Program;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class U300BackupController extends Controller
@@ -44,13 +46,35 @@ class U300BackupController extends Controller
     {
         $preview = $request->session()->get('finance.u300.restore_preview');
 
-        abort_unless(is_array($preview) && hash_equals((string) $preview['token'], $request->string('preview_token')->toString()), 422);
-        abort_unless($request->string('confirmation')->toString() === 'RESTAURAR U300 '.$preview['fiscal_year'], 422);
+        if (! is_array($preview) || ! hash_equals((string) $preview['token'], $request->string('preview_token')->toString())) {
+            throw ValidationException::withMessages([
+                'preview_token' => 'La vista previa venció. Valida nuevamente el archivo de respaldo.',
+            ]);
+        }
 
-        $restore->handle(Storage::disk('local')->path($preview['path']), $request->user());
+        if ($request->string('confirmation')->toString() !== 'RESTAURAR U300 '.$preview['fiscal_year']) {
+            throw ValidationException::withMessages([
+                'confirmation' => 'Escribe exactamente la frase de confirmación indicada.',
+            ]);
+        }
+
+        try {
+            $restore->handle(Storage::disk('local')->path($preview['path']), $request->user());
+        } catch (\RuntimeException $exception) {
+            return back()->withErrors(['restore' => $exception->getMessage()]);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['restore' => 'No fue posible restaurar el respaldo. Consulta la bitácora para más detalles.']);
+        }
+
         Storage::disk('local')->delete($preview['path']);
         $request->session()->forget('finance.u300.restore_preview');
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => 'Respaldo U300 restaurado correctamente.',
+        ]);
 
-        return to_route('finance.u300.programs.index')->with('success', 'Respaldo U300 restaurado correctamente.');
+        return to_route('finance.u300.programs.index');
     }
 }

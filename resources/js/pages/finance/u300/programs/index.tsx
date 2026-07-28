@@ -1,5 +1,6 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { FileUp, FolderOpen } from 'lucide-react';
+import { FileUp, FolderOpen, LoaderCircle } from 'lucide-react';
+import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -60,6 +61,7 @@ export default function U300ProgramsIndex({
     restore_preview,
     backup_operations,
 }: Props) {
+    const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
     const upload = useForm<{ archive: File | null }>({ archive: null });
     const restore = useForm({
         preview_token: restore_preview?.token ?? '',
@@ -87,7 +89,17 @@ export default function U300ProgramsIndex({
                             </Link>
                         </Button>
                         {can_manage_backups && (
-                            <Dialog>
+                            <Dialog
+                                open={restoreDialogOpen}
+                                onOpenChange={(open) => {
+                                    if (
+                                        !restore.processing &&
+                                        !upload.processing
+                                    ) {
+                                        setRestoreDialogOpen(open);
+                                    }
+                                }}
+                            >
                                 <DialogTrigger asChild>
                                     <Button variant="outline">
                                         Restaurar respaldo
@@ -116,6 +128,16 @@ export default function U300ProgramsIndex({
                                                     .post(
                                                         finance.u300.backups.restore()
                                                             .url,
+                                                        {
+                                                            preserveScroll: true,
+                                                            onSuccess: () => {
+                                                                setRestoreDialogOpen(
+                                                                    false,
+                                                                );
+                                                                restore.reset();
+                                                                restore.clearErrors();
+                                                            },
+                                                        },
                                                     );
                                             }}
                                             className="space-y-3"
@@ -148,6 +170,9 @@ export default function U300ProgramsIndex({
                                                     restore.errors.preview_token
                                                 }
                                             />
+                                            <InputError
+                                                message={restore.errors.restore}
+                                            />
                                             <DialogFooter>
                                                 <Button
                                                     type="submit"
@@ -159,7 +184,12 @@ export default function U300ProgramsIndex({
                                                             `RESTAURAR U300 ${restore_preview.fiscal_year}`
                                                     }
                                                 >
-                                                    Restaurar
+                                                    {restore.processing && (
+                                                        <LoaderCircle className="size-4 animate-spin" />
+                                                    )}
+                                                    {restore.processing
+                                                        ? 'Restaurando…'
+                                                        : 'Restaurar'}
                                                 </Button>
                                             </DialogFooter>
                                         </form>

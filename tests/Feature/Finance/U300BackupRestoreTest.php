@@ -13,6 +13,8 @@ use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
+use function Pest\Laravel\mock;
+
 function u300BackupUser(UserRole $role): User
 {
     $user = User::factory()->create([
@@ -33,6 +35,55 @@ test('only authorized finance roles may manage U300 backups', function () {
         ->and(u300BackupUser(UserRole::FinanceAuditor)->canManageU300Backups())->toBeFalse()
         ->and(u300BackupUser(UserRole::FinanceManager)->canManageU300Backups())->toBeTrue()
         ->and(u300BackupUser(UserRole::Admin)->canManageU300Backups())->toBeTrue();
+});
+
+test('an expired U300 restore preview is returned as a form error', function () {
+    $user = u300BackupUser(UserRole::FinanceManager);
+
+    $this->actingAs($user)
+        ->withSession([
+            'finance.u300.restore_preview' => [
+                'token' => 'expected-token',
+                'path' => 'u300/restore-previews/backup.zip',
+                'fiscal_year' => 2026,
+                'files_count' => 33,
+            ],
+        ])
+        ->from(route('finance.u300.programs.index'))
+        ->post(route('finance.u300.backups.restore'), [
+            'preview_token' => 'expired-token',
+            'confirmation' => 'RESTAURAR U300 2026',
+        ])
+        ->assertRedirect(route('finance.u300.programs.index'))
+        ->assertSessionHasErrors('preview_token');
+});
+
+test('a U300 restoration failure is returned as a form error', function () {
+    $user = u300BackupUser(UserRole::FinanceManager);
+
+    mock(RestoreU300BackupArchive::class)
+        ->shouldReceive('handle')
+        ->once()
+        ->andThrow(new RuntimeException('El catálogo COG requerido por el respaldo no está disponible.'));
+
+    $this->actingAs($user)
+        ->withSession([
+            'finance.u300.restore_preview' => [
+                'token' => 'restore-token',
+                'path' => 'u300/restore-previews/backup.zip',
+                'fiscal_year' => 2026,
+                'files_count' => 33,
+            ],
+        ])
+        ->from(route('finance.u300.programs.index'))
+        ->post(route('finance.u300.backups.restore'), [
+            'preview_token' => 'restore-token',
+            'confirmation' => 'RESTAURAR U300 2026',
+        ])
+        ->assertRedirect(route('finance.u300.programs.index'))
+        ->assertSessionHasErrors([
+            'restore' => 'El catálogo COG requerido por el respaldo no está disponible.',
+        ]);
 });
 
 test('a finance manager may upload a U300 backup for preview', function () {
