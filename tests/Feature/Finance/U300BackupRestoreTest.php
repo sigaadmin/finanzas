@@ -325,7 +325,7 @@ test('restoring a U300 archive recreates its source file', function () {
     expect(Storage::disk('local')->get('u300/imports/original.pdf'))->toBe('ORIGINAL');
 });
 
-test('a missing COG prevents restoration and records the failure', function () {
+test('restoring imports a missing COG from the archive', function () {
     Storage::fake('local');
     $user = u300BackupUser(UserRole::FinanceManager);
     $program = U300Program::query()->create([
@@ -341,10 +341,46 @@ test('a missing COG prevents restoration and records the failure', function () {
     $cog = ExpenseClassification::query()->create(['fiscal_year' => 2026, 'chapter_code' => '3000', 'chapter_name' => 'Servicios', 'concept_code' => '3700', 'concept_name' => 'Traslados', 'generic_item_code' => '3750', 'generic_item_name' => 'Viáticos', 'specific_item_code' => '37501', 'specific_item_name' => 'Viáticos nacionales', 'expense_type_code' => '1', 'expense_type_name' => 'Corriente']);
     $version->budgetLines()->create(['u300_action_id' => $action->id, 'expense_classification_id' => $cog->id, 'amount_cents' => 100]);
     $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+    $program->update(['name' => 'Datos modificados']);
     $cog->delete();
 
-    expect(fn () => app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user))
-        ->toThrow(RuntimeException::class);
+    app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user);
+
+    $restoredClassification = ExpenseClassification::query()
+        ->where('fiscal_year', 2026)
+        ->where('specific_item_code', '37501')
+        ->sole();
+
     expect(U300Program::query()->where('fiscal_year', 2026)->sole()->name)->toBe('Datos actuales')
+        ->and($restoredClassification->chapter_code)->toBe('3000')
+        ->and($restoredClassification->specific_item_name)->toBe('Viáticos nacionales')
+        ->and(U300Program::query()->where('fiscal_year', 2026)->sole()->budgetVersions()->first()->budgetLines()->first()->expense_classification_id)->toBe($restoredClassification->id)
+        ->and(U300BackupOperation::query()->where('fiscal_year', 2026)->where('type', 'restored')->where('status', 'succeeded')->exists())->toBeTrue();
+});
+
+test('an incompatible existing COG prevents restoration without overwriting it', function () {
+    Storage::fake('local');
+    $user = u300BackupUser(UserRole::FinanceManager);
+    $program = U300Program::query()->create([
+        'imported_by' => $user->id, 'fiscal_year' => 2026, 'name' => 'Datos respaldados', 'objective' => 'Objetivo.',
+        'justification' => 'Justificación.', 'requested_total_cents' => 100, 'responsible_name' => 'Responsable',
+        'responsible_position' => 'Dirección', 'responsible_academic_degree' => 'Maestría', 'responsible_phone' => '9830000000',
+        'responsible_email' => 'responsable@crenfcp.edu.mx',
+    ]);
+    $version = $program->budgetVersions()->create(['created_by' => $user->id, 'kind' => 'adjusted', 'name' => 'Adecuación', 'status' => 'draft', 'total_cents' => 100]);
+    $project = $program->projects()->create(['number' => '1', 'name' => 'Proyecto']);
+    $goal = $project->goals()->create(['number' => '1.1', 'description' => 'Meta']);
+    $action = $goal->actions()->create(['number' => '1.1.1', 'name' => 'Acción']);
+    $cog = ExpenseClassification::query()->create(['fiscal_year' => 2026, 'chapter_code' => '3000', 'chapter_name' => 'Servicios', 'concept_code' => '3700', 'concept_name' => 'Traslados', 'generic_item_code' => '3750', 'generic_item_name' => 'Viáticos', 'specific_item_code' => '37501', 'specific_item_name' => 'Viáticos nacionales', 'expense_type_code' => '1', 'expense_type_name' => 'Corriente']);
+    $version->budgetLines()->create(['u300_action_id' => $action->id, 'expense_classification_id' => $cog->id, 'amount_cents' => 100]);
+    $archive = app(CreateU300BackupArchive::class)->handle($program, $user, 'manual');
+    $program->update(['name' => 'Datos vigentes']);
+    $cog->update(['specific_item_name' => 'Descripción local diferente']);
+
+    expect(fn () => app(RestoreU300BackupArchive::class)->handle(Storage::disk('local')->path($archive->path), $user))
+        ->toThrow(RuntimeException::class, 'El catálogo COG no es compatible con el respaldo.');
+
+    expect(U300Program::query()->where('fiscal_year', 2026)->sole()->name)->toBe('Datos vigentes')
+        ->and($cog->fresh()->specific_item_name)->toBe('Descripción local diferente')
         ->and(U300BackupOperation::query()->where('fiscal_year', 2026)->where('type', 'restored')->where('status', 'failed')->exists())->toBeTrue();
 });

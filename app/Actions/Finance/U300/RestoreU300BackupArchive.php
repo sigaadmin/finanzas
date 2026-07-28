@@ -14,6 +14,20 @@ use ZipArchive;
 
 class RestoreU300BackupArchive
 {
+    /** @var list<string> */
+    private const EXPENSE_CLASSIFICATION_FIELDS = [
+        'chapter_code',
+        'chapter_name',
+        'concept_code',
+        'concept_name',
+        'generic_item_code',
+        'generic_item_name',
+        'specific_item_code',
+        'specific_item_name',
+        'expense_type_code',
+        'expense_type_name',
+    ];
+
     /** @var list<array{disk: string, path: string}> */
     private array $createdFiles = [];
 
@@ -148,22 +162,10 @@ class RestoreU300BackupArchive
                         $expenseClassificationId = null;
 
                         if (is_array($lineData['expense_classification'] ?? null)) {
-                            $classification = ExpenseClassification::query()
-                                ->where('fiscal_year', $preview['fiscal_year'])
-                                ->where('specific_item_code', $lineData['expense_classification']['specific_item_code'] ?? null)
-                                ->first();
-
-                            if ($classification === null) {
-                                throw new RuntimeException('El catálogo COG requerido por el respaldo no está disponible.');
-                            }
-
-                            foreach (['chapter_code', 'chapter_name', 'concept_code', 'concept_name', 'generic_item_code', 'generic_item_name', 'specific_item_name', 'expense_type_code', 'expense_type_name'] as $field) {
-                                if (($classification->{$field} ?? null) !== ($lineData['expense_classification'][$field] ?? null)) {
-                                    throw new RuntimeException('El catálogo COG no es compatible con el respaldo.');
-                                }
-                            }
-
-                            $expenseClassificationId = $classification->id;
+                            $expenseClassificationId = $this->restoreExpenseClassification(
+                                $lineData['expense_classification'],
+                                $preview['fiscal_year'],
+                            )->id;
                         }
 
                         $line = $version->budgetLines()->create([
@@ -202,6 +204,40 @@ class RestoreU300BackupArchive
         ]);
 
         return $restoredProgram;
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     */
+    private function restoreExpenseClassification(array $snapshot, int $fiscalYear): ExpenseClassification
+    {
+        if (($snapshot['fiscal_year'] ?? null) !== $fiscalYear) {
+            throw new RuntimeException('El catálogo COG no corresponde al ejercicio del respaldo.');
+        }
+
+        $classificationData = Arr::only($snapshot, self::EXPENSE_CLASSIFICATION_FIELDS);
+
+        foreach (self::EXPENSE_CLASSIFICATION_FIELDS as $field) {
+            if (! is_string($classificationData[$field] ?? null) || $classificationData[$field] === '') {
+                throw new RuntimeException('El catálogo COG incluido en el respaldo no es válido.');
+            }
+        }
+
+        $classification = ExpenseClassification::query()->firstOrCreate(
+            [
+                'fiscal_year' => $fiscalYear,
+                'specific_item_code' => $classificationData['specific_item_code'],
+            ],
+            Arr::except($classificationData, ['specific_item_code']),
+        );
+
+        foreach (self::EXPENSE_CLASSIFICATION_FIELDS as $field) {
+            if ($classification->{$field} !== $classificationData[$field]) {
+                throw new RuntimeException('El catálogo COG no es compatible con el respaldo.');
+            }
+        }
+
+        return $classification;
     }
 
     private function fiscalYear(string $archivePath): int
