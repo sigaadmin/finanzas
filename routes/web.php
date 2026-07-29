@@ -441,6 +441,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('u300/programs/{program}/technical-sheets/export', [U300TechnicalSheetController::class, 'export'])
             ->name('u300.programs.technical-sheets.export');
 
+        Route::get('u300/programs/{program}/technical-sheets/report', [U300TechnicalSheetController::class, 'report'])
+            ->name('u300.programs.technical-sheets.report');
+
         Route::get('u300/programs/{program}/technical-sheets/{line}', [U300TechnicalSheetController::class, 'editLine'])
             ->name('u300.programs.technical-sheets.lines.edit');
 

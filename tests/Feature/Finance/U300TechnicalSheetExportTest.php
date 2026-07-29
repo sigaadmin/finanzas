@@ -7,6 +7,7 @@ use App\Models\Finance\U300\U300Program;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -316,4 +317,89 @@ test('technical sheet export uses the program fiscal year for abbreviated months
     expect($documentXml)
         ->toContain('Agosto de 2027')
         ->not->toContain('Agosto de 2026');
+});
+
+test('finance operator can export the current U300 technical sheets as an Excel report', function () {
+    $user = u300TechnicalSheetExportUser();
+    $program = u300ProgramWithTechnicalSheet($user);
+
+    $response = $this->actingAs($user)
+        ->get(route('finance.u300.programs.technical-sheets.report', $program));
+
+    $response->assertOk();
+    $response->assertDownload('reporte-fichas-tecnicas-u300.xlsx');
+
+    $path = tempnam(sys_get_temp_dir(), 'u300-technical-sheets-report');
+    file_put_contents($path, $response->streamedContent());
+
+    $worksheet = IOFactory::load($path)->getActiveSheet();
+    unlink($path);
+
+    expect($worksheet->getTitle())->toBe('Fichas técnicas')
+        ->and($worksheet->rangeToArray('A1:J2', null, false, false))
+        ->toBe([
+            [
+                'cvAcción', 'Acción', 'Monto asignado', 'cvPartida', 'Partida',
+                'Cantidad', 'Unidad de medida', 'Descripción', 'Precio unitario', 'Total',
+            ],
+            [
+                '5.1.2', 'Acción concentradora', 160000, '37501', 'Viáticos en el país',
+                1, 'Servicio', 'Alimentación', 160000.0, 160000.0,
+            ],
+        ]);
+});
+
+test('technical sheet Excel report repeats structured goods and omits sheets without goods', function () {
+    $user = u300TechnicalSheetExportUser();
+    $program = u300ProgramWithTechnicalSheet($user);
+    $action = $program->projects->first()->goals()->first()->actions()->first();
+    $classification = ExpenseClassification::create([
+        'fiscal_year' => 2026,
+        'chapter_code' => '2000',
+        'chapter_name' => 'Materiales y suministros',
+        'concept_code' => '2100',
+        'concept_name' => 'Materiales de administración',
+        'generic_item_code' => '2110',
+        'generic_item_name' => 'Materiales, útiles y equipos menores de oficina',
+        'specific_item_code' => '21101',
+        'specific_item_name' => 'Materiales y útiles de oficina',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
+    $budgetVersion = $program->budgetVersions()->first();
+    $lineWithGoods = $budgetVersion->budgetLines()->create([
+        'u300_action_id' => $action->id,
+        'expense_classification_id' => $classification->id,
+        'amount_cents' => 360000,
+        'sort_order' => 2,
+    ]);
+    $lineWithGoods->technicalSheet()->create([
+        'goods_profile' => [
+            ['unit' => 'Pieza', 'description' => 'Cuaderno', 'minimum_quantity' => '2', 'unit_price' => '1500'],
+            ['unit' => 'Caja', 'description' => 'Lápices', 'minimum_quantity' => '3', 'unit_price' => '200'],
+        ],
+    ]);
+    $lineWithoutGoods = $budgetVersion->budgetLines()->create([
+        'u300_action_id' => $action->id,
+        'expense_classification_id' => $classification->id,
+        'amount_cents' => 100000,
+        'sort_order' => 3,
+    ]);
+    $lineWithoutGoods->technicalSheet()->create(['item_name' => 'Sin bienes capturados']);
+
+    $response = $this->actingAs($user)
+        ->get(route('finance.u300.programs.technical-sheets.report', $program));
+
+    $path = tempnam(sys_get_temp_dir(), 'u300-technical-sheets-report');
+    file_put_contents($path, $response->streamedContent());
+
+    $worksheet = IOFactory::load($path)->getActiveSheet();
+    unlink($path);
+
+    expect($worksheet->getHighestRow())->toBe(4)
+        ->and($worksheet->rangeToArray('F3:J4', null, false, false))
+        ->toBe([
+            [2.0, 'Pieza', 'Cuaderno', 1500.0, 3000.0],
+            [3.0, 'Caja', 'Lápices', 200.0, 600.0],
+        ]);
 });

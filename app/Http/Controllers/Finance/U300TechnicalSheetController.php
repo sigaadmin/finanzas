@@ -8,6 +8,7 @@ use App\Http\Requests\Finance\UpdateU300TechnicalSheetsRequest;
 use App\Models\Finance\U300\U300BudgetLine;
 use App\Models\Finance\U300\U300Program;
 use App\Services\Finance\U300\U300TechnicalSheetDocxExporter;
+use App\Services\Finance\U300\U300TechnicalSheetReportWorkbookExporter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -181,6 +182,19 @@ class U300TechnicalSheetController extends Controller
             },
             'fichas-tecnicas-u300-'.$program->fiscal_year.'.docx',
             ['Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        );
+    }
+
+    public function report(
+        U300Program $program,
+        U300TechnicalSheetReportWorkbookExporter $exporter,
+    ): StreamedResponse {
+        return response()->streamDownload(
+            function () use ($exporter, $program): void {
+                echo $exporter->export($program);
+            },
+            'reporte-fichas-tecnicas-u300.xlsx',
+            ['Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
         );
     }
 

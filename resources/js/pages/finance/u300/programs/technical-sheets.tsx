@@ -372,6 +372,18 @@ export default function U300TechnicalSheets({ program }: Props) {
                                 Exportar Word
                             </a>
                         </Button>
+                        <Button asChild variant="outline">
+                            <a
+                                href={
+                                    finance.u300.programs.technicalSheets.report(
+                                        program,
+                                    ).url
+                                }
+                            >
+                                <Download className="size-4" />
+                                Exportar Excel
+                            </a>
+                        </Button>
                         <Button
                             disabled={form.processing}
                             form="u300-technical-sheets-form"
