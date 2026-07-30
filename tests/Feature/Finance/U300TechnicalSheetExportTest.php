@@ -339,12 +339,12 @@ test('finance operator can export the current U300 technical sheets as an Excel 
         ->and($worksheet->rangeToArray('A1:J2', null, false, false))
         ->toBe([
             [
-                'cvAcción', 'Acción', 'Monto asignado', 'cvPartida', 'Partida',
-                'Cantidad', 'Unidad de medida', 'Descripción', 'Precio unitario', 'Total',
+                'cvAcción', 'Acción', 'cvPartida', 'Partida', 'Cantidad',
+                'Unidad de medida', 'Descripción', 'Precio unitario', 'Total', 'Monto asignado',
             ],
             [
-                '5.1.2', 'Acción concentradora', 160000, '37501', 'Viáticos en el país',
-                1, 'Servicio', 'Alimentación', 160000.0, 160000.0,
+                '5.1.2', 'Acción concentradora', '37501', 'Viáticos en el país', 1,
+                'Servicio', 'Alimentación', 160000.0, 160000.0, 160000.0,
             ],
         ]);
 });
@@ -397,9 +397,9 @@ test('technical sheet Excel report repeats structured goods and omits sheets wit
     unlink($path);
 
     expect($worksheet->getHighestRow())->toBe(4)
-        ->and($worksheet->rangeToArray('F3:J4', null, false, false))
+        ->and($worksheet->rangeToArray('E3:J4', null, false, false))
         ->toBe([
-            [2.0, 'Pieza', 'Cuaderno', 1500.0, 3000.0],
-            [3.0, 'Caja', 'Lápices', 200.0, 600.0],
+            [2.0, 'Pieza', 'Cuaderno', 1500.0, 3000.0, 3600.0],
+            [3.0, 'Caja', 'Lápices', 200.0, 600.0, null],
         ]);
 });

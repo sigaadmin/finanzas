@@ -34,8 +34,8 @@ class U300TechnicalSheetReportWorkbookExporter
         $sheet->setTitle('Fichas técnicas');
         $sheet->fromArray([
             [
-                'cvAcción', 'Acción', 'Monto asignado', 'cvPartida', 'Partida',
-                'Cantidad', 'Unidad de medida', 'Descripción', 'Precio unitario', 'Total',
+                'cvAcción', 'Acción', 'cvPartida', 'Partida', 'Cantidad',
+                'Unidad de medida', 'Descripción', 'Precio unitario', 'Total', 'Monto asignado',
             ],
         ], null, 'A1');
 
@@ -44,7 +44,7 @@ class U300TechnicalSheetReportWorkbookExporter
 
             foreach ($rows as $index => $row) {
                 $sheet->setCellValueExplicit('A'.($index + 2), (string) $row[0], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit('D'.($index + 2), (string) $row[3], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('C'.($index + 2), (string) $row[2], DataType::TYPE_STRING);
             }
         }
 
@@ -53,9 +53,8 @@ class U300TechnicalSheetReportWorkbookExporter
         $sheet->getStyle('A1:J1')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF1F4E78');
         $sheet->getStyle('A1:J'.$lastRow)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER)->setWrapText(true);
         $sheet->getStyle('A1:J1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle('C2:C'.$lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
-        $sheet->getStyle('F2:F'.$lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
-        $sheet->getStyle('I2:J'.$lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
+        $sheet->getStyle('E2:E'.$lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
+        $sheet->getStyle('H2:J'.$lastRow)->getNumberFormat()->setFormatCode('#,##0.00');
         $sheet->freezePane('A2');
         $sheet->setAutoFilter('A1:J'.$lastRow);
 
@@ -88,12 +87,14 @@ class U300TechnicalSheetReportWorkbookExporter
                 ->filter(fn (array $good): bool => collect($good)
                     ->only(['unit', 'description', 'minimum_quantity', 'unit_price', 'specifications'])
                     ->contains(fn (mixed $value): bool => filled($value)))
-                ->map(fn (array $good): array => $this->row(
+                ->values()
+                ->map(fn (array $good, int $index): array => $this->row(
                     $line,
                     (float) ($good['minimum_quantity'] ?? 0),
                     (string) ($good['unit'] ?? ''),
                     (string) ($good['description'] ?? ''),
                     (float) ($good['unit_price'] ?? 0),
+                    $index === 0 ? $line->amount_cents / 100 : null,
                 ))
                 ->all();
         }
@@ -110,11 +111,12 @@ class U300TechnicalSheetReportWorkbookExporter
             $chapterCode === '6000' ? 'Obra' : 'Servicio',
             $this->serviceDescription((string) $line->expenseClassification?->specific_item_name),
             $amount,
+            $amount,
         )];
     }
 
     /**
-     * @return list<float|int|string>
+     * @return list<float|int|string|null>
      */
     private function row(
         U300BudgetLine $line,
@@ -122,11 +124,11 @@ class U300TechnicalSheetReportWorkbookExporter
         string $unit,
         string $description,
         float $unitPrice,
+        ?float $assignedAmount,
     ): array {
         return [
             $line->action?->number ?? '',
             $line->action?->name ?? '',
-            $line->amount_cents / 100,
             $line->expenseClassification?->specific_item_code ?? '',
             $line->expenseClassification?->specific_item_name ?? '',
             $quantity,
@@ -134,6 +136,7 @@ class U300TechnicalSheetReportWorkbookExporter
             $description,
             $unitPrice,
             $quantity * $unitPrice,
+            $assignedAmount,
         ];
     }
 
