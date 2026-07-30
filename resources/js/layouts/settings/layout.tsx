@@ -7,6 +7,7 @@ import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
 import { index as localDataIndex } from '@/routes/local-data';
+import { index as usersIndex } from '@/routes/authorized-accesses';
 import type { NavItem } from '@/types';
 
 const appearanceNavItem: NavItem = {
@@ -17,9 +18,12 @@ const appearanceNavItem: NavItem = {
 
 export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
-    const { localDataResetAvailable } = usePage().props;
+    const { localDataResetAvailable, auth } = usePage().props;
     const sidebarNavItems: NavItem[] = [
         appearanceNavItem,
+        ...(auth.permissions.manage_users
+            ? [{ title: 'Usuarios', href: usersIndex(), icon: null }]
+            : []),
         ...(localDataResetAvailable
             ? [
                   {

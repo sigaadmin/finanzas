@@ -3,6 +3,11 @@
 use App\Enums\UserRole;
 use App\Models\AuthorizedAccess;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
+
+beforeEach(function () {
+    $this->withoutVite();
+});
 
 function accessManager(UserRole $role): User
 {
@@ -50,4 +55,16 @@ test('user management rejects accounts outside the institutional domain', functi
             'role' => UserRole::FinanceAssistant->value,
         ])
         ->assertSessionHasErrors('email');
+});
+
+test('administrators can view the user management screen', function () {
+    $administrator = accessManager(UserRole::Admin);
+
+    $this->actingAs($administrator)
+        ->get(route('authorized-accesses.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page): Assert => $page
+            ->component('settings/users')
+            ->has('users', 1)
+        );
 });

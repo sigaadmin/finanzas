@@ -40,6 +40,12 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+                'permissions' => [
+                    'manage_users' => $request->user()?->canManageUsers() === true,
+                    'ventanilla' => $request->user()?->authorizedAccess?->can_operate_ventanilla === true,
+                    'u300' => $request->user()?->authorizedAccess?->can_operate_u300 === true,
+                    'own_revenue' => $request->user()?->authorizedAccess?->can_operate_own_revenue === true,
+                ],
             ],
             'localDataResetAvailable' => app()->environment('local')
                 && $request->user()?->isOwner() === true,

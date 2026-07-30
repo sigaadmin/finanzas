@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import {
     ClipboardList,
     FileText,
@@ -67,6 +67,8 @@ const budgetItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
+    const { permissions } = usePage().props.auth;
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -82,8 +84,16 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain label="Portal" items={portalItems} />
-                <NavMain label="Presupuesto" items={budgetItems} className="px-2 py-0 mt-4" />
+                {permissions.ventanilla && <NavMain label="Portal" items={portalItems} />}
+                {(permissions.u300 || permissions.own_revenue) && (
+                    <NavMain
+                        label="Presupuesto"
+                        items={budgetItems.filter((item) =>
+                            item.title === 'U300' ? permissions.u300 : permissions.own_revenue,
+                        )}
+                        className="px-2 py-0 mt-4"
+                    />
+                )}
             </SidebarContent>
 
             <SidebarFooter>
