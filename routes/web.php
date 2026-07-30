@@ -78,7 +78,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('can:operate-finance')
         ->name('dashboard');
 
-    Route::prefix('finance')->name('finance.')->middleware('can:operate-finance')->group(function () {
+    Route::prefix('finance')->name('finance.')->middleware(['can:operate-finance', 'finance-module'])->group(function () {
         Route::get('students/search', StudentLookupController::class)
             ->name('students.search');
 

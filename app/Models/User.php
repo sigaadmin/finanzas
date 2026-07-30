@@ -73,6 +73,12 @@ class User extends Authenticatable implements PasskeyUser
             ], true);
     }
 
+    public function canManageUsers(): bool
+    {
+        return $this->authorizedAccess?->is_active === true
+            && in_array($this->authorizedAccess->role, [UserRole::Owner, UserRole::Admin], true);
+    }
+
     public function canManageExpenseClassifications(): bool
     {
         return $this->authorizedAccess?->is_active === true

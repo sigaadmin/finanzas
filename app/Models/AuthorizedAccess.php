@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-#[Fillable(['email', 'role', 'is_active', 'last_used_at'])]
+#[Fillable(['email', 'role', 'is_active', 'can_operate_ventanilla', 'can_operate_u300', 'can_operate_own_revenue', 'last_used_at'])]
 class AuthorizedAccess extends Model
 {
     /**
@@ -19,6 +19,9 @@ class AuthorizedAccess extends Model
         return [
             'role' => UserRole::class,
             'is_active' => 'boolean',
+            'can_operate_ventanilla' => 'boolean',
+            'can_operate_u300' => 'boolean',
+            'can_operate_own_revenue' => 'boolean',
             'last_used_at' => 'datetime',
         ];
     }

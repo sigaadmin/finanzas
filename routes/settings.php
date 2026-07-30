@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\Settings\LocalDataResetScope;
+use App\Http\Controllers\Settings\AuthorizedAccessController;
 use App\Http\Controllers\Settings\LocalDataResetController;
 use App\Http\Middleware\EnsureLocalDataResetIsAvailable;
 use Illuminate\Support\Facades\Route;
@@ -9,6 +10,11 @@ Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', '/settings/appearance');
 
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
+
+    Route::resource('settings/users', AuthorizedAccessController::class)
+        ->only(['index', 'store', 'update'])
+        ->middleware('can:manage-users')
+        ->names('authorized-accesses');
 
     Route::middleware(EnsureLocalDataResetIsAvailable::class)->group(function () {
         Route::get('settings/local-data', [LocalDataResetController::class, 'index'])
