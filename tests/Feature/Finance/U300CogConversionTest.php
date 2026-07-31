@@ -250,3 +250,54 @@ test('finance operator can import the COG catalog and assign classifications wit
         'exercise_month' => 'NOV',
     ]);
 });
+
+test('finance operator can assign a COG classification to a line without a technical sheet', function () {
+    $user = u300CogUser();
+    $program = u300ProgramWithAdjustedLine($user);
+    $classification = ExpenseClassification::create([
+        'fiscal_year' => 2026,
+        'chapter_code' => '2000',
+        'chapter_name' => 'Materiales y suministros',
+        'concept_code' => '2100',
+        'concept_name' => 'Materiales de administración',
+        'generic_item_code' => '2110',
+        'generic_item_name' => 'Materiales, útiles y equipos menores de oficina',
+        'specific_item_code' => '21101',
+        'specific_item_name' => 'Materiales y útiles de oficina',
+        'expense_type_code' => '1',
+        'expense_type_name' => 'Gasto corriente',
+    ]);
+    $line = $program->budgetVersions()
+        ->where('kind', 'adjusted')
+        ->firstOrFail()
+        ->budgetLines()
+        ->firstOrFail();
+
+    expect($line->technicalSheet)->toBeNull();
+
+    $this->actingAs($user)
+        ->put(route('finance.u300.programs.cog.update', $program), [
+            'actions' => [
+                [
+                    'id' => $line->u300_action_id,
+                    'justification' => 'Justificación de acción.',
+                ],
+            ],
+            'lines' => [
+                [
+                    'id' => $line->id,
+                    'u300_action_id' => $line->u300_action_id,
+                    'amount_cents' => $line->amount_cents,
+                    'expense_classification_code' => $classification->specific_item_code,
+                    'exercise_month' => 'AGO',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('finance.u300.programs.show', $program));
+
+    $this->assertDatabaseHas('u300_budget_lines', [
+        'id' => $line->id,
+        'expense_classification_id' => $classification->id,
+        'exercise_month' => 'AGO',
+    ]);
+});
