@@ -137,8 +137,10 @@ class UpdateU300CogConversion
 
                     $budgetLine->update($attributes);
 
-                    if ($budgetLine->technicalSheet?->scheduled_date === $previousScheduledDate) {
-                        $budgetLine->technicalSheet->update([
+                    $technicalSheet = $budgetLine->technicalSheet;
+
+                    if ($technicalSheet !== null && $technicalSheet->scheduled_date === $previousScheduledDate) {
+                        $technicalSheet->update([
                             'scheduled_date' => $this->formatExerciseMonth(
                                 $lineData['exercise_month'],
                                 $program->fiscal_year,
